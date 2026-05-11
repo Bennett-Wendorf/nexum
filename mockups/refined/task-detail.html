@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexum - Task Detail</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+  .content { display: flex; flex: 1; }
+  .task-content { flex: 1; padding: 24px; max-width: 800px; }
+  .task-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 24px; }
+  .task-title-area { flex: 1; }
+  .task-sidebar { width: 320px; border-left: 1px solid #30363d; padding: 24px; overflow-y: auto; }
+</style>
+</head>
+<body>
+  <div class="icon-sidebar">
+    <a href="dashboard.html" class="nav-icon" title="Dashboard">&#9733;</a>
+    <a href="kanban.html" class="nav-icon active" title="Kanban Board">&#9638;</a>
+    <a href="agent-teams.html" class="nav-icon" title="Agent Teams">&#128101;</a>
+    <div class="divider"></div>
+    <a class="nav-icon" title="Settings">&#9881;</a>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <a href="kanban.html" class="btn btn-sm" style="font-size:12px;padding:4px 8px;">&larr; Back</a>
+      <div class="breadcrumb">
+        <a href="dashboard.html">Nexum</a> <span class="sep">&rsaquo;</span>
+        <span>feature/agent-orchestration</span> <span class="sep">&rsaquo;</span>
+        <a href="kanban.html">Auth Redesign</a> <span class="sep">&rsaquo;</span>
+        <a href="kanban.html">Backend Auth</a> <span class="sep">&rsaquo;</span>
+        <span class="current">Token Refresh</span>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-sm">Edit Task</button>
+        <button class="btn btn-sm btn-primary">&#9658; Execute</button>
+        <button class="btn btn-sm btn-danger">Abandon</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="task-content">
+        <div class="baby-step">
+          <div class="baby-step-icon">&#128680;</div>
+          <div class="baby-step-text">Baby Step Mode: Each status transition requires your confirmation before proceeding.</div>
+        </div>
+
+        <div class="task-header">
+          <select class="task-status-select">
+            <option>Queued</option>
+            <option selected>Running</option>
+            <option>Reviewing</option>
+          </select>
+          <div class="task-title-area">
+            <div class="task-title">Implement OAuth2 token refresh flow</div>
+            <div class="task-meta">
+              <span class="task-tag tag-backend">backend</span>
+              <span class="task-tag tag-security">security</span>
+              <span>Created 2h ago</span>
+              <span>by Agent-1</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active">Task Definition</div>
+          <div class="tab">Execution Plan</div>
+          <div class="tab">Agent Output</div>
+          <div class="tab">Review</div>
+          <div class="tab">Diff</div>
+        </div>
+
+        <div class="md-content">
+          <h2>Objective</h2>
+          <p>Implement automatic OAuth2 token refresh logic to handle expired access tokens transparently. The system should detect 401 responses, trigger a refresh token exchange, and retry the original request.</p>
+
+          <h2>Acceptance Criteria</h2>
+          <ul>
+            <li>Intercept 401 responses from protected endpoints</li>
+            <li>Store refresh token securely in httpOnly cookie</li>
+            <li>Retry failed request with new access token</li>
+            <li>Handle refresh token expiration gracefully</li>
+            <li>Add unit tests for all refresh scenarios</li>
+          </ul>
+
+          <h2>Technical Context</h2>
+          <p>Use the existing <code>auth/middleware.ts</code> as the interception point. The token store is in <code>services/token-store.ts</code>.</p>
+
+          <pre><code>interface TokenRefreshConfig {
+  accessTokenTtl: number;
+  refreshTokenTtl: number;
+  retryOn401: boolean;
+  maxRetries: number;
+}</code></pre>
+
+          <h2>Dependencies</h2>
+          <p>This task depends on "Set up auth database schema" (completed) and "Implement login endpoint" (completed).</p>
+        </div>
+      </div>
+
+      <div class="task-sidebar">
+        <!-- Agent Assignment -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Assigned Agent</div>
+          <div class="agent-assign">
+            <div class="agent-assign-avatar">A1</div>
+            <div class="agent-assign-info">
+              <div class="agent-assign-name">Agent-1</div>
+              <div class="agent-assign-role">Executing as Builder</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dependencies -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Dependencies</div>
+          <div class="dep-graph">
+            <div class="dep-node completed">
+              <div class="dep-status" style="background:#3fb950;"></div>
+              <span>Set up auth database schema</span>
+            </div>
+            <div class="dep-arrow">&darr;</div>
+            <div class="dep-node completed">
+              <div class="dep-status" style="background:#3fb950;"></div>
+              <span>Implement login endpoint</span>
+            </div>
+            <div class="dep-arrow">&darr;</div>
+            <div class="dep-node running">
+              <div class="dep-status" style="background:#58a6ff;"></div>
+              <span style="font-weight:600;">&larr; This task</span>
+            </div>
+            <div class="dep-arrow">&darr;</div>
+            <div class="dep-node pending">
+              <div class="dep-status" style="background:#484f58;"></div>
+              <span>Add JWT blacklist for logout</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Permissions -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Permissions</div>
+          <div class="perm-row">
+            <span class="perm-label">File writes</span>
+            <span class="perm-value perm-auto">auto</span>
+          </div>
+          <div class="perm-row">
+            <span class="perm-label">Terminal commands</span>
+            <span class="perm-value perm-auto">auto</span>
+          </div>
+          <div class="perm-row">
+            <span class="perm-label">Network requests</span>
+            <span class="perm-value perm-manual">manual</span>
+          </div>
+          <div class="perm-row">
+            <span class="perm-label">Git operations</span>
+            <span class="perm-value perm-manual">manual</span>
+          </div>
+          <div class="perm-row">
+            <span class="perm-label">Package installs</span>
+            <span class="perm-value perm-blocked">blocked</span>
+          </div>
+        </div>
+
+        <!-- Status History -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Status History</div>
+          <div class="status-timeline">
+            <div class="timeline-item active">
+              <div class="timeline-status" style="color:#58a6ff;">Running</div>
+              <div class="timeline-time">10:32 AM</div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-status">Queued</div>
+              <div class="timeline-time">10:30 AM</div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-status">Plan Complete</div>
+              <div class="timeline-time">10:28 AM</div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-status">Planning</div>
+              <div class="timeline-time">10:25 AM</div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-status">Backlog</div>
+              <div class="timeline-time">10:20 AM &middot; created</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Execution Log -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Execution Log</div>
+          <div class="exec-log">
+            <div class="log-line"><span class="log-time">10:32</span><span class="log-msg info">[Agent-1] Task started</span></div>
+            <div class="log-line"><span class="log-time">10:32</span><span class="log-msg">Reading task definition&hellip;</span></div>
+            <div class="log-line"><span class="log-time">10:33</span><span class="log-msg">Analyzing codebase context&hellip;</span></div>
+            <div class="log-line"><span class="log-time">10:33</span><span class="log-msg info">Found 3 relevant files</span></div>
+            <div class="log-line"><span class="log-time">10:34</span><span class="log-msg">Creating refresh middleware&hellip;</span></div>
+            <div class="log-line"><span class="log-time">10:35</span><span class="log-msg warn">Permission check: network request</span></div>
+            <div class="log-line"><span class="log-time">10:35</span><span class="log-msg warn">&#9206; Waiting for approval&hellip;</span></div>
+          </div>
+        </div>
+
+        <!-- Source Files -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Source Files</div>
+          <div class="file-ref">
+            <span class="file-icon">&#128196;</span>
+            <span class="file-path">.Nexum/tasks/token-refresh.md</span>
+          </div>
+          <div class="file-ref">
+            <span class="file-icon">&#128196;</span>
+            <span class="file-path">.Nexum/tasks/token-refresh.plan.json</span>
+          </div>
+          <div class="file-ref">
+            <span class="file-icon">&#128196;</span>
+            <span class="file-path">.Nexum/state.json</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

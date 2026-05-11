@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexum - Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, sans-serif; background: #0f1117; color: #e1e4e8; height: 100vh; display: flex; }
+
+  /* Sidebar */
+  .sidebar { width: 240px; background: #161b22; border-right: 1px solid #30363d; padding: 16px; display: flex; flex-direction: column; }
+  .logo { font-size: 18px; font-weight: 700; color: #58a6ff; padding: 8px 0 24px; display: flex; align-items: center; gap: 8px; }
+  .logo svg { width: 24px; height: 24px; }
+  .nav-section { margin-bottom: 24px; }
+  .nav-label { font-size: 11px; text-transform: uppercase; color: #8b949e; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .nav-item { padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; color: #c9d1d9; display: flex; align-items: center; gap: 10px; }
+  .nav-item:hover { background: #21262d; }
+  .nav-item.active { background: #1f6feb33; color: #58a6ff; }
+  .nav-item .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot.green { background: #3fb950; }
+  .dot.yellow { background: #d29922; }
+  .dot.red { background: #f85149; }
+  .sidebar-footer { margin-top: auto; padding-top: 16px; border-top: 1px solid #30363d; }
+  .resource-bar { height: 6px; background: #21262d; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .resource-fill { height: 100%; background: #58a6ff; border-radius: 3px; }
+
+  /* Main */
+  .main { flex: 1; overflow-y: auto; padding: 32px; }
+  .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+  .page-title { font-size: 28px; font-weight: 700; }
+  .btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #30363d; background: #21262d; color: #c9d1d9; cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+  .btn-primary { background: #238636; border-color: #238636; color: #fff; }
+
+  /* Stats Row */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+  .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
+  .stat-label { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-value { font-size: 32px; font-weight: 700; margin: 8px 0 4px; }
+  .stat-sub { font-size: 12px; color: #8b949e; }
+  .stat-value.green { color: #3fb950; }
+  .stat-value.blue { color: #58a6ff; }
+  .stat-value.yellow { color: #d29922; }
+
+  /* Repo Cards */
+  .section-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .repo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 32px; }
+  .repo-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; cursor: pointer; transition: border-color 0.2s; }
+  .repo-card:hover { border-color: #58a6ff; }
+  .repo-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .repo-path { font-size: 12px; color: #8b949e; margin-bottom: 16px; font-family: monospace; }
+  .repo-meta { display: flex; gap: 16px; font-size: 13px; }
+  .repo-meta-item { display: flex; align-items: center; gap: 4px; }
+  .badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .badge-green { background: #3fb95022; color: #3fb950; }
+  .badge-yellow { background: #d2992222; color: #d29922; }
+  .badge-blue { background: #58a6ff22; color: #58a6ff; }
+  .badge-red { background: #f8514922; color: #f85149; }
+
+  /* Branch List */
+  .branch-list { background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }
+  .branch-header { padding: 12px 20px; background: #1c2129; border-bottom: 1px solid #30363d; font-size: 13px; font-weight: 600; display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 100px; }
+  .branch-row { padding: 12px 20px; border-bottom: 1px solid #21262d; display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 100px; align-items: center; font-size: 13px; cursor: pointer; }
+  .branch-row:hover { background: #1c2129; }
+  .branch-name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .status-cell { display: flex; gap: 4px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9l2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9l2.83-2.83"/></svg>
+      Nexum
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Views</div>
+      <div class="nav-item active">Dashboard</div>
+      <div class="nav-item">Kanban Board</div>
+      <div class="nav-item">Tree View</div>
+      <div class="nav-item">Agent Teams</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Repositories</div>
+      <div class="nav-item"><span class="dot green"></span> Nexum</div>
+      <div class="nav-item"><span class="dot yellow"></span> webapp-frontend</div>
+      <div class="nav-item"><span class="dot green"></span> api-service</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Config</div>
+      <div class="nav-item">Settings</div>
+      <div class="nav-item">Agents</div>
+      <div class="nav-item">Permissions</div>
+    </div>
+    <div class="sidebar-footer">
+      <div style="font-size:12px;color:#8b949e;">Agent Pool</div>
+      <div style="font-size:13px;margin-top:4px;">3 / 6 active</div>
+      <div class="resource-bar"><div class="resource-fill" style="width:50%"></div></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="page-header">
+      <div class="page-title">Dashboard</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn">+ Add Repo</button>
+        <button class="btn btn-primary">+ New Epic</button>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Active Repos</div>
+        <div class="stat-value blue">3</div>
+        <div class="stat-sub">2 with running tasks</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Tasks Running</div>
+        <div class="stat-value green">7</div>
+        <div class="stat-sub">of 23 total in progress</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">In Review</div>
+        <div class="stat-value yellow">4</div>
+        <div class="stat-sub">1 awaiting manual check</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Completed Today</div>
+        <div class="stat-value">12</div>
+        <div class="stat-sub">across all repos</div>
+      </div>
+    </div>
+
+    <div class="section-title">Active Repositories</div>
+    <div class="repo-grid">
+      <div class="repo-card">
+        <div class="repo-name">Nexum</div>
+        <div class="repo-path">~/projects/Nexum</div>
+        <div class="repo-meta">
+          <span class="badge badge-green">2 branches</span>
+          <span>4 tasks running</span>
+          <span>3 in review</span>
+        </div>
+      </div>
+      <div class="repo-card">
+        <div class="repo-name">webapp-frontend</div>
+        <div class="repo-path">~/projects/webapp/frontend</div>
+        <div class="repo-meta">
+          <span class="badge badge-yellow">3 branches</span>
+          <span>2 tasks running</span>
+          <span>1 in planning</span>
+        </div>
+      </div>
+      <div class="repo-card">
+        <div class="repo-name">api-service</div>
+        <div class="repo-path">~/projects/webapp/api</div>
+        <div class="repo-meta">
+          <span class="badge badge-green">1 branch</span>
+          <span>1 task running</span>
+          <span>0 in review</span>
+        </div>
+      </div>
+      <div class="repo-card" style="border-style:dashed;display:flex;align-items:center;justify-content:center;min-height:100px;">
+        <span style="color:#8b949e;">+ Add Repository</span>
+      </div>
+    </div>
+
+    <div class="section-title">Branches — Nexum</div>
+    <div class="branch-list">
+      <div class="branch-header">
+        <div>Branch</div><div>Epics</div><div>Running</div><div>Review</div><div></div>
+      </div>
+      <div class="branch-row">
+        <div class="branch-name"><span style="color:#3fb950;">&#9679;</span> main</div>
+        <div class="status-cell"><span class="badge badge-green">2 active</span></div>
+        <div>3</div><div>1</div><div></div>
+      </div>
+      <div class="branch-row">
+        <div class="branch-name"><span style="color:#58a6ff;">&#9679;</span> feature/agent-orchestration</div>
+        <div class="status-cell"><span class="badge badge-blue">1 active</span></div>
+        <div>4</div><div>2</div><div></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

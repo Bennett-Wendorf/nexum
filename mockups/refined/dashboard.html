@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexum - Dashboard</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .main { flex: 1; overflow-y: auto; padding: 32px; }
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+  .repo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 32px; }
+</style>
+</head>
+<body>
+  <div class="icon-sidebar">
+    <a href="dashboard.html" class="nav-icon active" title="Dashboard">&#9733;</a>
+    <a href="kanban.html" class="nav-icon" title="Kanban Board">&#9638;</a>
+    <a href="agent-teams.html" class="nav-icon" title="Agent Teams">&#128101;</a>
+    <div class="divider"></div>
+    <a class="nav-icon" title="Settings">&#9881;</a>
+  </div>
+
+  <div class="agent-sidebar">
+    <div class="agent-sidebar-header">
+      <span class="agent-sidebar-title">Agent Pool</span>
+      <a href="agent-teams.html" class="agent-sidebar-link">Manage &rarr;</a>
+    </div>
+    <div class="agent-pool-summary">
+      <div class="agent-pool-count">
+        <span><strong>3</strong> active</span>
+        <span><strong>3</strong> slots free</span>
+      </div>
+      <div class="agent-pool-bar"><div class="agent-pool-bar-fill" style="width:50%"></div></div>
+    </div>
+
+    <div class="agent-group-label">Active Agents</div>
+    <div class="agent-list">
+      <div class="agent-item">
+        <div class="agent-item-avatar busy">A1<div class="status-dot green"></div></div>
+        <div class="agent-item-info">
+          <div class="agent-item-name">Agent-1</div>
+          <div class="agent-item-task">OAuth2 token refresh&hellip;</div>
+        </div>
+        <span class="tag role">Builder</span>
+      </div>
+      <div class="agent-item">
+        <div class="agent-item-avatar busy">A2<div class="status-dot green"></div></div>
+        <div class="agent-item-info">
+          <div class="agent-item-name">Agent-2</div>
+          <div class="agent-item-task">Login page validation&hellip;</div>
+        </div>
+        <span class="tag role">Builder</span>
+      </div>
+      <div class="agent-item">
+        <div class="agent-item-avatar busy">A3<div class="status-dot green"></div></div>
+        <div class="agent-item-info">
+          <div class="agent-item-name">Agent-3</div>
+          <div class="agent-item-task">Session store to Redis&hellip;</div>
+        </div>
+        <span class="tag role">Reviewer</span>
+      </div>
+    </div>
+
+    <div class="agent-group-label">Available Slots</div>
+    <div class="agent-list">
+      <div class="agent-item">
+        <div class="agent-item-avatar idle">A4<div class="status-dot gray"></div></div>
+        <div class="agent-item-info">
+          <div class="agent-item-name">Agent-4</div>
+          <div class="agent-item-task idle-text">waiting for assignment</div>
+        </div>
+      </div>
+      <div class="agent-item">
+        <div class="agent-item-avatar idle">A5<div class="status-dot gray"></div></div>
+        <div class="agent-item-info">
+          <div class="agent-item-name">Agent-5</div>
+          <div class="agent-item-task idle-text">waiting for assignment</div>
+        </div>
+      </div>
+      <div class="agent-item">
+        <div class="agent-item-avatar idle">A6<div class="status-dot gray"></div></div>
+        <div class="agent-item-info">
+          <div class="agent-item-name">Agent-6</div>
+          <div class="agent-item-task idle-text">waiting for assignment</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="page-header">
+      <div class="page-title">Dashboard</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm">+ Add Repo</button>
+        <button class="btn btn-sm btn-primary">+ New Epic</button>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Active Repos</div>
+        <div class="stat-value" style="color:#58a6ff;">3</div>
+        <div class="stat-sub">2 with running tasks</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Tasks Running</div>
+        <div class="stat-value" style="color:#3fb950;">7</div>
+        <div class="stat-sub">of 23 total in progress</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">In Review</div>
+        <div class="stat-value" style="color:#d29922;">4</div>
+        <div class="stat-sub">1 awaiting manual check</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Completed Today</div>
+        <div class="stat-value">12</div>
+        <div class="stat-sub">across all repos</div>
+      </div>
+    </div>
+
+    <div class="section-title">Active Repositories</div>
+    <div class="repo-grid">
+      <a href="kanban.html" class="repo-card">
+        <div class="repo-name">Nexum</div>
+        <div class="repo-path">~/projects/Nexum</div>
+        <div class="repo-meta">
+          <span class="badge badge-green">2 branches</span>
+          <span>4 tasks running</span>
+          <span>3 in review</span>
+        </div>
+      </a>
+      <a href="kanban.html" class="repo-card">
+        <div class="repo-name">webapp-frontend</div>
+        <div class="repo-path">~/projects/webapp/frontend</div>
+        <div class="repo-meta">
+          <span class="badge badge-yellow">3 branches</span>
+          <span>2 tasks running</span>
+          <span>1 in planning</span>
+        </div>
+      </a>
+      <a href="kanban.html" class="repo-card">
+        <div class="repo-name">api-service</div>
+        <div class="repo-path">~/projects/webapp/api</div>
+        <div class="repo-meta">
+          <span class="badge badge-green">1 branch</span>
+          <span>1 task running</span>
+          <span>0 in review</span>
+        </div>
+      </a>
+      <div class="repo-card" style="border-style:dashed;display:flex;align-items:center;justify-content:center;min-height:100px;">
+        <span style="color:#8b949e;">+ Add Repository</span>
+      </div>
+    </div>
+
+    <div class="section-title">
+      <a href="kanban.html" style="color:inherit;text-decoration:none;">Branches &mdash; Nexum</a>
+    </div>
+    <div class="branch-list">
+      <div class="branch-header">
+        <div>Branch</div><div>Epics</div><div>Running</div><div>Review</div><div></div>
+      </div>
+      <a href="kanban.html" class="branch-row">
+        <div class="branch-name"><span style="color:#3fb950;">&#9679;</span> main</div>
+        <div class="status-cell"><span class="badge badge-green">2 active</span></div>
+        <div>3</div><div>1</div><div></div>
+      </a>
+      <a href="kanban.html" class="branch-row">
+        <div class="branch-name"><span style="color:#58a6ff;">&#9679;</span> feature/agent-orchestration</div>
+        <div class="status-cell"><span class="badge badge-blue">1 active</span></div>
+        <div>4</div><div>2</div><div></div>
+      </a>
+    </div>
+  </div>
+</body>
+</html>

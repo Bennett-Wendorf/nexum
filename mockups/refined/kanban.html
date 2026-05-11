@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexum - Kanban Board</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .board { flex: 1; display: flex; gap: 12px; padding: 16px 24px; overflow-x: auto; }
+  .column { min-width: 260px; flex: 1; display: flex; flex-direction: column; }
+  .col-header { padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .col-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .col-count { background: #30363d; color: #8b949e; font-size: 11px; padding: 1px 7px; border-radius: 10px; }
+  .col-body { flex: 1; background: #161b22; border-radius: 8px; padding: 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; border: 1px solid #21262d; }
+</style>
+</head>
+<body>
+  <div class="icon-sidebar">
+    <a href="dashboard.html" class="nav-icon" title="Dashboard">&#9733;</a>
+    <a href="kanban.html" class="nav-icon active" title="Kanban Board">&#9638;</a>
+    <a href="agent-teams.html" class="nav-icon" title="Agent Teams">&#128101;</a>
+    <div class="divider"></div>
+    <a class="nav-icon" title="Settings">&#9881;</a>
+  </div>
+
+  <div class="agent-sidebar">
+    <div class="agent-sidebar-header">
+      <span class="agent-sidebar-title">Agent Pool</span>
+      <a href="agent-teams.html" class="agent-sidebar-link">Manage &rarr;</a>
+    </div>
+    <div class="agent-pool-summary">
+      <div class="agent-pool-count">
+        <span><strong>3</strong> active</span>
+        <span><strong>3</strong> slots free</span>
+      </div>
+      <div class="agent-pool-bar"><div class="agent-pool-bar-fill" style="width:50%"></div></div>
+    </div>
+
+    <div class="agent-group-label">Active Agents</div>
+    <div class="agent-list">
+      <div class="agent-item">
+        <div class="agent-item-avatar busy">A1<div class="status-dot green"></div></div>
+        <div class="agent-item-info">
+          <div class="agent-item-name">Agent-1</div>
+          <div class="agent-item-task">OAuth2 token refresh&hellip;</div>
+        </div>
+        <span class="tag role">Builder</span>
+      </div>
+      <div class="agent-item">
+        <div class="agent-item-avatar busy">A2<div class="status-dot green"></div></div>
+        <div class="agent-item-info">
+          <div class="agent-item-name">Agent-2</div>
+          <div class="agent-item-task">Login page validation&hellip;</div>
+        </div>
+        <span class="tag role">Builder</span>
+      </div>
+      <div class="agent-item">
+        <div class="agent-item-avatar busy">A3<div class="status-dot green"></div></div>
+        <div class="agent-item-info">
+          <div class="agent-item-name">Agent-3</div>
+          <div class="agent-item-task">Session store to Redis&hellip;</div>
+        </div>
+        <span class="tag role">Reviewer</span>
+      </div>
+    </div>
+
+    <div class="agent-group-label">Available Slots</div>
+    <div class="agent-list">
+      <div class="agent-item">
+        <div class="agent-item-avatar idle">A4<div class="status-dot gray"></div></div>
+        <div class="agent-item-info">
+          <div class="agent-item-name">Agent-4</div>
+          <div class="agent-item-task idle-text">waiting for assignment</div>
+        </div>
+      </div>
+      <div class="agent-item">
+        <div class="agent-item-avatar idle">A5<div class="status-dot gray"></div></div>
+        <div class="agent-item-info">
+          <div class="agent-item-name">Agent-5</div>
+          <div class="agent-item-task idle-text">waiting for assignment</div>
+        </div>
+      </div>
+      <div class="agent-item">
+        <div class="agent-item-avatar idle">A6<div class="status-dot gray"></div></div>
+        <div class="agent-item-info">
+          <div class="agent-item-name">Agent-6</div>
+          <div class="agent-item-task idle-text">waiting for assignment</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="breadcrumb">
+        <a href="dashboard.html">Nexum</a> <span class="sep">&gt;</span>
+        <span>feature/agent-orchestration</span> <span class="sep">&gt;</span>
+        <span class="current">Auth System Redesign</span>
+      </div>
+      <div class="topbar-right">
+        <div class="mode-toggle">
+          <button>Pre-plan</button>
+          <button class="active">Post-plan</button>
+        </div>
+        <button class="btn btn-sm">&#9889; Yolo: OFF</button>
+        <button class="btn btn-sm btn-primary">+ Add Task</button>
+      </div>
+    </div>
+
+    <div class="board">
+      <!-- Backlog -->
+      <div class="column">
+        <div class="col-header">
+          <div class="col-title">Backlog <span class="col-count">5</span></div>
+        </div>
+        <div class="col-body">
+          <a href="task-detail.html" class="card">
+            <div class="kanban-card-epic"><span class="epic-dot" style="background:#a371f7"></span> Auth Redesign</div>
+            <div class="kanban-card-title">Design OAuth2 token refresh flow</div>
+            <div class="kanban-card-meta">
+              <div class="kanban-card-tags"><span class="tag">backend</span></div>
+            </div>
+          </a>
+          <a href="task-detail.html" class="card">
+            <div class="kanban-card-epic"><span class="epic-dot" style="background:#a371f7"></span> Auth Redesign</div>
+            <div class="kanban-card-title">Implement rate limiting on login endpoint</div>
+            <div class="kanban-card-meta">
+              <div class="kanban-card-tags"><span class="tag security">security</span><span class="tag">backend</span></div>
+            </div>
+          </a>
+          <a href="task-detail.html" class="card">
+            <div class="kanban-card-epic"><span class="epic-dot" style="background:#3fb950"></span> Dashboard UI</div>
+            <div class="kanban-card-title">Build session management component</div>
+            <div class="kanban-card-meta">
+              <div class="kanban-card-tags"><span class="tag">frontend</span></div>
+            </div>
+          </a>
+          <a href="task-detail.html" class="card" style="border-left: 3px solid #d29922;">
+            <div class="kanban-card-epic"><span class="epic-dot" style="background:#a371f7"></span> Auth Redesign</div>
+            <div class="kanban-card-title">Add JWT blacklist for logout</div>
+            <div class="kanban-card-meta">
+              <div class="kanban-card-tags"><span class="tag">backend</span><span class="tag" style="background:#d2992222;color:#d29922;">blocked</span></div>
+            </div>
+            <div class="dep-indicator" style="font-size:11px;color:#8b949e;margin-top:4px;">&#9200; Waiting on: OAuth2 token refresh</div>
+          </a>
+          <a href="task-detail.html" class="card" style="border-left: 3px solid #d29922;">
+            <div class="kanban-card-epic"><span class="epic-dot" style="background:#a371f7"></span> Auth Redesign</div>
+            <div class="kanban-card-title">Write integration tests for auth middleware</div>
+            <div class="kanban-card-meta">
+              <div class="kanban-card-tags"><span class="tag">tests</span><span class="tag" style="background:#d2992222;color:#d29922;">blocked</span></div>
+            </div>
+            <div class="dep-indicator" style="font-size:11px;color:#8b949e;margin-top:4px;">&#9200; Waiting on: token refresh</div>
+          </a>
+          <div class="drop-zone">+ Drag or add task</div>
+        </div>
+      </div>
+
+      <!-- Queued -->
+      <div class="column">
+        <div class="col-header">
+          <div class="col-title">Queued <span class="col-count">0</span></div>
+        </div>
+        <div class="col-body" style="justify-content:center;align-items:center;color:#8b949e;font-size:12px;">
+          No tasks waiting
+        </div>
+      </div>
+
+      <!-- Running -->
+      <div class="column">
+        <div class="col-header">
+          <div class="col-title">Running <span class="col-count">2</span></div>
+        </div>
+        <div class="col-body">
+          <a href="task-detail.html" class="card">
+            <div class="kanban-card-epic"><span class="epic-dot" style="background:#a371f7"></span> Auth Redesign</div>
+            <div class="kanban-card-title">Implement OAuth2 token refresh flow</div>
+            <div class="kanban-card-meta">
+             <div class="kanban-card-tags"><span class="tag agent">Agent-1</span><span class="tag">backend</span></div>
+               <div class="card-agent"><div class="agent-avatar">A1</div></div>
+            </div>
+          </a>
+          <a href="task-detail.html" class="card">
+            <div class="kanban-card-epic"><span class="epic-dot" style="background:#3fb950"></span> Dashboard UI</div>
+            <div class="kanban-card-title">Create login page with form validation</div>
+            <div class="kanban-card-meta">
+             <div class="kanban-card-tags"><span class="tag agent">Agent-2</span><span class="tag">frontend</span></div>
+               <div class="card-agent"><div class="agent-avatar">A2</div></div>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Reviewing -->
+      <div class="column">
+        <div class="col-header">
+          <div class="col-title">Reviewing <span class="col-count">1</span></div>
+        </div>
+        <div class="col-body">
+          <a href="task-detail.html" class="card">
+            <div class="kanban-card-epic"><span class="epic-dot" style="background:#a371f7"></span> Auth Redesign</div>
+            <div class="kanban-card-title">Refactor session store to Redis</div>
+            <div class="kanban-card-meta">
+             <div class="kanban-card-tags"><span class="tag agent">Agent-3</span><span class="tag">backend</span></div>
+               <div class="card-agent"><div class="agent-avatar">A3</div></div>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Manual Review -->
+      <div class="column">
+        <div class="col-header">
+          <div class="col-title">Manual Review <span class="col-count">1</span></div>
+        </div>
+        <div class="col-body">
+          <a href="task-detail.html" class="card" style="border-color:#d29922;">
+            <div class="kanban-card-epic"><span class="epic-dot" style="background:#d29922"></span> &#9888; requires approval</div>
+            <div class="kanban-card-title">Update password hashing algorithm</div>
+            <div class="kanban-card-meta">
+              <div class="kanban-card-tags"><span class="tag security">security</span><span class="tag">backend</span></div>
+            </div>
+            <div style="margin-top:8px;display:flex;gap:4px;">
+              <button class="btn btn-sm btn-primary" style="font-size:11px;padding:4px 10px;">Approve</button>
+              <button class="btn btn-sm" style="font-size:11px;padding:4px 10px;">Request Changes</button>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Merge Queue -->
+      <div class="column">
+        <div class="col-header">
+          <div class="col-title">Merge Queue <span class="col-count">2</span></div>
+        </div>
+        <div class="col-body">
+          <a href="task-detail.html" class="card">
+            <div class="kanban-card-epic"><span class="epic-dot" style="background:#58a6ff"></span> Auth Redesign</div>
+            <div class="kanban-card-title">Add CSRF protection to auth routes</div>
+            <div class="kanban-card-meta">
+              <div class="kanban-card-tags"><span class="tag">PR #47</span></div>
+            </div>
+          </a>
+          <a href="task-detail.html" class="card">
+            <div class="kanban-card-epic"><span class="epic-dot" style="background:#58a6ff"></span> Auth Redesign</div>
+            <div class="kanban-card-title">Update auth API documentation</div>
+            <div class="kanban-card-meta">
+              <div class="kanban-card-tags"><span class="tag">PR #48</span></div>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <!-- Completed -->
+      <div class="column">
+        <div class="col-header">
+          <div class="col-title">Completed <span class="col-count">8</span></div>
+        </div>
+        <div class="col-body">
+          <div class="card" style="opacity:0.6;">
+            <div class="kanban-card-title" style="text-decoration:line-through;color:#8b949e;">Set up auth database schema</div>
+            <div class="kanban-card-meta">
+              <div class="kanban-card-tags"><span class="tag">completed</span></div>
+              <div class="card-agent"><div class="agent-avatar" style="background:#3fb95022;color:#3fb950;">&#10003;</div></div>
+            </div>
+          </div>
+          <div class="card" style="opacity:0.6;">
+            <div class="kanban-card-title" style="text-decoration:line-through;color:#8b949e;">Implement login endpoint</div>
+            <div class="kanban-card-meta">
+              <div class="kanban-card-tags"><span class="tag">completed</span></div>
+              <div class="card-agent"><div class="agent-avatar" style="background:#3fb95022;color:#3fb950;">&#10003;</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

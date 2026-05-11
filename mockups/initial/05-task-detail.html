@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexum - Task Detail</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, sans-serif; background: #0f1117; color: #e1e4e8; height: 100vh; display: flex; }
+
+  .sidebar { width: 56px; background: #161b22; border-right: 1px solid #30363d; display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 4px; }
+  .sidebar-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; color: #8b949e; }
+  .sidebar-icon:hover { background: #21262d; color: #c9d1d9; }
+  .sidebar-icon.active { background: #1f6feb33; color: #58a6ff; }
+  .sidebar-divider { width: 32px; height: 1px; background: #30363d; margin: 8px 0; }
+
+  .main { flex: 1; overflow-y: auto; }
+
+  /* Top bar */
+  .topbar { padding: 12px 24px; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 12px; background: #161b22; position: sticky; top: 0; z-index: 10; }
+  .back-btn { padding: 4px 8px; border-radius: 4px; border: 1px solid #30363d; background: transparent; color: #8b949e; cursor: pointer; font-size: 12px; }
+  .breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .breadcrumb span { color: #8b949e; }
+  .breadcrumb a { color: #58a6ff; text-decoration: none; }
+  .breadcrumb a:hover { text-decoration: underline; }
+  .topbar-actions { margin-left: auto; display: flex; gap: 8px; }
+  .topbar-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid #30363d; background: transparent; color: #c9d1d9; cursor: pointer; font-size: 12px; }
+  .topbar-btn.primary { background: #238636; border-color: #238636; }
+  .topbar-btn.danger { background: #da3633; border-color: #da3633; }
+
+  /* Content */
+  .content { display: flex; }
+
+  /* Left: Task content */
+  .task-content { flex: 1; padding: 24px; max-width: 800px; }
+  .task-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 24px; }
+  .task-status-select { padding: 6px 12px; border-radius: 6px; border: 1px solid #30363d; background: #161b22; color: #58a6ff; font-size: 13px; cursor: pointer; }
+  .task-title-area { flex: 1; }
+  .task-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+  .task-meta { display: flex; gap: 12px; font-size: 12px; color: #8b949e; }
+  .task-tag { padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .tag-backend { background: #1f6feb22; color: #58a6ff; }
+  .tag-security { background: #f8514922; color: #f85149; }
+
+  /* Tabs */
+  .tabs { display: flex; border-bottom: 1px solid #30363d; margin-bottom: 24px; gap: 0; }
+  .tab { padding: 10px 16px; font-size: 13px; color: #8b949e; cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab:hover { color: #c9d1d9; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+
+  /* Markdown content */
+  .md-content { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; line-height: 1.7; font-size: 14px; }
+  .md-content h2 { font-size: 16px; margin: 16px 0 8px; }
+  .md-content h3 { font-size: 14px; margin: 12px 0 6px; }
+  .md-content p { margin-bottom: 12px; color: #c9d1d9; }
+  .md-content code { background: #0d1117; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  .md-content pre { background: #0d1117; padding: 16px; border-radius: 6px; overflow-x: auto; margin: 12px 0; }
+  .md-content pre code { background: none; padding: 0; }
+  .md-content ul { padding-left: 20px; margin-bottom: 12px; }
+  .md-content li { margin-bottom: 4px; color: #c9d1d9; }
+
+  /* Right sidebar */
+  .task-sidebar { width: 320px; border-left: 1px solid #30363d; padding: 24px; overflow-y: auto; }
+  .sidebar-section { margin-bottom: 24px; }
+  .sidebar-section-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #8b949e; margin-bottom: 12px; }
+
+  /* Dependency graph */
+  .dep-graph { display: flex; flex-direction: column; gap: 8px; }
+  .dep-node { padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+  .dep-node.completed { border-color: #3fb95044; background: #3fb95011; }
+  .dep-node.running { border-color: #58a6ff44; background: #58a6ff11; }
+  .dep-node.pending { border-color: #30363d; }
+  .dep-status { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dep-arrow { text-align: center; color: #484f58; font-size: 14px; }
+
+  /* Agent assignment */
+  .agent-assign { display: flex; align-items: center; gap: 10px; padding: 10px; background: #1c2129; border-radius: 6px; }
+  .agent-assign-avatar { width: 32px; height: 32px; border-radius: 50%; background: #58a6ff22; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #58a6ff; }
+  .agent-assign-info { flex: 1; }
+  .agent-assign-name { font-size: 13px; font-weight: 600; }
+  .agent-assign-role { font-size: 11px; color: #8b949e; }
+
+  /* Execution log */
+  .exec-log { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; font-family: monospace; font-size: 12px; max-height: 200px; overflow-y: auto; }
+  .log-line { padding: 2px 0; display: flex; gap: 8px; }
+  .log-time { color: #484f58; }
+  .log-msg { color: #8b949e; }
+  .log-msg.info { color: #58a6ff; }
+  .log-msg.success { color: #3fb950; }
+  .log-msg.warn { color: #d29922; }
+
+  /* File refs */
+  .file-ref { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
+  .file-icon { color: #58a6ff; }
+  .file-path { color: #c9d1d9; font-family: monospace; font-size: 12px; }
+
+  /* Status history */
+  .status-timeline { display: flex; flex-direction: column; gap: 0; position: relative; padding-left: 16px; }
+  .status-timeline::before { content: ''; position: absolute; left: 4px; top: 8px; bottom: 8px; width: 2px; background: #30363d; }
+  .timeline-item { position: relative; padding: 6px 0; font-size: 12px; }
+  .timeline-item::before { content: ''; position: absolute; left: -16px; top: 12px; width: 8px; height: 8px; border-radius: 50%; background: #30363d; border: 2px solid #0f1117; }
+  .timeline-item.active::before { background: #58a6ff; }
+  .timeline-status { font-weight: 600; }
+  .timeline-time { color: #8b949e; }
+
+  /* Baby step indicator */
+  .baby-step { background: #d2992211; border: 1px solid #d2992244; border-radius: 6px; padding: 12px; margin-bottom: 24px; display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .baby-step-icon { font-size: 18px; }
+  .baby-step-text { color: #d29922; }
+
+  /* Permissions */
+  .perm-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; font-size: 13px; border-bottom: 1px solid #21262d; }
+  .perm-row:last-child { border-bottom: none; }
+  .perm-label { color: #c9d1d9; }
+  .perm-value { font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+  .perm-auto { background: #3fb95022; color: #3fb950; }
+  .perm-manual { background: #d2992222; color: #d29922; }
+  .perm-blocked { background: #f8514922; color: #f85149; }
+</style>
+</head>
+<body>
+  <div class="sidebar">
+    <div class="sidebar-icon">🎯</div>
+    <div class="sidebar-icon active">▦</div>
+    <div class="sidebar-icon">🌳</div>
+    <div class="sidebar-icon">👥</div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-icon">⚙</div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <button class="back-btn">← Back</button>
+      <div class="breadcrumb">
+        <a href="#">Nexum</a> <span>›</span>
+        <a href="#">feature/agent-orchestration</a> <span>›</span>
+        <a href="#">Auth Redesign</a> <span>›</span>
+        <a href="#">Backend Auth</a> <span>›</span>
+        <span style="color:#c9d1d9;">Token Refresh</span>
+      </div>
+      <div class="topbar-actions">
+        <button class="topbar-btn">Edit Task</button>
+        <button class="topbar-btn primary">▶ Execute</button>
+        <button class="topbar-btn danger">Abandon</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="task-content">
+        <div class="baby-step">
+          <div class="baby-step-icon">👣</div>
+          <div class="baby-step-text">Baby Step Mode: Each status transition requires your confirmation before proceeding.</div>
+        </div>
+
+        <div class="task-header">
+          <select class="task-status-select">
+            <option>Queued</option>
+            <option selected>Running</option>
+            <option>Reviewing</option>
+          </select>
+          <div class="task-title-area">
+            <div class="task-title">Implement OAuth2 token refresh flow</div>
+            <div class="task-meta">
+              <span class="task-tag tag-backend">backend</span>
+              <span class="task-tag tag-security">security</span>
+              <span>Created 2h ago</span>
+              <span>by Agent-1</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <div class="tab active">Task Definition</div>
+          <div class="tab">Execution Plan</div>
+          <div class="tab">Agent Output</div>
+          <div class="tab">Review</div>
+          <div class="tab">Diff</div>
+        </div>
+
+        <div class="md-content">
+          <h2>Objective</h2>
+          <p>Implement automatic OAuth2 token refresh logic to handle expired access tokens transparently. The system should detect 401 responses, trigger a refresh token exchange, and retry the original request.</p>
+
+          <h2>Acceptance Criteria</h2>
+          <ul>
+            <li>Intercept 401 responses from protected endpoints</li>
+            <li>Store refresh token securely in httpOnly cookie</li>
+            <li>Retry failed request with new access token</li>
+            <li>Handle refresh token expiration gracefully</li>
+            <li>Add unit tests for all refresh scenarios</li>
+          </ul>
+
+          <h2>Technical Context</h2>
+          <p>Use the existing <code>auth/middleware.ts</code> as the interception point. The token store is in <code>services/token-store.ts</code>.</p>
+
+          <pre><code>interface TokenRefreshConfig {
+  accessTokenTtl: number;
+  refreshTokenTtl: number;
+  retryOn401: boolean;
+  maxRetries: number;
+}</code></pre>
+
+          <h2>Dependencies</h2>
+          <p>This task depends on "Set up auth database schema" (completed) and "Implement login endpoint" (completed).</p>
+        </div>
+      </div>
+
+      <div class="task-sidebar">
+        <!-- Agent Assignment -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Assigned Agent</div>
+          <div class="agent-assign">
+            <div class="agent-assign-avatar">A1</div>
+            <div class="agent-assign-info">
+              <div class="agent-assign-name">Agent-1</div>
+              <div class="agent-assign-role">Executing as Builder</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dependencies -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Dependencies</div>
+          <div class="dep-graph">
+            <div class="dep-node completed">
+              <div class="dep-status" style="background:#3fb950;"></div>
+              <span>Set up auth database schema</span>
+            </div>
+            <div class="dep-arrow">↓</div>
+            <div class="dep-node completed">
+              <div class="dep-status" style="background:#3fb950;"></div>
+              <span>Implement login endpoint</span>
+            </div>
+            <div class="dep-arrow">↓</div>
+            <div class="dep-node running">
+              <div class="dep-status" style="background:#58a6ff;"></div>
+              <span style="font-weight:600;">← This task</span>
+            </div>
+            <div class="dep-arrow">↓</div>
+            <div class="dep-node pending">
+              <div class="dep-status" style="background:#484f58;"></div>
+              <span>Add JWT blacklist for logout</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Permissions -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Permissions</div>
+          <div class="perm-row">
+            <span class="perm-label">File writes</span>
+            <span class="perm-value perm-auto">auto</span>
+          </div>
+          <div class="perm-row">
+            <span class="perm-label">Terminal commands</span>
+            <span class="perm-value perm-auto">auto</span>
+          </div>
+          <div class="perm-row">
+            <span class="perm-label">Network requests</span>
+            <span class="perm-value perm-manual">manual</span>
+          </div>
+          <div class="perm-row">
+            <span class="perm-label">Git operations</span>
+            <span class="perm-value perm-manual">manual</span>
+          </div>
+          <div class="perm-row">
+            <span class="perm-label">Package installs</span>
+            <span class="perm-value perm-blocked">blocked</span>
+          </div>
+        </div>
+
+        <!-- Status History -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Status History</div>
+          <div class="status-timeline">
+            <div class="timeline-item active">
+              <div class="timeline-status" style="color:#58a6ff;">Running</div>
+              <div class="timeline-time">10:32 AM</div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-status">Queued</div>
+              <div class="timeline-time">10:30 AM</div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-status">Plan Complete</div>
+              <div class="timeline-time">10:28 AM</div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-status">Planning</div>
+              <div class="timeline-time">10:25 AM</div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-status">Backlog</div>
+              <div class="timeline-time">10:20 AM · created</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Execution Log -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Execution Log</div>
+          <div class="exec-log">
+            <div class="log-line"><span class="log-time">10:32</span><span class="log-msg info">[Agent-1] Task started</span></div>
+            <div class="log-line"><span class="log-time">10:32</span><span class="log-msg">Reading task definition...</span></div>
+            <div class="log-line"><span class="log-time">10:33</span><span class="log-msg">Analyzing codebase context...</span></div>
+            <div class="log-line"><span class="log-time">10:33</span><span class="log-msg info">Found 3 relevant files</span></div>
+            <div class="log-line"><span class="log-time">10:34</span><span class="log-msg">Creating refresh middleware...</span></div>
+            <div class="log-line"><span class="log-time">10:35</span><span class="log-msg warn">Permission check: network request</span></div>
+            <div class="log-line"><span class="log-time">10:35</span><span class="log-msg warn">⏸ Waiting for approval...</span></div>
+          </div>
+        </div>
+
+        <!-- Source Files -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Source Files</div>
+          <div class="file-ref">
+            <span class="file-icon">📄</span>
+            <span class="file-path">.Nexum/tasks/token-refresh.md</span>
+          </div>
+          <div class="file-ref">
+            <span class="file-icon">📄</span>
+            <span class="file-path">.Nexum/tasks/token-refresh.plan.json</span>
+          </div>
+          <div class="file-ref">
+            <span class="file-icon">📄</span>
+            <span class="file-path">.Nexum/state.json</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

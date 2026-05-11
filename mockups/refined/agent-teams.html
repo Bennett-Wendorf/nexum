@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexum - Agent Teams</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .main { flex: 1; overflow-y: auto; padding: 32px; }
+  .resource-overview { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+  .agent-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+  .template-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 32px; }
+</style>
+</head>
+<body>
+  <div class="icon-sidebar">
+    <a href="dashboard.html" class="nav-icon" title="Dashboard">&#9733;</a>
+    <a href="kanban.html" class="nav-icon" title="Kanban Board">&#9638;</a>
+    <a href="agent-teams.html" class="nav-icon active" title="Agent Teams">&#128101;</a>
+    <div class="divider"></div>
+    <a class="nav-icon" title="Settings">&#9881;</a>
+  </div>
+
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Agent Teams</div>
+        <div class="page-subtitle">Manage agent allocation, roles, and resource constraints</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm">Apply Template</button>
+        <button class="btn btn-sm btn-primary">+ Add Agent</button>
+      </div>
+    </div>
+
+    <!-- Resource Overview -->
+    <div class="resource-overview" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="stat-card">
+        <div class="stat-label">Pool Capacity</div>
+        <div class="stat-value" style="color:#58a6ff;font-size:28px;">6 / 10</div>
+        <div class="progress-bar" style="margin-top:12px;"><div class="progress-fill fill-blue" style="width:60%"></div></div>
+        <div class="stat-sub" style="margin-top:6px;">6 active sessions</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Available Slots</div>
+        <div class="stat-value" style="color:#3fb950;font-size:28px;">4</div>
+        <div class="progress-bar" style="margin-top:12px;"><div class="progress-fill fill-green" style="width:40%"></div></div>
+        <div class="stat-sub" style="margin-top:6px;">Ready for assignment</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Active Roles</div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+          <span class="tag">Planner (1)</span>
+          <span class="tag">Builder (2)</span>
+          <span class="tag">Reviewer (1)</span>
+        </div>
+        <div class="stat-sub" style="margin-top:6px;">Current role distribution</div>
+      </div>
+    </div>
+
+    <!-- Yolo Mode -->
+    <div class="yolo-card">
+      <div class="yolo-icon">&#9889;</div>
+      <div class="yolo-info">
+        <div class="yolo-title">Yolo Mode</div>
+        <div class="yolo-desc">When enabled, agents skip manual review checkpoints and auto-approve tasks.</div>
+      </div>
+      <div class="toggle"></div>
+    </div>
+
+    <!-- Team Templates -->
+    <div class="section-title">Team Templates</div>
+    <div class="template-grid">
+      <div class="template-card selected">
+        <div class="template-name">Standard</div>
+        <div class="template-desc">Balanced team for typical feature development</div>
+        <div class="template-roles">
+          <div class="role-chip">Planner <span class="role-count">1</span></div>
+          <div class="role-chip">Researcher <span class="role-count">1</span></div>
+          <div class="role-chip">Builder <span class="role-count">2</span></div>
+          <div class="role-chip">Reviewer <span class="role-count">1</span></div>
+        </div>
+      </div>
+      <div class="template-card">
+        <div class="template-name">Security-First</div>
+        <div class="template-desc">Adds security consultant for sensitive work</div>
+        <div class="template-roles">
+          <div class="role-chip">Planner <span class="role-count">1</span></div>
+          <div class="role-chip">Researcher <span class="role-count">1</span></div>
+          <div class="role-chip">Builder <span class="role-count">2</span></div>
+          <div class="role-chip">Reviewer <span class="role-count">1</span></div>
+          <div class="role-chip" style="background:#f8514922;color:#f85149;">Security <span class="role-count">1</span></div>
+        </div>
+      </div>
+      <div class="template-card">
+        <div class="template-name">Rapid Build</div>
+        <div class="template-desc">Max builders for parallel task execution</div>
+        <div class="template-roles">
+          <div class="role-chip">Planner <span class="role-count">1</span></div>
+          <div class="role-chip">Builder <span class="role-count">4</span></div>
+          <div class="role-chip">Reviewer <span class="role-count">1</span></div>
+        </div>
+      </div>
+      <div class="template-card">
+        <div class="template-name">Minimal</div>
+        <div class="template-desc">Lightweight for simple tasks</div>
+        <div class="template-roles">
+          <div class="role-chip">Builder <span class="role-count">1</span></div>
+          <div class="role-chip">Reviewer <span class="role-count">1</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Agent Pool -->
+    <div class="section-title">Agent Pool</div>
+    <div class="agent-grid">
+      <div class="agent-card busy">
+        <div class="agent-status"><span class="status-badge status-active">Active</span></div>
+        <div class="agent-header">
+          <div class="agent-avatar-lg">A1</div>
+          <div>
+            <div class="agent-name">Agent-1</div>
+            <div class="agent-role"><span class="tag role">Planner</span></div>
+          </div>
+        </div>
+        <div class="agent-task-label">Current Task</div>
+        <div class="agent-task">Planning: Backend Auth Service project breakdown</div>
+      </div>
+
+      <div class="agent-card busy">
+        <div class="agent-status"><span class="status-badge status-active">Active</span></div>
+        <div class="agent-header">
+          <div class="agent-avatar-lg">A2</div>
+          <div>
+            <div class="agent-name">Agent-2</div>
+            <div class="agent-role"><span class="tag role">Builder</span></div>
+          </div>
+        </div>
+        <div class="agent-task-label">Current Task</div>
+        <div class="agent-task"><a href="task-detail.html">Implement OAuth2 token refresh flow</a></div>
+      </div>
+
+      <div class="agent-card busy">
+        <div class="agent-status"><span class="status-badge status-active">Active</span></div>
+        <div class="agent-header">
+          <div class="agent-avatar-lg">A3</div>
+          <div>
+            <div class="agent-name">Agent-3</div>
+            <div class="agent-role"><span class="tag role">Builder</span></div>
+          </div>
+        </div>
+        <div class="agent-task-label">Current Task</div>
+        <div class="agent-task"><a href="task-detail.html">Create login page with form validation</a></div>
+      </div>
+
+      <div class="agent-card busy">
+        <div class="agent-status"><span class="status-badge status-active">Active</span></div>
+        <div class="agent-header">
+          <div class="agent-avatar-lg">A4</div>
+          <div>
+            <div class="agent-name">Agent-4</div>
+            <div class="agent-role"><span class="tag role">Reviewer</span></div>
+          </div>
+        </div>
+        <div class="agent-task-label">Current Task</div>
+        <div class="agent-task"><a href="task-detail.html">Reviewing: Refactor session store to Redis</a></div>
+      </div>
+
+      <div class="agent-card idle">
+        <div class="agent-status"><span class="status-badge status-idle">Idle</span></div>
+        <div class="agent-header">
+          <div class="agent-avatar-lg">A5</div>
+          <div>
+            <div class="agent-name">Agent-5</div>
+            <div class="agent-role"><span class="tag role">Unassigned</span></div>
+          </div>
+        </div>
+        <div class="agent-task-label">Status</div>
+        <div class="agent-task" style="color:#8b949e;">Waiting for assignment</div>
+      </div>
+
+      <div class="agent-card idle">
+        <div class="agent-status"><span class="status-badge status-idle">Idle</span></div>
+        <div class="agent-header">
+          <div class="agent-avatar-lg">A6</div>
+          <div>
+            <div class="agent-name">Agent-6</div>
+            <div class="agent-role"><span class="tag role">Unassigned</span></div>
+          </div>
+        </div>
+        <div class="agent-task-label">Status</div>
+        <div class="agent-task" style="color:#8b949e;">Waiting for assignment</div>
+      </div>
+    </div>
+
+    <!-- Constraints -->
+    <div class="section-title">Resource Constraints</div>
+    <div class="constraints-panel">
+      <div class="constraint-row">
+        <div>
+          <div class="constraint-label">Max Concurrent Agents</div>
+          <div class="constraint-desc">Maximum total agent sessions running simultaneously</div>
+        </div>
+        <div class="constraint-control">
+          <input class="constraint-input" type="text" value="10">
+        </div>
+      </div>
+      <div class="constraint-row">
+        <div>
+          <div class="constraint-label">Auto-Compaction</div>
+          <div class="constraint-desc">Automatically compact context when approaching limits</div>
+        </div>
+        <div class="constraint-control">
+          <div class="toggle on"></div>
+        </div>
+      </div>
+      <div class="constraint-row">
+        <div>
+          <div class="constraint-label">Context Limit Warning</div>
+          <div class="constraint-desc">Warn when agent context usage exceeds threshold</div>
+        </div>
+        <div class="constraint-control">
+          <input class="constraint-input" type="text" value="80">
+          <span style="font-size:12px;color:#8b949e;">%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
