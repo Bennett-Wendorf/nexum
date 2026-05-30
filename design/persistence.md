@@ -140,6 +140,7 @@ The slug is a kebab-case summary. The ID provides stable references for cross-li
     "TASK-002": "queued",
     "TASK-003": "backlog"
   },
+  // Concurrency limits enforced by Overlord deterministic core before task dispatch. See resource-constraints.md.
   "concurrency": {
     "max_parallel": 2,
     "currently_running": 1

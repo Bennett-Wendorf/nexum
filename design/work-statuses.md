@@ -9,8 +9,8 @@ These statuses apply to plans (groups of tasks).
 
 - `backlog`
 - `queued`
-- `planning` (This is part of where concurrency limits are handled)
-- `reviewing` (Concurrency limit)
+- `planning` (This is part of where concurrency limits are handled. See resource-constraints.md for enforcement details.)
+- `reviewing` (Concurrency limit. See resource-constraints.md for enforcement details.)
 - `plan-complete` -> transitions to task-level `backlog`
 
 ## Task-level statuses
@@ -19,8 +19,8 @@ These statuses apply to individual tasks within a plan. Plan-level statuses are 
 
 - `backlog`
 - `queued`
-- `running` (This is part of where concurrency limits are handled)
-- `reviewing` (Concurrency limit)
+- `running` (This is part of where concurrency limits are handled. See resource-constraints.md for enforcement details.)
+- `reviewing` (Concurrency limit. See resource-constraints.md for enforcement details.)
 - `waiting-manual-review`
 - `merge-queue`
 - `abandoned`
