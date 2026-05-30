@@ -2,18 +2,26 @@
 
 - Need orchestration levels here. Should be minimum per repo, branch, and plan, but at every level would be ideal
 - Can move tasks between certain statuses. For example, if auto-queued accidentally, should be able to move back to backlog.
-## Pre-planning
-- Backlog
-- Queued
-- Planning (This is part of where concurrency limits are handled)
-- Reviewing (Concurrency limit)
-- Plan complete -> post-planning backlog
-## Post-planning
-- Backlog
-- Queued
-- Running (This is part of where concurrency limits are handled)
-- Reviewing (Concurrency limit)
-- Waiting manual review
-- Merge-queue
-- Abandoned
-- Completed (How to clear this out occasionally?)
+
+## Plan-level statuses
+
+These statuses apply to plans (groups of tasks).
+
+- `backlog`
+- `queued`
+- `planning` (This is part of where concurrency limits are handled. See resource-constraints.md for enforcement details.)
+- `reviewing` (Concurrency limit. See resource-constraints.md for enforcement details.)
+- `plan-complete` — signals planning is done; child tasks are placed into `backlog`
+
+## Task-level statuses
+
+These statuses apply to individual tasks within a plan. Plan-level statuses are defined separately above.
+
+- `backlog`
+- `queued`
+- `running` (This is part of where concurrency limits are handled. See resource-constraints.md for enforcement details.)
+- `reviewing` (Concurrency limit. See resource-constraints.md for enforcement details.)
+- `waiting-manual-review`
+- `merge-queue`
+- `abandoned`
+- `completed` (How to clear this out occasionally?)
