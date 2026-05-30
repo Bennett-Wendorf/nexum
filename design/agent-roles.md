@@ -7,7 +7,6 @@
     - Invoked after task execution
     - Optionally after planning
     - Invoked after plan completion
-    - Invoked after epic completion
 - Security consultant (optional)
     - Like the reviewer, but specialize to security
 - Planner
