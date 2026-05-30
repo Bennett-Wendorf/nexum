@@ -115,8 +115,8 @@ The slug is a kebab-case summary. The ID provides stable references for cross-li
 ## Scope
 <What's in, what's out>
 
-## Research findings
-<Notes from the researcher agent>
+## Background
+<Prior art, related tasks, architectural decisions, research findings>
 
 ## Tasks
 - [ ] [TASK-001] Setup authentication middleware

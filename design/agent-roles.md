@@ -11,8 +11,8 @@
     - Like the reviewer, but specialize to security
 - Planner
     - Planning, that's their job and they do it well
-- Researcher (optional)
-    - Responsible for pre-planning research
+    - Performs any necessary research (internet, codebase) before generating the plan
+    - Generates `task.md` for each task (including scope, acceptance criteria, files, and background context)
 - Overlord (maybe not needed? How deterministic should it be?)
     - Main interaction with the user
     - Can handle all the things when it comes to orchestration only
