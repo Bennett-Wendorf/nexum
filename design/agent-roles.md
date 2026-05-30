@@ -13,8 +13,17 @@
     - Planning, that's their job and they do it well
     - Performs any necessary research (internet, codebase) before generating the plan
     - Generates `task.md` for each task (including scope, acceptance criteria, files, and background context)
-- Overlord (maybe not needed? How deterministic should it be?)
-    - Main interaction with the user
-    - Can handle all the things when it comes to orchestration only
-    - Cannot complete tasks, but can create tasks or other agents
-    - **Future: Scratchpad agent** — A separate on-demand agent the user can invoke to fix random things, research questions, or handle ad-hoc tasks outside the main workflow. Likely spawned by or alongside the Overlord.
+- Overlord (hybrid: deterministic core + agent layer)
+    - **Deterministic core** (rules-based, no LLM):
+      - Transitions task status per defined state machines (see persistence.md status.json)
+      - Generates stable IDs for plans and tasks (see persistence.md ID scheme)
+      - Enforces concurrency limits before dispatch (see resource-constraints.md)
+      - Detects stale heartbeats and re-queues orphaned tasks (see persistence.md recovery)
+      - Auto-queues tasks when all dependencies are completed (see unit-of-work.md)
+      - Merges task branches into plan branch after task completion (see persistence.md branch strategy)
+    - **Agent layer** (LLM-powered):
+      - Main interaction with the user
+      - High-level prioritization and dispatch decisions (what to work on next)
+      - Exception handling and edge cases the deterministic core cannot cover
+      - Cannot complete tasks directly — delegates execution to builders
+    - **Future: Scratchpad agent** — A separate on-demand agent the user can invoke to fix random things, research questions, or handle ad-hoc tasks outside the main workflow. Likely spawned by or alongside the Overlord agent layer.
