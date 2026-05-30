@@ -11,7 +11,7 @@ These statuses apply to plans (groups of tasks).
 - `queued`
 - `planning` (This is part of where concurrency limits are handled. See resource-constraints.md for enforcement details.)
 - `reviewing` (Concurrency limit. See resource-constraints.md for enforcement details.)
-- `plan-complete` -> transitions to task-level `backlog`
+- `plan-complete` — signals planning is done; child tasks are placed into `backlog`
 
 ## Task-level statuses
 

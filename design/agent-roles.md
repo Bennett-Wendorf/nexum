@@ -1,5 +1,7 @@
 # Agent roles (need better names)
 
+## Roles
+
 - Builder
     - Responsible for executing a single task, and only one task at any given time
 - Reviewer
@@ -15,7 +17,7 @@
     - Generates `task.md` for each task (including scope, acceptance criteria, files, and background context)
 - Overlord (hybrid: deterministic core + agent layer)
     - **Deterministic core** (rules-based, no LLM):
-      - Transitions task status per defined state machines (see persistence.md status.json)
+      - Transitions task status per defined state machines (see work-statuses.md)
       - Generates stable IDs for plans and tasks (see persistence.md ID scheme)
       - Enforces concurrency limits before dispatch (see resource-constraints.md)
       - Detects stale heartbeats and re-queues orphaned tasks (see persistence.md recovery)
