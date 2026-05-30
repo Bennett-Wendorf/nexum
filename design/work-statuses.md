@@ -7,21 +7,21 @@
 
 These statuses apply to plans (groups of tasks).
 
-- Backlog
-- Queued
-- Planning (This is part of where concurrency limits are handled)
-- Reviewing (Concurrency limit)
-- Plan complete -> post-planning backlog
+- `backlog`
+- `queued`
+- `planning` (This is part of where concurrency limits are handled)
+- `reviewing` (Concurrency limit)
+- `plan-complete` -> transitions to task-level `backlog`
 
 ## Task-level statuses
 
 These statuses apply to individual tasks within a plan. Plan-level statuses are defined separately above.
 
-- Backlog
-- Queued
-- Running (This is part of where concurrency limits are handled)
-- Reviewing (Concurrency limit)
-- Waiting manual review
-- Merge-queue
-- Abandoned
-- Completed (How to clear this out occasionally?)
+- `backlog`
+- `queued`
+- `running` (This is part of where concurrency limits are handled)
+- `reviewing` (Concurrency limit)
+- `waiting-manual-review`
+- `merge-queue`
+- `abandoned`
+- `completed` (How to clear this out occasionally?)

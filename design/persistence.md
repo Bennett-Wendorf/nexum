@@ -58,7 +58,7 @@ The slug is a kebab-case summary. The ID provides stable references for cross-li
 
 **Parent plan:** PLAN-001
 **Dependencies:** none
-**Status:** queued | planning | running | reviewing | completed | abandoned
+**Status:** backlog | queued | running | reviewing | waiting-manual-review | merge-queue | abandoned | completed
 
 ## Description
 <What needs to be done>
@@ -80,6 +80,8 @@ The slug is a kebab-case summary. The ID provides stable references for cross-li
 ```
 
 ### `status.json` — Machine control-plane metadata
+
+<!-- Status values: backlog | queued | running | reviewing | waiting-manual-review | merge-queue | abandoned | completed -->
 
 ```json
 {
@@ -136,7 +138,7 @@ The slug is a kebab-case summary. The ID provides stable references for cross-li
   "task_status_map": {
     "TASK-001": "running",
     "TASK-002": "queued",
-    "TASK-003": "queued"
+    "TASK-003": "backlog"
   },
   "concurrency": {
     "max_parallel": 2,
