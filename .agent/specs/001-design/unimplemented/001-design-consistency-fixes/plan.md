@@ -101,33 +101,44 @@ The team-lead agent will orchestrate execution using these team members:
   - `agent-roles.md` line 10 is removed (duplicate of line 9)
   - `orchestration-levels.md` and `persistence.md` remain unchanged (already correct)
 
-### 4. Remove Undefined "Execution Plans" Reference (Issue 7)
-- **Task ID**: remove-execution-plans
+### 4. Define "Execution Plans" Properly (Issue 7)
+- **Task ID**: define-execution-plans
 - **Depends On**: none
 - **Assigned To**: design-editor
 - **Agent**: builder
 - **Actions**:
-  - In `unit-of-work.md` lines 12-13: Replace the section:
+  - In `unit-of-work.md` lines 12-13: Replace the undefined section with a proper definition:
     - Remove: `## Execution plans?` and `- For parallelization?`
-    - Replace with: `## Parallelization` and `- Handled via concurrency limits in execution.json (see persistence.md). No separate execution plan concept is needed — the dependency graph and concurrency.max_parallel in execution.json govern parallel execution.`
-  - This connects the concept to the existing mechanism in `persistence.md` without introducing a new undefined concept.
+    - Replace with:
+      ```
+      ## Execution plan
+      - The dependency structure determined by the planner during task generation
+      - Defines which tasks can run in parallel and which must wait for predecessors
+      - Goal: minimize conflicts where parallel work overwrites or blocks each other
+      - Materialized as the `dependencies` field in each task's `task.md` (see persistence.md)
+      - Enforced by the Overlord during task dispatch (see agent-roles.md)
+      ```
+  - This connects the concept to existing mechanisms (`dependencies` in task.md, Overlord dispatch) without introducing anything new
 - **Acceptance Criteria**:
-  - `unit-of-work.md` no longer references "execution plans" as an undefined concept
-  - Parallelization is explicitly connected to the mechanism described in `persistence.md`
+  - "Execution plan" is a defined, understood concept
+  - It is connected to existing mechanisms (dependency graph, Overlord dispatch)
+  - No ambiguity remains about what an execution plan is
 
-### 5. Clarify Researcher Scope (Issue 4)
-- **Task ID**: clarify-researcher-scope
+### 5. Remove Researcher Role (Issue 4)
+- **Task ID**: remove-researcher
 - **Depends On**: none
 - **Assigned To**: design-editor
 - **Agent**: builder
 - **Actions**:
-  - In `agent-roles.md` line 15-16: After "Responsible for pre-planning research", add: "— Attached to a plan. One researcher per plan, invoked before the planner begins."
-  - In `agent-teams.md` line 3: After "1 researcher", add a note: "(one per plan)". Change: `- 1 planner, 1 researcher (one per plan), 1+ builders, 1+ reviewers`
-  - In `persistence.md` line 117: The "Research findings" section in plan.md already implies plan-level attachment. Add a clarifying comment: `## Research findings` → `## Research findings {#researcher output, one researcher per plan}`
+  - In `agent-roles.md`: Remove the Researcher entry entirely (lines 15-16)
+  - In `agent-teams.md`: Remove "1 researcher" from the team composition. Change to: `- 1 planner, 1+ builders, 1+ reviewers`
+  - In `persistence.md`: Remove or repurpose the "Research findings" section in the plan.md template. Either delete it or rename to "Background" and note that the planner generates this content during planning.
+  - In `agent-roles.md`: Under the Planner role, add: "— Performs any necessary research (internet, codebase) before generating the plan."
 - **Acceptance Criteria**:
-  - Researcher is explicitly defined as plan-level (one per plan)
-  - `agent-roles.md`, `agent-teams.md`, and `persistence.md` all agree on the scope
-  - No ambiguity remains about whether researcher is per-plan, per-branch, or per-repo
+  - Researcher role is removed from all documents
+  - Planner role explicitly includes research responsibilities
+  - Team composition reflects the removal
+  - No orphaned references to researcher remain
 
 ### 6. Consolidate Overlord Responsibilities (Issue 5)
 - **Task ID**: consolidate-overlord
@@ -135,25 +146,30 @@ The team-lead agent will orchestrate execution using these team members:
 - **Assigned To**: design-editor
 - **Agent**: builder
 - **Actions**:
-  - In `agent-roles.md` lines 17-20: Expand the Overlord description to include all responsibilities currently scattered across documents. Replace the current description with:
+  - In `agent-roles.md` lines 17-20: Replace the Overlord description with a hybrid model (deterministic core + agent layer):
     ```
-  - Overlord
-      - Main interaction with the user
-      - Orchestrates all agent activity:
-        - Creates tasks and assigns agents (see agent-teams.md)
-        - Transitions task status (see persistence.md status.json transitions)
+  - Overlord (hybrid: deterministic core + agent layer)
+      - **Deterministic core** (rules-based, no LLM):
+        - Transitions task status per defined state machines (see persistence.md status.json)
         - Generates stable IDs for plans and tasks (see persistence.md ID scheme)
-        - Merges task branches into plan branch after task completion (see persistence.md branch strategy)
+        - Enforces concurrency limits before dispatch (see resource-constraints.md)
         - Detects stale heartbeats and re-queues orphaned tasks (see persistence.md recovery)
-      - Cannot complete tasks directly — delegates to builders
-      - **Future: Scratchpad agent** — A separate on-demand agent the user can invoke to fix random things, research questions, or handle ad-hoc tasks outside the main workflow. Likely spawned by or alongside the Overlord.
+        - Auto-queues tasks when all dependencies are completed (see unit-of-work.md)
+        - Merges task branches into plan branch after task completion (see persistence.md branch strategy)
+      - **Agent layer** (LLM-powered):
+        - Main interaction with the user
+        - High-level prioritization and dispatch decisions (what to work on next)
+        - Exception handling and edge cases the deterministic core cannot cover
+        - Cannot complete tasks directly — delegates execution to builders
+      - **Future: Scratchpad agent** — A separate on-demand agent the user can invoke to fix random things, research questions, or handle ad-hoc tasks outside the main workflow. Likely spawned by or alongside the Overlord agent layer.
     ```
-  - In `persistence.md`: No edits to lines 91, 151, 204, or 238 — they remain as technical implementation details. Add a cross-reference note at the top of the "ID scheme" section: "IDs are generated by the Overlord (see agent-roles.md)."
-  - In `persistence.md`: Add a cross-reference note in the "Recovery" section: "Stale lease detection is performed by the Overlord (see agent-roles.md)."
+  - In `persistence.md`: Add a cross-reference note at the top of the "ID scheme" section: "IDs are generated by the Overlord deterministic core (see agent-roles.md)."
+  - In `persistence.md`: Add a cross-reference note in the "Recovery" section: "Stale lease detection is performed by the Overlord deterministic core (see agent-roles.md)."
 - **Acceptance Criteria**:
-  - `agent-roles.md` contains a complete, single listing of all Overlord responsibilities
-  - `persistence.md` sections reference agent-roles.md for Overlord responsibilities
+  - `agent-roles.md` contains a complete, single listing of all Overlord responsibilities split into deterministic core and agent layer
+  - `persistence.md` sections cross-reference agent-roles.md for Overlord responsibilities
   - No Overlord responsibility is mentioned in one document but missing from agent-roles.md
+  - The distinction between deterministic and agent responsibilities is clear
 
 ### 7. Connect Concurrency Limits (Issue 6)
 - **Task ID**: connect-concurrency-limits
@@ -170,55 +186,51 @@ The team-lead agent will orchestrate execution using these team members:
       - Local LLMs have major compute restraints
       - Paid services would eat tokens very quickly without throttling
       - Too much going on can be stressful for the user
-  - **Enforcement**: The Overlord enforces concurrency limits by checking `execution.json`'s `concurrency.currently_running` against `concurrency.max_parallel` before transitioning a task from `queued` to `running`.
+  - **Enforcement**: The Overlord deterministic core enforces concurrency limits by checking `execution.json`'s `concurrency.currently_running` against `concurrency.max_parallel` before transitioning a task from `queued` to `running`.
   - **Configurable per plan**: `max_parallel` is set in `execution.json` at plan level (see persistence.md).
   - **Concurrency-sensitive statuses**: The following task statuses are gated by concurrency limits (see work-statuses.md):
       - `planning` — limited during pre-planning phase
       - `reviewing` — limited to prevent review bottlenecks
       - `running` — primary concurrency gate during execution
-  - **Who enforces**: The Overlord checks limits before task dispatch. Agents cannot self-transition to `running` without Overlord approval.
+  - **Who enforces**: The Overlord deterministic core checks limits before task dispatch. Agents cannot self-transition to `running` without approval.
 
   ## Context limits
   - Standard for auto-compaction to deal with context limits?
     ```
   - In `work-statuses.md` lines 8, 9, 14, 15: The existing notes "(This is part of where concurrency limits are handled)" and "(Concurrency limit)" are already correct. Add a cross-reference: "See resource-constraints.md for enforcement details."
-  - In `persistence.md` line 137-140 (concurrency block in execution.json): Add a comment above the block: "// Concurrency limits enforced by Overlord before task dispatch. See resource-constraints.md."
+  - In `persistence.md` line 137-140 (concurrency block in execution.json): Add a comment above the block: "// Concurrency limits enforced by Overlord deterministic core before task dispatch. See resource-constraints.md."
 - **Acceptance Criteria**:
-  - `resource-constraints.md` explains who enforces limits (Overlord), how (checking execution.json), and where (before status transitions)
+  - `resource-constraints.md` explains who enforces limits (Overlord deterministic core), how (checking execution.json), and where (before status transitions)
   - `work-statuses.md` references resource-constraints.md for enforcement details
   - `persistence.md` execution.json concurrency block references resource-constraints.md
   - The three documents form a coherent chain: work-statuses.md → resource-constraints.md → persistence.md
 
-### 8. Define context.md (Issue 8)
-- **Task ID**: define-context-md
+### 8. Eliminate context.md, Enrich task.md (Issue 8)
+- **Task ID**: eliminate-context-md
 - **Depends On**: none
 - **Assigned To**: design-editor
 - **Agent**: builder
 - **Actions**:
-  - In `persistence.md`: After the `context.md` mention in the directory layout (line 24), add a new subsection under "File formats":
+  - In `persistence.md` directory layout (line 24): Remove `context.md` from the task directory listing
+  - In `persistence.md` .gitignore section: Remove any reference to context.md
+  - In `persistence.md` task.md template: Enrich the template with a "Background" section:
+    ```markdown
+  ## Files to modify
+  - `src/middleware/auth.ts`
+  - `tests/middleware/auth.test.ts`
+
+  ## Background
+  <Prior art, related tasks, architectural decisions, research findings>
+
+  ## Notes
+  <Anything the builder agent should know>
     ```
-  ### `context.md` — Task context document
-
-  **Purpose**: Provides the builder agent with relevant background information for executing the task.
-
-  **Contents**:
-  - List of relevant source files and their roles
-  - Background information (prior art, related tasks, architectural decisions)
-  - Research notes from the researcher (if applicable)
-  - Any constraints or considerations the builder should know
-
-  **Lifecycle**:
-  - **Created by**: The planner (or researcher, if one is assigned to the plan) when generating tasks
-  - **Updated by**: The planner if context changes mid-plan; builders may append notes but should not modify existing content
-  - **Committed**: Yes — lives in `.agent/specs/`, tracked in git alongside `task.md`
-  - **Format**: Free-form markdown, no strict schema required
-
-  ```
-  - In `agent-roles.md`: Under the Planner role (line 13-14), add: "— Generates `task.md` and `context.md` for each task."
+  - In `agent-roles.md`: Under the Planner role, update to: "— Generates `task.md` for each task (including scope, acceptance criteria, files, and background context)."
 - **Acceptance Criteria**:
-  - `persistence.md` contains a dedicated section defining context.md's purpose, contents, lifecycle, and format
-  - `agent-roles.md` explicitly states the planner creates context.md
-  - The lifecycle (who creates, who updates, whether committed) is clearly specified
+  - `context.md` is removed from the directory layout and all references
+  - `task.md` template includes a "Background" section for context that was previously intended for context.md
+  - Planner role description reflects that task.md includes all necessary context
+  - No orphaned references to context.md remain
 
 ### 9. Final Validation
 - **Task ID**: validate-all
@@ -234,7 +246,7 @@ The team-lead agent will orchestrate execution using these team members:
   - Verify Overlord responsibilities in `agent-roles.md` cover all responsibilities mentioned in `persistence.md`
   - Verify `resource-constraints.md` explains enforcement mechanism and references are connected across `work-statuses.md`, `resource-constraints.md`, and `persistence.md`
   - Verify "execution plans" is no longer an undefined concept in `unit-of-work.md`
-  - Verify `context.md` is defined in `persistence.md` with purpose, contents, and lifecycle
+  - Verify `context.md` has been removed from all documents and `task.md` includes a Background section
   - Verify no new inconsistencies were introduced (cross-check all 12 documents)
 
 ### 10. Documentation
@@ -261,7 +273,7 @@ The team-lead agent will orchestrate execution using these team members:
 ## Validation Commands
 - `grep -r "epic" design/` — Should return no results (epic removed)
 - `grep -r "execution plan" design/` — Should only return the clarified reference in unit-of-work.md
-- `grep -r "context.md" design/` — Should show definition in persistence.md and reference in agent-roles.md
+- `grep -r "context.md" design/` — Should return no results (context.md eliminated)
 - Manual review: Compare status sets across persistence.md and work-statuses.md
 
 ## Notes
