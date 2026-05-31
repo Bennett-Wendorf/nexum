@@ -3,25 +3,32 @@
 - Need orchestration levels here. Should be minimum per repo, branch, and plan, but at every level would be ideal
 - Can move tasks between certain statuses. For example, if auto-queued accidentally, should be able to move back to backlog.
 
-## Plan-level statuses
+## Plan statuses (pre-planning)
 
-These statuses apply to plans (groups of tasks).
+These statuses track a plan from rough idea through human approval.
 
-- `backlog`
-- `queued`
-- `planning` (This is part of where concurrency limits are handled. See resource-constraints.md for enforcement details.)
-- `reviewing` (Concurrency limit. See resource-constraints.md for enforcement details.)
-- `plan-complete` — signals planning is done; child tasks are placed into `backlog`
+- `draft` — rough idea, user-created, sparse content
+- `queued` — waiting for planner agent
+- `planning` — planner is working on it (concurrency limit applies here. See resource-constraints.md for enforcement details.)
+- `reviewing` — plan ready, waiting for human approval (concurrency limit. See resource-constraints.md for enforcement details.)
 
-## Task-level statuses
+## Plan statuses (post-planning)
 
-These statuses apply to individual tasks within a plan. Plan-level statuses are defined separately above.
+After human approval, the plan tracks its tasks through execution.
 
-- `backlog`
-- `queued`
-- `running` (This is part of where concurrency limits are handled. See resource-constraints.md for enforcement details.)
-- `reviewing` (Concurrency limit. See resource-constraints.md for enforcement details.)
-- `waiting-manual-review`
-- `merge-queue`
-- `abandoned`
-- `completed` (How to clear this out occasionally?)
+- `approved` — human approved, tasks flow to task backlog
+- `complete` — all tasks done
+- `rejected` — human rejected (terminal; user can create a new draft if wanted)
+
+## Task statuses (post-planning)
+
+These statuses apply to individual tasks within an approved plan.
+
+- `backlog` — approved plan's tasks start here
+- `queued` — ready for builder agent
+- `running` — builder is working on it (concurrency limit applies here. See resource-constraints.md for enforcement details.)
+- `reviewing` — task done, waiting for reviewer (concurrency limit. See resource-constraints.md for enforcement details.)
+- `waiting-manual-review` — reviewer flagged for human attention
+- `merge-queue` — approved, waiting for overlord to merge into plan branch
+- `abandoned` — task dropped, won't be retried
+- `completed` — merged, task branch and worktree cleaned up
