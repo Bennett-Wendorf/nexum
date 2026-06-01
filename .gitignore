@@ -23,3 +23,9 @@ Thumbs.db
 # Environment
 .env
 .env.*
+
+# Build output
+static/
+
+# Worktrees
+.worktrees/

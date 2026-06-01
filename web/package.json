@@ -8,8 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "test:e2e": "playwright test",
-    "lint": "eslint ."
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "markdown-it": "^14.1.0",
