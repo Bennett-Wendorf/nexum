@@ -1,0 +1,31 @@
+# Rust build artifacts
+target/
+**/*.rs.bk
+
+# Node frontend
+web/node_modules/
+web/.svelte-kit/
+
+# Agent state
+.agent/state/
+.agent/specs/**/*.status.json
+.agent/specs/**/tasks/**/status.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+
+# Build output
+static/
+
+# Worktrees
+.worktrees/
