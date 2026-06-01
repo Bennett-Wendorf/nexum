@@ -4,8 +4,7 @@ deps:
 	@test -d web/node_modules || npm install --prefix web
 
 dev: deps
-	@echo "Starting dev servers..."
-	@cargo run & npm run dev --prefix web
+	@./scripts/dev.sh
 
 build: deps
 	@echo "Building frontend..."
