@@ -114,7 +114,7 @@ Nexum is a web application with a Rust API backend and Svelte frontend. The back
 | Cargo | Rust dependency management and compilation |
 | npm + Vite | Frontend dependency management and bundling |
 
-The `Makefile` provides convenance wrappers (`dev`, `build`, `test`, `clean`) that coordinate both the Rust backend and Node frontend toolchains from a single interface.
+The `Makefile` provides convenience wrappers (`dev`, `build`, `test`, `clean`) that coordinate both the Rust backend and Node frontend toolchains from a single interface.
 
 ---
 

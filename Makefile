@@ -1,13 +1,14 @@
-.PHONY: dev build test clean
+.PHONY: dev build test clean deps
 
-dev:
+deps:
+	@test -d web/node_modules || npm install --prefix web
+
+dev: deps
 	@echo "Starting dev servers..."
-	@npm install --prefix web 2>/dev/null
 	@cargo run & npm run dev --prefix web
 
-build:
+build: deps
 	@echo "Building frontend..."
-	@npm install --prefix web 2>/dev/null
 	@npm run build --prefix web
 	@echo "Building backend..."
 	@cargo build --release
