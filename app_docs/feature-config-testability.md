@@ -24,8 +24,6 @@ Two new `ConfigError` variants (`AlreadyInitialized`, `NotInitialized`) were add
 |------|---------|
 | `src/config/accessor.rs` | Replaced `OnceLock<Config>` with `RwLock<Option<Config>>`; rewrote all functions to use lock guards; added `reset()` and `with_config()` test functions |
 | `src/config/loader.rs` | Added `AlreadyInitialized` and `NotInitialized` variants to `ConfigError` |
-| `src/config/schema.rs` | `AgentRegistration` now derives `Clone` |
-| `src/config/tests.rs` | Added 15 new accessor tests (39 total) covering init, reset, with_config, and all query functions through the singleton |
 
 ### Key API Functions
 
