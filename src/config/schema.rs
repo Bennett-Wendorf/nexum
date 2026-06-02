@@ -82,7 +82,7 @@ pub struct AgentRegistration {
 ///
 /// Controls server configuration, concurrency limits, and logging.
 /// See: design/resource-constraints.md
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GlobalSettings {
     /// Server bind address (default: "127.0.0.1")
     #[serde(default = "defaults::server_host")]
@@ -107,6 +107,19 @@ pub struct GlobalSettings {
     /// Override for config directory (useful for testing)
     #[serde(default)]
     pub nexum_config_dir: Option<PathBuf>,
+}
+
+impl Default for GlobalSettings {
+    fn default() -> Self {
+        Self {
+            server_host: defaults::server_host(),
+            server_port: defaults::server_port(),
+            max_parallel: defaults::max_parallel(),
+            default_timeout_seconds: defaults::default_timeout_seconds(),
+            log_level: defaults::log_level(),
+            nexum_config_dir: None,
+        }
+    }
 }
 
 /// User preferences
