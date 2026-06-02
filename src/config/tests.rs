@@ -158,7 +158,7 @@ fn test_validate_duplicate_agent_names() {
     let result = validate(&config);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(matches!(err, ConfigError::ValidationError(_)));
+    assert!(matches!(err, ConfigError::Validation(_)));
     let msg = format!("{}", err);
     assert!(msg.contains("Duplicate"));
 }
@@ -182,7 +182,7 @@ fn test_validate_empty_spawn_command() {
     let result = validate(&config);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(matches!(err, ConfigError::ValidationError(_)));
+    assert!(matches!(err, ConfigError::Validation(_)));
 }
 
 #[test]
@@ -265,10 +265,10 @@ fn test_default_template_parseable() {
 
 #[test]
 fn test_config_error_display() {
-    let err = ConfigError::ValidationError("test error".to_string());
+    let err = ConfigError::Validation("test error".to_string());
     assert!(format!("{}", err).contains("test error"));
     
-    let err = ConfigError::ParseError("bad toml".to_string());
+    let err = ConfigError::Parse("bad toml".to_string());
     assert!(format!("{}", err).contains("bad toml"));
 }
 

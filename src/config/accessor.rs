@@ -38,7 +38,7 @@ pub fn init() -> Result<(), ConfigError> {
     
     match CONFIG.set(cfg) {
         Ok(()) => Ok(()),
-        Err(_) => Err(ConfigError::ValidationError(
+        Err(_) => Err(ConfigError::Validation(
             "Configuration has already been initialized".to_string()
         )),
     }

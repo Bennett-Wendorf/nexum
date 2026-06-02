@@ -10,19 +10,19 @@ use thiserror::Error;
 pub enum ConfigError {
     /// TOML parsing error
     #[error("Failed to parse configuration: {0}")]
-    ParseError(String),
+    Parse(String),
 
     /// Validation failure
     #[error("Validation error: {0}")]
-    ValidationError(String),
+    Validation(String),
 
     /// Default config creation error
     #[error("Failed to create default config at {0}: {1}")]
-    CreateError(PathBuf, #[source] io::Error),
+    Create(PathBuf, #[source] io::Error),
 
     /// Environment variable error
     #[error("{0}")]
-    EnvError(String),
+    Env(String),
 }
 
 /// Default configuration template
@@ -66,7 +66,7 @@ pub fn config_path() -> Result<PathBuf, ConfigError> {
         }
     } else {
         let home = std::env::var("HOME").map_err(|_| {
-            ConfigError::EnvError("HOME environment variable is not set".to_string())
+            ConfigError::Env("HOME environment variable is not set".to_string())
         })?;
         PathBuf::from(home).join(".config")
     };
@@ -79,7 +79,7 @@ pub fn config_path() -> Result<PathBuf, ConfigError> {
 /// Does not support `~username` expansion for other users.
 fn expand_tilde(path: &str) -> Result<PathBuf, ConfigError> {
     let home = std::env::var("HOME").map_err(|_| {
-        ConfigError::EnvError("HOME environment variable is not set".to_string())
+        ConfigError::Env("HOME environment variable is not set".to_string())
     })?;
     if path == "~" {
         Ok(PathBuf::from(home))
@@ -106,7 +106,7 @@ pub fn load() -> Result<Config, ConfigError> {
             create_default_config()?;
         }
         Err(e) => {
-            return Err(ConfigError::ParseError(format!(
+            return Err(ConfigError::Parse(format!(
                 "Failed to read config: {}", e
             )));
         }
@@ -120,11 +120,11 @@ pub fn load() -> Result<Config, ConfigError> {
 
     let store = config_builder
         .build()
-        .map_err(|e| ConfigError::ParseError(e.to_string()))?;
+        .map_err(|e| ConfigError::Parse(e.to_string()))?;
 
     let cfg: Config = store
         .try_deserialize()
-        .map_err(|e| ConfigError::ParseError(e.to_string()))?;
+        .map_err(|e| ConfigError::Parse(e.to_string()))?;
 
     Ok(cfg)
 }
@@ -133,16 +133,16 @@ pub fn load() -> Result<Config, ConfigError> {
 pub fn create_default_config() -> Result<(), ConfigError> {
     let path = config_path()?;
     let parent = path.parent().ok_or_else(|| {
-        ConfigError::CreateError(
+        ConfigError::Create(
             path.clone(),
             io::Error::new(io::ErrorKind::NotFound, "No parent directory"),
         )
     })?;
 
-    fs::create_dir_all(parent).map_err(|e| ConfigError::CreateError(path.clone(), e))?;
+    fs::create_dir_all(parent).map_err(|e| ConfigError::Create(path.clone(), e))?;
 
     fs::write(&path, DEFAULT_CONFIG_TEMPLATE)
-        .map_err(|e| ConfigError::CreateError(path, e))?;
+        .map_err(|e| ConfigError::Create(path, e))?;
 
     Ok(())
 }
@@ -167,7 +167,7 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
     let mut seen_names = std::collections::HashSet::new();
     for agent in &config.agents {
         if !seen_names.insert(&agent.name) {
-            return Err(ConfigError::ValidationError(format!(
+            return Err(ConfigError::Validation(format!(
                 "Duplicate agent name: {}",
                 agent.name
             )));
@@ -177,7 +177,7 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
     // Validate each agent
     for agent in &config.agents {
         if agent.spawn_command.trim().is_empty() {
-            return Err(ConfigError::ValidationError(format!(
+            return Err(ConfigError::Validation(format!(
                 "Agent '{}' has empty spawn_command",
                 agent.name
             )));
@@ -186,14 +186,14 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
 
     // Validate server port
     if config.global.server_port == 0 {
-        return Err(ConfigError::ValidationError(
+        return Err(ConfigError::Validation(
             "server_port must be between 1 and 65535".to_string(),
         ));
     }
 
     // Validate max_parallel
     if config.global.max_parallel == 0 {
-        return Err(ConfigError::ValidationError(
+        return Err(ConfigError::Validation(
             "max_parallel must be greater than 0".to_string(),
         ));
     }
@@ -201,7 +201,7 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
     // Validate log_level
     let valid_levels = ["trace", "debug", "info", "warn", "error"];
     if !valid_levels.contains(&config.global.log_level.as_str()) {
-        return Err(ConfigError::ValidationError(format!(
+        return Err(ConfigError::Validation(format!(
             "Invalid log_level '{}'. Must be one of: trace, debug, info, warn, error",
             config.global.log_level
         )));
@@ -209,7 +209,7 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
 
     // Validate server_host
     if config.global.server_host.trim().is_empty() {
-        return Err(ConfigError::ValidationError(
+        return Err(ConfigError::Validation(
             "server_host must not be empty".to_string(),
         ));
     }
