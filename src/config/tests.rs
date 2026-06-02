@@ -6,6 +6,7 @@ use tempfile::TempDir;
 use super::schema::{AgentRegistration, Config, GlobalSettings, Preferences};
 use super::loader::{validate, ConfigError, DEFAULT_CONFIG_TEMPLATE};
 use super::accessor::*;
+use serial_test::serial;
 
 // ─── Helper utilities ───────────────────────────────────────────────
 
@@ -349,6 +350,7 @@ fn make_test_config() -> Config {
 
 // ─── Accessor init tests ───────────────────────────────────────────
 
+#[serial]
 #[test]
 fn test_init_success() {
     reset();
@@ -363,6 +365,7 @@ fn test_init_success() {
     assert_eq!(loaded.agents.len(), cfg.agents.len());
 }
 
+#[serial]
 #[test]
 fn test_init_already_initialized() {
     // Use with_config to set up a known state
@@ -377,12 +380,14 @@ fn test_init_already_initialized() {
     assert!(matches!(err, ConfigError::AlreadyInitialized));
 }
 
+#[serial]
 #[test]
 fn test_get_before_init_returns_none() {
     reset();
     assert!(get().is_none());
 }
 
+#[serial]
 #[test]
 fn test_get_after_with_config() {
     let cfg = make_test_config();
@@ -397,6 +402,7 @@ fn test_get_after_with_config() {
 
 // ─── Accessor reset tests ──────────────────────────────────────────
 
+#[serial]
 #[test]
 fn test_reset_clears_config() {
     let cfg = make_test_config();
@@ -408,6 +414,7 @@ fn test_reset_clears_config() {
     assert!(get().is_none());
 }
 
+#[serial]
 #[test]
 fn test_reinit_after_reset() {
     let cfg = make_test_config();
@@ -425,6 +432,7 @@ fn test_reinit_after_reset() {
 
 // ─── Accessor with_config tests ────────────────────────────────────
 
+#[serial]
 #[test]
 fn test_with_config_injection() {
     let cfg = make_test_config();
@@ -436,6 +444,7 @@ fn test_with_config_injection() {
     assert_eq!(loaded.agents.len(), cfg.agents.len());
 }
 
+#[serial]
 #[test]
 fn test_with_config_overwrite() {
     let cfg1 = make_test_config();
@@ -452,6 +461,7 @@ fn test_with_config_overwrite() {
 
 // ─── Accessor query function tests ─────────────────────────────────
 
+#[serial]
 #[test]
 fn test_singleton_query_agent_by_name() {
     let cfg = make_test_config();
@@ -466,6 +476,7 @@ fn test_singleton_query_agent_by_name() {
     assert!(missing.is_none());
 }
 
+#[serial]
 #[test]
 fn test_singleton_query_agent_by_type() {
     let cfg = make_test_config();
@@ -480,6 +491,7 @@ fn test_singleton_query_agent_by_type() {
     assert!(missing.is_none());
 }
 
+#[serial]
 #[test]
 fn test_singleton_query_agents_by_role() {
     let cfg = make_test_config();
@@ -497,6 +509,7 @@ fn test_singleton_query_agents_by_role() {
     assert_eq!(agents[0].name, "Reviewer");
 }
 
+#[serial]
 #[test]
 fn test_singleton_server_addr() {
     let cfg = make_test_config();
@@ -507,6 +520,7 @@ fn test_singleton_server_addr() {
     assert_eq!(addr, Some("127.0.0.1:3000".to_string()));
 }
 
+#[serial]
 #[test]
 fn test_singleton_max_parallel() {
     let cfg = make_test_config();
@@ -516,6 +530,7 @@ fn test_singleton_max_parallel() {
     assert_eq!(get_max_parallel(), Some(4));
 }
 
+#[serial]
 #[test]
 fn test_singleton_default_timeout() {
     let cfg = make_test_config();
@@ -525,6 +540,7 @@ fn test_singleton_default_timeout() {
     assert_eq!(get_default_timeout(), Some(3600));
 }
 
+#[serial]
 #[test]
 fn test_singleton_yolo_mode() {
     let cfg = make_test_config();
@@ -534,6 +550,7 @@ fn test_singleton_yolo_mode() {
     assert!(!is_yolo_mode());
 }
 
+#[serial]
 #[test]
 fn test_singleton_query_returns_none_before_init() {
     reset();
