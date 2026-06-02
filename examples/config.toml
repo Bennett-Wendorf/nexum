@@ -1,0 +1,61 @@
+# Nexum Example Configuration
+# Location: ~/.config/nexum/config.toml
+#
+# This file demonstrates a fully populated configuration with multiple agents
+# of different types. All fields are explicitly set for reference purposes.
+
+# ─── Global Settings ────────────────────────────────────────────────
+# Controls server configuration, concurrency limits, and logging.
+
+[global]
+server_host = "127.0.0.1"          # Server bind address
+server_port = 3000                  # Server port
+max_parallel = 4                    # Max concurrent agent sessions
+default_timeout_seconds = 3600      # Default task timeout (1 hour)
+log_level = "info"                  # Log level: trace, debug, info, warn, error
+# nexum_config_dir = "/custom/path" # Override config directory (useful for testing)
+
+# ─── Preferences ────────────────────────────────────────────────────
+# User preferences for yolo mode and default agent assignments.
+
+[preferences]
+yolo_mode = false                           # Bypass permission prompts (not recommended for production)
+default_builder_agent = "opencode-builder"  # Default agent for builder role
+default_reviewer_agent = "kiro-reviewer"    # Default agent for reviewer role
+default_planner_agent = "opencode-planner"  # Default agent for planner role
+
+# ─── Agent Registrations ────────────────────────────────────────────
+# Each [[agents]] entry defines an agent that nexum can spawn and communicate with via ACP.
+# Agent auth (API keys, OAuth) is managed by each agent's own configuration, not by nexum.
+
+[[agents]]
+name = "opencode-builder"
+type = "opencode"
+spawn_command = "opencode acp"
+model = "llama3.1"
+tool_permissions = ["read", "write", "shell", "fs_read", "fs_write"]
+timeout_seconds = 1800
+# working_dir = "/path/to/project"
+
+[[agents]]
+name = "opencode-planner"
+type = "opencode"
+spawn_command = "opencode acp"
+model = "llama3.1"
+tool_permissions = ["read", "fs_read"]
+timeout_seconds = 600
+
+[[agents]]
+name = "kiro-reviewer"
+type = "kiro"
+spawn_command = "kiro acp"
+tool_permissions = ["read", "fs_read"]
+timeout_seconds = 900
+
+[[agents]]
+name = "claude-assistant"
+type = "claude"
+spawn_command = "claude-agent-acp"
+model = "claude-sonnet-4-20250514"
+tool_permissions = ["read", "write", "shell"]
+timeout_seconds = 1200
