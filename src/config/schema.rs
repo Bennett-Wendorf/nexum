@@ -85,23 +85,18 @@ pub struct AgentRegistration {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GlobalSettings {
     /// Server bind address (default: "127.0.0.1")
-    #[serde(default = "defaults::server_host")]
     pub server_host: String,
 
     /// Server port (default: 3000)
-    #[serde(default = "defaults::server_port")]
     pub server_port: u16,
 
     /// Max concurrent agent sessions (default: 4)
-    #[serde(default = "defaults::max_parallel")]
     pub max_parallel: u16,
 
     /// Default task timeout in seconds (default: 3600 = 1 hour)
-    #[serde(default = "defaults::default_timeout_seconds")]
     pub default_timeout_seconds: u64,
 
     /// Log level: trace, debug, info, warn, error (default: "info")
-    #[serde(default = "defaults::log_level")]
     pub log_level: String,
 
     /// Override for config directory (useful for testing)
@@ -129,7 +124,6 @@ impl Default for GlobalSettings {
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Preferences {
     /// Bypass permission prompts (default: false)
-    #[serde(default = "defaults::yolo_mode")]
     pub yolo_mode: bool,
 
     /// Default agent name for builder role
