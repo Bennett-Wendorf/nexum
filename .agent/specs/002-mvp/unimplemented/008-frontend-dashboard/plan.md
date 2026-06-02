@@ -1,7 +1,7 @@
 # Plan: 008 - Frontend Dashboard
 
 ## Task Description
-Build the Svelte SPA frontend dashboard for nexum. A vanilla Svelte application (no SvelteKit) providing a web interface for managing plans, tasks, and monitoring agent orchestration. Consumes the REST API from chunk 007, renders plans/tasks in a hierarchical list view with kanban-style task status columns, includes markdown rendering, status badges, and a dark-themed UI matching existing mockup designs.
+Build the Svelte SPA frontend dashboard for nexum. A vanilla Svelte 5 application with TypeScript (no SvelteKit) providing a web interface for managing plans, tasks, and monitoring agent orchestration. Consumes the REST API from chunk 007, renders plans/tasks in a hierarchical list view with kanban-style task status columns, includes markdown rendering, status badges, and a dark-themed UI matching existing mockup designs.
 
 ## Objective
 Create a fully functional Svelte SPA in `web/` that:
@@ -26,10 +26,10 @@ Build a vanilla Svelte SPA in `web/` with this structure:
 
 ```
 web/
-  package.json, vite.config.ts, svelte.config.js
+  package.json, vite.config.ts, svelte.config.js, tsconfig.json
   tailwind.config.js, postcss.config.js, index.html
   src/
-    main.js, App.svelte, app.css, routes.js
+    main.ts, App.svelte, app.css, routes.ts
     pages/
       PlanList.svelte, PlanDetail.svelte
       TaskList.svelte, TaskDetail.svelte
@@ -37,11 +37,11 @@ web/
       Layout.svelte, StatusBadge.svelte, MarkdownRenderer.svelte
       PlanCard.svelte, TaskCard.svelte, Breadcrumb.svelte, TaskColumn.svelte
     lib/
-      api.js, store.js, types.js, statusColors.js
+      api.ts, store.ts, types.ts, statusColors.ts
   static/  (static assets)
 ```
 
-Key decisions: Vanilla Svelte (no SvelteKit), svelte-spa-router for routing, Tailwind CSS for dark theme, markdown-it for frontend rendering, npm as package manager, vitest/playwright for testing.
+Key decisions: Vanilla Svelte 5 with TypeScript (no SvelteKit), svelte-spa-router for routing, Tailwind CSS for dark theme, markdown-it for frontend rendering, npm as package manager, vitest/playwright for testing.
 
 ## Relevant Files
 
@@ -61,9 +61,9 @@ Key decisions: Vanilla Svelte (no SvelteKit), svelte-spa-router for routing, Tai
 - `web/tailwind.config.js` — Tailwind config with dark theme colors
 - `web/postcss.config.js` — PostCSS config
 - `web/index.html` — SPA entry shell
-- `web/src/main.js` — App mount point
+- `web/src/main.ts` — App mount point
 - `web/src/App.svelte` — Root with router
-- `web/src/routes.js` — Route definitions
+- `web/src/routes.ts` — Route definitions
 - `web/src/app.css` — Base styles + Tailwind directives
 - `web/src/pages/PlanList.svelte` — Plans overview
 - `web/src/pages/PlanDetail.svelte` — Single plan view
@@ -76,15 +76,15 @@ Key decisions: Vanilla Svelte (no SvelteKit), svelte-spa-router for routing, Tai
 - `web/src/components/TaskCard.svelte` — Kanban task card
 - `web/src/components/Breadcrumb.svelte` — Breadcrumb nav
 - `web/src/components/TaskColumn.svelte` — Kanban column
-- `web/src/lib/api.js` — API client module
-- `web/src/lib/store.js` — Svelte stores
-- `web/src/lib/types.js` — JSDoc type definitions
-- `web/src/lib/statusColors.js` — Status color mapping
-- `web/vitest.config.js` — Vitest config
-- `web/playwright.config.js` — Playwright config
-- `web/tests/api.test.js` — API client tests
-- `web/tests/StatusBadge.test.js` — Status badge tests
-- `web/tests/MarkdownRenderer.test.js` — Markdown renderer tests
+- `web/src/lib/api.ts` — API client module
+- `web/src/lib/store.ts` — Svelte stores
+- `web/src/lib/types.ts` — TypeScript interfaces
+- `web/src/lib/statusColors.ts` — Status color mapping
+- `web/vitest.config.ts` — Vitest config
+- `web/playwright.config.ts` — Playwright config
+- `web/tests/api.test.ts` — API client tests
+- `web/tests/StatusBadge.test.ts` — Status badge tests
+- `web/tests/MarkdownRenderer.test.ts` — Markdown renderer tests
 
 ## Team Orchestration
 
@@ -131,15 +131,15 @@ Key decisions: Vanilla Svelte (no SvelteKit), svelte-spa-router for routing, Tai
 - **Agent**: builder
 - **Actions**:
   - Create `web/` directory structure
-  - Create `web/package.json` with dependencies: `svelte@^4.2.19`, `svelte-spa-router@^4.0.1`, `markdown-it@^14.1.0`; devDependencies: `@sveltejs/vite-plugin-svelte@^4.0.0`, `tailwindcss@^3.4.10`, `postcss@^8.4.41`, `autoprefixer@^10.4.20`, `vite@^5.4.0`, `vitest@^2.0.0`, `@playwright/test@^1.45.0`, `jsdom@^24.1.0`
+  - Create `web/package.json` with dependencies: `svelte@^5.0.0`, `svelte-spa-router@^4.0.1`, `markdown-it@^14.1.0`; devDependencies: `@sveltejs/vite-plugin-svelte@^5.0.0`, `tailwindcss@^3.4.10`, `postcss@^8.4.41`, `autoprefixer@^10.4.20`, `vite@^6.1.0`, `vitest@^3.0.0`, `@playwright/test@^1.45.0`, `jsdom@^24.1.0`, `typescript@^5.7.0`, `svelte-preprocess@^6.0.0`
   - Create `web/vite.config.ts`: Svelte plugin, build output to `../static/`, dev server proxy `/api` → `localhost:3000`, vitest jsdom environment
   - Create `web/svelte.config.js`: vitePreprocess
   - Create `web/tailwind.config.js`: content patterns, extended colors matching mockup palette (bg: #0d1117/#161b22/#1c2129, border: #30363d/#21262d, text: #e1e4e8/#c9d1d9/#8b949e/#484f58, accent: blue/green/yellow/red/purple/pink)
   - Create `web/postcss.config.js`: tailwindcss + autoprefixer
   - Create `web/index.html`: SPA shell with `#app` div, dark theme classes, module script import
-  - Create `web/src/main.js`: App mount
+  - Create `web/src/main.ts`: App mount
   - Create `web/src/app.css`: Tailwind directives + Inter font family
-  - Create `web/src/App.svelte` skeleton and `web/src/routes.js` skeleton
+  - Create `web/src/App.svelte` skeleton and `web/src/routes.ts` skeleton
   - Run `npm install`, verify `npm run dev` and `npm run build` succeed
 - **Acceptance Criteria**:
   - `npm install` completes without errors
@@ -156,18 +156,18 @@ Key decisions: Vanilla Svelte (no SvelteKit), svelte-spa-router for routing, Tai
 - **Assigned To**: frontend-core-builder
 - **Agent**: builder
 - **Actions**:
-  - Create `web/src/lib/api.js` with base `request()` helper (fetch wrapper with `/api` prefix, JSON serialization, error throwing from `data.message`)
+  - Create `web/src/lib/api.ts` with base `request()` helper (fetch wrapper with `/api` prefix, JSON serialization, error throwing from `data.message`)
   - Plan API: `listPlans(branch?, status?)`, `getPlan(branch, planId)`, `createPlan(...)`, `updatePlan(...)`, `deletePlan(...)`, `transitionPlanStatus(...)`
   - Task API: `listTasks(branch, planId, status?)`, `getTask(branch, planId, taskId)`, `createTask(...)`, `updateTask(...)`, `deleteTask(...)`, `transitionTaskStatus(...)`
   - Execution/Config: `getExecutionState(...)`, `listRunningTasks()`, `getConfig()`, `listAgents()`, `healthCheck()`
-  - Create `web/src/lib/types.js` with JSDoc typedefs for Plan, TaskRef, Task, TaskStatus, AgentLease, StatusTransition
+  - Create `web/src/lib/types.ts` with TypeScript interfaces for Plan, TaskRef, Task, TaskStatus, AgentLease, StatusTransition
 - **Acceptance Criteria**:
   - All API functions exported and callable
   - `request()` constructs URLs with `/api` prefix
   - Errors throw with `data.message`
   - All CRUD operations for plans and tasks implemented
   - Query parameters encoded in list endpoints
-  - JSDoc types document all response structures
+  - TypeScript types document all response structures
 
 ### 3. Svelte Stores and Status Color Mapping
 - **Task ID**: frontend-stores
@@ -175,14 +175,14 @@ Key decisions: Vanilla Svelte (no SvelteKit), svelte-spa-router for routing, Tai
 - **Assigned To**: frontend-core-builder
 - **Agent**: builder
 - **Actions**:
-  - Create `web/src/lib/store.js`: writable stores for `currentPlan`, `currentBranch`, `currentTask`, `plans`, `tasks`, `runningTasks`, `agents`, `loading`, `error`, `viewMode`; `setError()` helper with 5s auto-clear
-  - Create `web/src/lib/statusColors.js`:
+  - Create `web/src/lib/store.ts`: writable stores for `currentPlan`, `currentBranch`, `currentTask`, `plans`, `tasks`, `runningTasks`, `agents`, `loading`, `error`, `viewMode`; `setError()` helper with 5s auto-clear
+  - Create `web/src/lib/statusColors.ts`:
     - `planStatusColors`/`planStatusBgColors` mapping all 7 plan statuses (draft, queued, planning, reviewing, approved, complete, rejected) to Tailwind color classes
     - `taskStatusColors`/`taskStatusBgColors` mapping all 8 task statuses (backlog, queued, running, reviewing, waiting-manual-review, merge-queue, abandoned, completed)
     - `kanbanColumns` array in display order
     - `kanbanColumnLabels` with human-readable labels (e.g., "waiting-manual-review" → "Manual Review")
     - `getPlanStatusColor(status)` and `getTaskStatusColor(status)` helpers with fallback
-  - Import `app.css` in `main.js`
+  - Import `app.css` in `main.ts`
 - **Acceptance Criteria**:
   - All stores writable and importable
   - Color maps cover all plan/task statuses
@@ -202,7 +202,7 @@ Key decisions: Vanilla Svelte (no SvelteKit), svelte-spa-router for routing, Tai
     - Agent pool sidebar (220px): "Agent Pool" header, active/idle count summary, simplified for MVP
     - Main content area: `<slot />`, scrollable
   - Update `web/src/App.svelte`: wrap `<Router {routes} />` in `<Layout>`
-  - Create `web/src/routes.js`: `/` → PlanList, `/plans` → PlanList, `/plans/:branch/:planId` → PlanDetail, `/plans/:branch/:planId/tasks` → TaskList, `/plans/:branch/:planId/tasks/:taskId` → TaskDetail, `*` → PlanList
+  - Create `web/src/routes.ts`: `/` → PlanList, `/plans` → PlanList, `/plans/:branch/:planId` → PlanDetail, `/plans/:branch/:planId/tasks` → TaskList, `/plans/:branch/:planId/tasks/:taskId` → TaskDetail, `*` → PlanList
 - **Acceptance Criteria**:
   - Three-panel layout renders correctly
   - Icon sidebar 56px with nav icons and active highlighting
@@ -239,7 +239,7 @@ Key decisions: Vanilla Svelte (no SvelteKit), svelte-spa-router for routing, Tai
   - Create `web/src/components/MarkdownRenderer.svelte`:
     - Imports `markdown-it`, configures with `html: false`, `breaks: true`, `linkify: true`, `typographer: true`
     - Props: `content` (string), `className` (optional, defaults to styled container class)
-    - Reactive `$: html = md.render(content)` with empty content placeholder
+    - Reactive `$derived(html = md.render(content))` with empty content placeholder
     - Renders in dark-themed container matching mockup `.md-content` style
 - **Acceptance Criteria**:
   - Renders markdown as HTML
@@ -417,27 +417,27 @@ Key decisions: Vanilla Svelte (no SvelteKit), svelte-spa-router for routing, Tai
 - **Assigned To**: frontend-tests-builder
 - **Agent**: builder
 - **Actions**:
-  - Create `web/vitest.config.js` if not in vite.config.ts
-  - Create `web/tests/api.test.js`:
+  - Create `web/vitest.config.ts` if not in vite.config.ts
+  - Create `web/tests/api.test.ts`:
     - Mock `fetch` to test `request()` helper
     - Test error handling (non-200 responses throw)
     - Test URL construction with query parameters
     - Test all API function signatures
-  - Create `web/tests/StatusBadge.test.js`:
+  - Create `web/tests/StatusBadge.test.ts`:
     - Test rendering with various plan statuses
     - Test rendering with various task statuses
     - Test custom label prop
     - Test fallback for unknown status
-  - Create `web/tests/MarkdownRenderer.test.js`:
+  - Create `web/tests/MarkdownRenderer.test.ts`:
     - Test rendering basic markdown (headings, lists, code blocks)
     - Test empty content placeholder
     - Test linkify (auto-detect URLs)
     - Test `className` prop override
-  - Create `web/tests/PlanCard.test.js`:
+  - Create `web/tests/PlanCard.test.ts`:
     - Test rendering with plan data
     - Test progress bar calculation
     - Test empty task list (no progress bar)
-  - Create `web/tests/TaskCard.test.js`:
+  - Create `web/tests/TaskCard.test.ts`:
     - Test rendering with task data
     - Test agent badge display
   - Run `npm test:run` to verify all tests pass
@@ -456,25 +456,25 @@ Key decisions: Vanilla Svelte (no SvelteKit), svelte-spa-router for routing, Tai
 - **Assigned To**: frontend-tests-builder
 - **Agent**: builder
 - **Actions**:
-  - Create `web/playwright.config.js`: testDir, webServer pointing to vite preview, browser configs
-  - Create `web/tests/e2e/planList.spec.js`:
+  - Create `web/playwright.config.ts`: testDir, webServer pointing to vite preview, browser configs
+  - Create `web/tests/e2e/planList.spec.ts`:
     - Navigate to plan list page
     - Verify page loads without errors
     - Verify stats row renders
     - Verify plan cards render (if mock data available)
     - Verify empty state when no plans
-  - Create `web/tests/e2e/planDetail.spec.js`:
+  - Create `web/tests/e2e/planDetail.spec.ts`:
     - Navigate to plan detail page
     - Verify breadcrumb renders
     - Verify plan metadata displays
     - Verify markdown sections render
     - Verify task list renders
-  - Create `web/tests/e2e/taskList.spec.js`:
+  - Create `web/tests/e2e/taskList.spec.ts`:
     - Navigate to task list (kanban view)
     - Verify kanban columns render
     - Toggle to list view and verify table renders
     - Verify view mode toggle works
-  - Create `web/tests/e2e/taskDetail.spec.js`:
+  - Create `web/tests/e2e/taskDetail.spec.ts`:
     - Navigate to task detail page
     - Verify breadcrumb, tabs, sidebar
     - Verify markdown content renders
