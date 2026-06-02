@@ -1,6 +1,6 @@
+import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import sveltePreprocess from 'svelte-preprocess';
-import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [
@@ -8,11 +8,8 @@ export default defineConfig({
       preprocess: sveltePreprocess(),
     }),
   ],
-  build: {
-    outDir: '../static',
-    emptyOutDir: true,
-  },
-  server: {
-    port: 3000,
+  test: {
+    environment: 'jsdom',
+    include: ['src/**/__tests__/**/*.test.{ts,js}'],
   },
 });

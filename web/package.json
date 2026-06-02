@@ -11,18 +11,20 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "markdown-it": "^14.1.0",
     "svelte": "^5.0.0",
-    "svelte-spa-router": "^4.0.1"
+    "svelte-spa-router": "^4.0.1",
+    "markdown-it": "^14.1.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.49.1",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
-    "autoprefixer": "^10.4.20",
-    "jsdom": "^29.1.1",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.17",
     "vite": "^6.1.0",
-    "vitest": "^3.0.0"
+    "tailwindcss": "^3.4.17",
+    "postcss": "^8.4.49",
+    "autoprefixer": "^10.4.20",
+    "vitest": "^3.0.0",
+    "@playwright/test": "^1.49.1",
+    "typescript": "^5.7.0",
+    "svelte-preprocess": "^6.0.0",
+    "jsdom": "^29.1.1"
   }
 }
