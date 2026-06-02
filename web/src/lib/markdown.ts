@@ -9,10 +9,10 @@ const md = new MarkdownIt({
 
 /**
  * Renders markdown text to HTML string.
- * @param {string} text - Markdown text to render
- * @returns {string} HTML string
+ * @param text - Markdown text to render
+ * @returns HTML string
  */
-export function renderMarkdown(text) {
+export function renderMarkdown(text: string): string {
   if (!text) return '';
   return md.render(text);
 }
