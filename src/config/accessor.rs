@@ -11,6 +11,9 @@ use super::schema::{AgentRegistration, Config};
 /// Global configuration singleton.
 static CONFIG: RwLock<Option<Config>> = RwLock::new(None);
 
+/// Cached server address. Reset alongside config during `reset()`.
+static SERVER_ADDR_CACHE: RwLock<Option<String>> = RwLock::new(None);
+
 /// Returns a clone of the loaded configuration, or `None` if not yet initialized.
 pub fn get() -> Option<Config> {
     let guard = CONFIG.read().expect("Config RwLock poisoned");
@@ -22,7 +25,8 @@ pub fn get() -> Option<Config> {
 /// # Panics
 /// Panics if `init()` has not been called yet or if initialization failed.
 pub fn get_unchecked() -> Config {
-    get().expect("Configuration has not been initialized. Call config::init() first.")
+    let guard = CONFIG.read().expect("Config RwLock poisoned");
+    guard.clone().expect("Configuration has not been initialized. Call config::init() first.")
 }
 
 /// Explicitly initializes the global configuration.
@@ -90,11 +94,28 @@ pub fn get_agents_by_role(role: &str) -> Vec<AgentRegistration> {
 }
 
 /// Returns the server address as "host:port" string, or `None` if not initialized.
+/// The result is cached after the first call and cleared on `reset()`.
 pub fn get_server_addr() -> Option<String> {
+    // Check cache first
+    {
+        let cache = SERVER_ADDR_CACHE.read().expect("Server addr cache RwLock poisoned");
+        if let Some(addr) = cache.as_ref() {
+            return Some(addr.clone());
+        }
+    }
+
+    // Compute and cache
     let guard = CONFIG.read().expect("Config RwLock poisoned");
-    guard.as_ref().map(|cfg| {
+    let addr = guard.as_ref().map(|cfg| {
         format!("{}:{}", cfg.global.server_host, cfg.global.server_port)
-    })
+    });
+
+    if let Some(ref a) = addr {
+        let mut cache = SERVER_ADDR_CACHE.write().expect("Server addr cache RwLock poisoned");
+        *cache = Some(a.clone());
+    }
+
+    addr
 }
 
 /// Returns the maximum number of parallel agent sessions, or `None` if not initialized.
@@ -124,9 +145,15 @@ pub fn is_yolo_mode() -> bool {
 pub fn reset() {
     let mut guard = CONFIG.write().expect("Config RwLock poisoned");
     *guard = None;
+    // Also clear the server address cache
+    let mut cache = SERVER_ADDR_CACHE.write().expect("Server addr cache RwLock poisoned");
+    *cache = None;
 }
 
 /// Sets a specific configuration for testing purposes.
+///
+/// **Note:** This function bypasses `validate()`. Tests may inject
+/// minimal or edge-case configs that would fail production validation.
 ///
 /// # Test Only
 /// This function is only available in test builds (`#[cfg(test)]`).
@@ -134,4 +161,7 @@ pub fn reset() {
 pub fn with_config(config: Config) {
     let mut guard = CONFIG.write().expect("Config RwLock poisoned");
     *guard = Some(config);
+    // Clear the server address cache since config may have changed
+    let mut cache = SERVER_ADDR_CACHE.write().expect("Server addr cache RwLock poisoned");
+    *cache = None;
 }
