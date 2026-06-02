@@ -297,46 +297,7 @@ spawn_command = "opencode acp"
     assert!(content.contains("Test Agent"));
 }
 
-// ─── Accessor logic tests ──────────────────────────────────────────
-// These tests verify query logic by constructing Config directly,
-// since the global OnceLock singleton cannot be reset between tests.
-
-#[test]
-fn test_get_before_init_returns_none() {
-    // get() returns None when config is not initialized
-    // This is tested by checking that get() doesn't panic
-    // Note: The global singleton may already be initialized from other tests,
-    // so we test the logic indirectly.
-    // The key property is: get() returns Option, not panic.
-    let result = get();
-    // result is either Some (if init was called) or None (if not)
-    // Either way, no panic occurred — that's what we're testing
-    let _ = result;
-}
-
-#[test]
-fn test_is_yolo_mode_default_false() {
-    // is_yolo_mode() returns false when config is not initialized
-    // This is the safe default behavior
-    // We test the logic by verifying the function doesn't panic
-    let result = is_yolo_mode();
-    // If config not initialized, returns false
-    // If config initialized with defaults, also returns false (default)
-    // Either way, this is correct behavior
-    assert!(!result || result); // just verify no panic
-}
-
-#[test]
-fn test_get_agents_by_role_empty_when_uninit() {
-    // get_agents_by_role returns empty Vec when not initialized
-    let result = get_agents_by_role("builder");
-    // Either empty (not initialized) or has agents (initialized)
-    // Either way, no panic
-    let _ = result;
-}
-
-// ─── Query logic tests (direct, no singleton) ──────────────────────
-// These test the query logic by constructing Config objects directly.
+// ─── Test helper: make a Config with known agents ──────────────────
 
 fn make_test_config() -> Config {
     Config {
@@ -385,6 +346,204 @@ fn make_test_config() -> Config {
         },
     }
 }
+
+// ─── Accessor init tests ───────────────────────────────────────────
+
+#[test]
+fn test_init_success() {
+    reset(); // Ensure clean state
+    // init() loads from the real config file, so we test that it doesn't panic
+    // The actual file loading is tested elsewhere
+    // We just verify the API works
+    let _ = init(); // May succeed or fail depending on config file, but shouldn't panic
+}
+
+#[test]
+fn test_init_already_initialized() {
+    // Use with_config to set up a known state
+    let cfg = make_test_config();
+    reset();
+    with_config(cfg);
+    
+    // Now init() should fail with AlreadyInitialized
+    let result = init();
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(matches!(err, ConfigError::AlreadyInitialized));
+}
+
+#[test]
+fn test_get_before_init_returns_none() {
+    reset();
+    assert!(get().is_none());
+}
+
+#[test]
+fn test_get_after_with_config() {
+    let cfg = make_test_config();
+    reset();
+    with_config(cfg.clone());
+    
+    let result = get();
+    assert!(result.is_some());
+    let config = result.unwrap();
+    assert_eq!(config.global.server_port, 3000);
+}
+
+// ─── Accessor reset tests ──────────────────────────────────────────
+
+#[test]
+fn test_reset_clears_config() {
+    let cfg = make_test_config();
+    reset();
+    with_config(cfg);
+    assert!(get().is_some());
+    
+    reset();
+    assert!(get().is_none());
+}
+
+#[test]
+fn test_reinit_after_reset() {
+    let cfg = make_test_config();
+    reset();
+    with_config(cfg.clone());
+    assert!(get().is_some());
+    
+    reset();
+    assert!(get().is_none());
+    
+    // Should be able to set config again after reset
+    with_config(cfg);
+    assert!(get().is_some());
+}
+
+// ─── Accessor with_config tests ────────────────────────────────────
+
+#[test]
+fn test_with_config_injection() {
+    let cfg = make_test_config();
+    reset();
+    with_config(cfg.clone());
+    
+    let loaded = get().unwrap();
+    assert_eq!(loaded.global.server_port, cfg.global.server_port);
+    assert_eq!(loaded.agents.len(), cfg.agents.len());
+}
+
+#[test]
+fn test_with_config_overwrite() {
+    let cfg1 = make_test_config();
+    let mut cfg2 = make_test_config();
+    cfg2.global.server_port = 9999;
+    
+    reset();
+    with_config(cfg1);
+    assert_eq!(get().unwrap().global.server_port, 3000);
+    
+    with_config(cfg2);
+    assert_eq!(get().unwrap().global.server_port, 9999);
+}
+
+// ─── Accessor query function tests ─────────────────────────────────
+
+#[test]
+fn test_singleton_query_agent_by_name() {
+    let cfg = make_test_config();
+    reset();
+    with_config(cfg);
+    
+    let agent = get_agent_by_name("Builder");
+    assert!(agent.is_some());
+    assert_eq!(agent.unwrap().r#type, "opencode");
+    
+    let missing = get_agent_by_name("Nonexistent");
+    assert!(missing.is_none());
+}
+
+#[test]
+fn test_singleton_query_agent_by_type() {
+    let cfg = make_test_config();
+    reset();
+    with_config(cfg);
+    
+    let agent = get_agent_by_type("kiro");
+    assert!(agent.is_some());
+    assert_eq!(agent.unwrap().name, "Reviewer");
+    
+    let missing = get_agent_by_type("claude");
+    assert!(missing.is_none());
+}
+
+#[test]
+fn test_singleton_query_agents_by_role() {
+    let cfg = make_test_config();
+    reset();
+    with_config(cfg);
+    
+    // "builder" role should find "Builder" via default_builder_agent preference
+    let agents = get_agents_by_role("builder");
+    assert_eq!(agents.len(), 1);
+    assert_eq!(agents[0].name, "Builder");
+    
+    // "reviewer" role should find "Reviewer" via default_reviewer_agent preference
+    let agents = get_agents_by_role("reviewer");
+    assert_eq!(agents.len(), 1);
+    assert_eq!(agents[0].name, "Reviewer");
+}
+
+#[test]
+fn test_singleton_server_addr() {
+    let cfg = make_test_config();
+    reset();
+    with_config(cfg);
+    
+    let addr = get_server_addr();
+    assert_eq!(addr, Some("127.0.0.1:3000".to_string()));
+}
+
+#[test]
+fn test_singleton_max_parallel() {
+    let cfg = make_test_config();
+    reset();
+    with_config(cfg);
+    
+    assert_eq!(get_max_parallel(), Some(4));
+}
+
+#[test]
+fn test_singleton_default_timeout() {
+    let cfg = make_test_config();
+    reset();
+    with_config(cfg);
+    
+    assert_eq!(get_default_timeout(), Some(3600));
+}
+
+#[test]
+fn test_singleton_yolo_mode() {
+    let cfg = make_test_config();
+    reset();
+    with_config(cfg);
+    
+    assert!(!is_yolo_mode());
+}
+
+#[test]
+fn test_singleton_query_returns_none_before_init() {
+    reset();
+    
+    assert!(get_agent_by_name("Builder").is_none());
+    assert!(get_agent_by_type("opencode").is_none());
+    assert!(get_agents_by_role("builder").is_empty());
+    assert!(get_server_addr().is_none());
+    assert!(get_max_parallel().is_none());
+    assert!(get_default_timeout().is_none());
+    assert!(!is_yolo_mode());
+}
+
+// ─── Query logic tests (direct, no singleton) ──────────────────────
+// These test the query logic by constructing Config objects directly.
 
 #[test]
 fn test_query_agent_by_name() {
