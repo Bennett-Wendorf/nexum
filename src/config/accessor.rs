@@ -11,11 +11,16 @@ use super::schema::{AgentRegistration, Config};
 /// Global configuration singleton.
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
+/// Returns a reference to the loaded configuration, or `None` if not yet initialized.
+pub fn get() -> Option<&'static Config> {
+    CONFIG.get()
+}
+
 /// Returns a reference to the loaded configuration.
 ///
 /// # Panics
 /// Panics if `init()` has not been called yet or if initialization failed.
-pub fn get() -> &'static Config {
+pub fn get_unchecked() -> &'static Config {
     CONFIG.get().expect("Configuration has not been initialized. Call config::init() first.")
 }
 
@@ -41,12 +46,12 @@ pub fn init() -> Result<(), ConfigError> {
 
 /// Finds an agent registration by its human-readable name.
 pub fn get_agent_by_name(name: &str) -> Option<&'static AgentRegistration> {
-    get().agents.iter().find(|a| a.name == name)
+    get()?.agents.iter().find(|a| a.name == name)
 }
 
 /// Finds an agent registration by its type identifier (e.g., "opencode", "kiro").
 pub fn get_agent_by_type(agent_type: &str) -> Option<&'static AgentRegistration> {
-    get().agents.iter().find(|a| a.r#type == agent_type)
+    get()?.agents.iter().find(|a| a.r#type == agent_type)
 }
 
 /// Returns agents suitable for a given role.
@@ -54,7 +59,10 @@ pub fn get_agent_by_type(agent_type: &str) -> Option<&'static AgentRegistration>
 /// First checks preferences for a default agent assignment, then falls back
 /// to filtering by agent type matching the role name.
 pub fn get_agents_by_role(role: &str) -> Vec<&'static AgentRegistration> {
-    let cfg = get();
+    let cfg = match get() {
+        Some(cfg) => cfg,
+        None => return Vec::new(),
+    };
     
     // Check preferences for default agent assignment
     let default_name = match role {
@@ -76,23 +84,28 @@ pub fn get_agents_by_role(role: &str) -> Vec<&'static AgentRegistration> {
         .collect()
 }
 
-/// Returns the server address as "host:port" string.
-pub fn get_server_addr() -> String {
-    let cfg = get();
-    format!("{}:{}", cfg.global.server_host, cfg.global.server_port)
+/// Returns the server address as "host:port" string, or `None` if not initialized.
+/// The result is cached after the first call.
+pub fn get_server_addr() -> Option<String> {
+    static ADDR: OnceLock<String> = OnceLock::new();
+    let cfg = get()?;
+    Some(ADDR.get_or_init(|| {
+        format!("{}:{}", cfg.global.server_host, cfg.global.server_port)
+    }).clone())
 }
 
-/// Returns the maximum number of parallel agent sessions.
-pub fn get_max_parallel() -> u16 {
-    get().global.max_parallel
+/// Returns the maximum number of parallel agent sessions, or `None` if not initialized.
+pub fn get_max_parallel() -> Option<u16> {
+    get().map(|cfg| cfg.global.max_parallel)
 }
 
-/// Returns the default task timeout in seconds.
-pub fn get_default_timeout() -> u64 {
-    get().global.default_timeout_seconds
+/// Returns the default task timeout in seconds, or `None` if not initialized.
+pub fn get_default_timeout() -> Option<u64> {
+    get().map(|cfg| cfg.global.default_timeout_seconds)
 }
 
 /// Returns whether yolo mode (bypass permission prompts) is enabled.
+/// Returns `false` if configuration has not been initialized (safe default).
 pub fn is_yolo_mode() -> bool {
-    get().preferences.yolo_mode
+    get().map(|cfg| cfg.preferences.yolo_mode).unwrap_or(false)
 }
