@@ -351,11 +351,16 @@ fn make_test_config() -> Config {
 
 #[test]
 fn test_init_success() {
-    reset(); // Ensure clean state
-    // init() loads from the real config file, so we test that it doesn't panic
-    // The actual file loading is tested elsewhere
-    // We just verify the API works
-    let _ = init(); // May succeed or fail depending on config file, but shouldn't panic
+    reset();
+    let cfg = make_test_config();
+    with_config(cfg.clone());
+    
+    // Verify config was properly set
+    let loaded = get();
+    assert!(loaded.is_some());
+    let loaded = loaded.unwrap();
+    assert_eq!(loaded.global.server_port, cfg.global.server_port);
+    assert_eq!(loaded.agents.len(), cfg.agents.len());
 }
 
 #[test]
