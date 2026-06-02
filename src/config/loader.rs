@@ -8,10 +8,6 @@ use thiserror::Error;
 /// Custom error type for configuration operations
 #[derive(Debug, Error)]
 pub enum ConfigError {
-    /// File read/write error
-    #[error("File I/O error at {0}: {1}")]
-    FileIo(PathBuf, #[source] io::Error),
-
     /// TOML parsing error
     #[error("Failed to parse configuration: {0}")]
     ParseError(String),
@@ -23,6 +19,10 @@ pub enum ConfigError {
     /// Default config creation error
     #[error("Failed to create default config at {0}: {1}")]
     CreateError(PathBuf, #[source] io::Error),
+
+    /// Environment variable error
+    #[error("{0}")]
+    EnvError(String),
 }
 
 /// Default configuration template
@@ -56,29 +56,37 @@ spawn_command = "opencode acp"
 ///
 /// Checks `XDG_CONFIG_HOME` env var, falls back to `~/.config`.
 /// Returns `{config_home}/nexum/config.toml`.
-pub fn config_path() -> PathBuf {
+/// Returns an error if `HOME` is not set and `XDG_CONFIG_HOME` is unavailable.
+pub fn config_path() -> Result<PathBuf, ConfigError> {
     let config_home = if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
         if xdg.starts_with('~') {
-            expand_tilde(&xdg)
+            expand_tilde(&xdg)?
         } else {
             PathBuf::from(xdg)
         }
     } else {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
+        let home = std::env::var("HOME").map_err(|_| {
+            ConfigError::EnvError("HOME environment variable is not set".to_string())
+        })?;
         PathBuf::from(home).join(".config")
     };
-    config_home.join("nexum").join("config.toml")
+    Ok(config_home.join("nexum").join("config.toml"))
 }
 
-/// Expand `~` to the user's home directory
-fn expand_tilde(path: &str) -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
+/// Expand `~` to the user's home directory.
+///
+/// Only handles `~` for the current user (via the `HOME` environment variable).
+/// Does not support `~username` expansion for other users.
+fn expand_tilde(path: &str) -> Result<PathBuf, ConfigError> {
+    let home = std::env::var("HOME").map_err(|_| {
+        ConfigError::EnvError("HOME environment variable is not set".to_string())
+    })?;
     if path == "~" {
-        PathBuf::from(home)
+        Ok(PathBuf::from(home))
     } else if path.starts_with("~/") {
-        PathBuf::from(home).join(path.strip_prefix("~/").unwrap())
+        Ok(PathBuf::from(home).join(path.strip_prefix("~/").unwrap()))
     } else {
-        PathBuf::from(path)
+        Ok(PathBuf::from(path))
     }
 }
 
@@ -87,11 +95,21 @@ fn expand_tilde(path: &str) -> PathBuf {
 /// If the config file doesn't exist, creates it with the default template.
 /// Supports environment variable overrides with `NEXUM_` prefix.
 pub fn load() -> Result<Config, ConfigError> {
-    let path = config_path();
+    let path = config_path()?;
 
-    if !path.exists() {
-        tracing::info!("Config file not found, creating default at {:?}", path);
-        create_default_config()?;
+    // Attempt to read the file first. If it doesn't exist, create default and retry.
+    // This avoids a TOCTOU race between checking existence and creating the file.
+    match fs::read_to_string(&path) {
+        Ok(_) => {} // file exists, proceed to load
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            tracing::info!("Config file not found, creating default at {:?}", path);
+            create_default_config()?;
+        }
+        Err(e) => {
+            return Err(ConfigError::ParseError(format!(
+                "Failed to read config: {}", e
+            )));
+        }
     }
 
     let config_builder = config::Config::builder()
@@ -113,7 +131,7 @@ pub fn load() -> Result<Config, ConfigError> {
 
 /// Creates a default configuration file if it doesn't exist.
 pub fn create_default_config() -> Result<(), ConfigError> {
-    let path = config_path();
+    let path = config_path()?;
     let parent = path.parent().ok_or_else(|| {
         ConfigError::CreateError(
             path.clone(),
@@ -137,6 +155,8 @@ pub fn create_default_config() -> Result<(), ConfigError> {
 /// - server_port is in valid range (1-65535)
 /// - max_parallel > 0
 /// - Agent names are unique
+/// - log_level is one of: trace, debug, info, warn, error
+/// - server_host is not empty
 pub fn validate(config: &Config) -> Result<(), ConfigError> {
     // Warn if no agents registered
     if config.agents.is_empty() {
@@ -175,6 +195,22 @@ pub fn validate(config: &Config) -> Result<(), ConfigError> {
     if config.global.max_parallel == 0 {
         return Err(ConfigError::ValidationError(
             "max_parallel must be greater than 0".to_string(),
+        ));
+    }
+
+    // Validate log_level
+    let valid_levels = ["trace", "debug", "info", "warn", "error"];
+    if !valid_levels.contains(&config.global.log_level.as_str()) {
+        return Err(ConfigError::ValidationError(format!(
+            "Invalid log_level '{}'. Must be one of: trace, debug, info, warn, error",
+            config.global.log_level
+        )));
+    }
+
+    // Validate server_host
+    if config.global.server_host.trim().is_empty() {
+        return Err(ConfigError::ValidationError(
+            "server_host must not be empty".to_string(),
         ));
     }
 

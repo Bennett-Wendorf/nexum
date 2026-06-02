@@ -29,7 +29,7 @@ pub fn init() -> Result<(), ConfigError> {
     validate(&cfg)?;
     
     tracing::info!("Configuration loaded successfully from {:?}", 
-        super::loader::config_path());
+        super::loader::config_path()?);
     
     match CONFIG.set(cfg) {
         Ok(()) => Ok(()),
