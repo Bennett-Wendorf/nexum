@@ -10,13 +10,8 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Nexum starting up...");
 
     // Initialize configuration
-    match config::init() {
-        Ok(()) => tracing::info!("Configuration loaded successfully"),
-        Err(e) => {
-            tracing::error!("Failed to load configuration: {}", e);
-            std::process::exit(1);
-        }
-    }
+    config::init().map_err(|e| anyhow::anyhow!("Failed to load configuration: {}", e))?;
+    tracing::info!("Configuration loaded successfully");
 
     Ok(())
 }
