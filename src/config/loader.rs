@@ -23,6 +23,10 @@ pub enum ConfigError {
     /// Environment variable error
     #[error("{0}")]
     Env(String),
+
+    /// Configuration was already initialized
+    #[error("Configuration has already been initialized")]
+    AlreadyInitialized,
 }
 
 /// Default configuration template
