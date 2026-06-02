@@ -1,7 +1,7 @@
 # Plan: 007 - REST API
 
 ## Task Description
-Implement the complete REST API layer for nexum using the Axum web framework. This module provides HTTP endpoints for plan and task CRUD operations, status transitions, execution state queries, and configuration access. The API serves as the primary interface between the Svelte frontend and the Rust backend, enabling the web dashboard to manage plans, tasks, and agent orchestration state.
+Implement the complete REST API layer for nexum using the Axum web framework. This module provides HTTP endpoints for plan and task CRUD operations, status transitions, execution state queries, and configuration access. The API is the public contract — the bundled Svelte frontend is just one consumer. Any third party (Slack bot, Discord bot, CLI tool, custom dashboard, CI/CD pipeline) must be able to build their own client using only this documented API. See `design/backend-api.md` for the full API contract.
 
 ## Objective
 Create a fully functional `src/api/` module that:
@@ -16,16 +16,20 @@ Create a fully functional `src/api/` module that:
 - Integrates with the persistence layer for all data operations
 - Integrates with the config module for configuration queries
 - Supports the complete status machines defined in `design/work-statuses.md`
+- Generates an OpenAPI 3.1 spec (`docs/api/openapi.json`) for machine-readable API documentation
+- Produces API responses that are never UI-coupled (no HTML, no frontend-specific formatting)
 
 ## Problem Statement
-Nexum needs a REST API to expose its plan/task management capabilities to the Svelte frontend and any external consumers. Without this API, the web dashboard cannot interact with the system — users cannot view plans, create tasks, transition statuses, or monitor execution state. The API must:
+Nexum needs a REST API to expose its plan/task management capabilities to any client — the bundled web dashboard, Slack bots, Discord bots, CLI tools, CI/CD pipelines, and any other third-party integration. Without this API, nothing can interact with the system. The API must:
 - Follow RESTful conventions with proper HTTP methods and status codes
 - Serialize/deserialize data using serde (per tech-stack design)
 - Handle errors gracefully using thiserror + anyhow (per tech-stack design)
 - Route through Axum's ergonomic routing system
 - Integrate with the persistence layer for file-based data access
 - Support the full status machine transitions for plans and tasks
-- Provide configuration introspection for the frontend
+- Provide configuration introspection for any client
+- Be fully documented in an OpenAPI 3.1 spec for third-party integrations
+- Never couple responses to the bundled web UI
 
 ## Solution Approach
 Build an `api` module in `src/api/` with the following submodules:
@@ -38,19 +42,23 @@ Build an `api` module in `src/api/` with the following submodules:
 6. **`config.rs`** — Configuration and agent listing endpoints
 7. **`errors.rs`** — API error type and error response handler
 8. **`middleware.rs`** — Error handling middleware, request validation utilities
-9. **`tests.rs`** — Integration tests using `axum::test` or `reqwest`
+9. **`openapi.rs`** — OpenAPI 3.1 spec generation for `docs/api/openapi.json`
+10. **`tests.rs`** — Integration tests using `axum::test` or `reqwest`
 
 The API follows these design principles:
-- **RESTful routing**: `/api/plans`, `/api/plans/{plan_id}`, `/api/plans/{plan_id}/tasks`, etc.
-- **JSON bodies**: All request/response bodies use `serde_json` serialization
+- **API-first**: Documented before implemented; web UI is just one consumer (see `design/backend-api.md`)
+- **RESTful routing**: `/api/v1/plans`, `/api/v1/plans/{plan_id}`, `/api/v1/plans/{plan_id}/tasks`, etc.
+- **JSON bodies**: All request/response bodies use `serde_json` serialization, never UI-coupled
 - **Error handling**: `thiserror` for typed errors, `anyhow` for internal error chaining
 - **Axum extractors**: Use `Path`, `Json`, `State`, `Query` extractors
 - **State sharing**: Use Axum's `State` extractor to share `AppState` (repo root, config)
 - **Validation**: Validate inputs at the handler level with descriptive error responses
+- **Versioned**: URL-based versioning (`/api/v1/...`) for future compatibility
 
 ## Relevant Files
 
 ### Existing Files
+- `design/backend-api.md` — Full API contract: endpoints, schemas, WebSocket events, versioning, third-party integration requirements
 - `design/tech-stack.md` — Defines Axum as web framework, serde for serialization, thiserror + anyhow for errors
 - `design/persistence.md` — Defines plan/task data models and file structures
 - `design/work-statuses.md` — Defines status machines for plans and tasks
@@ -70,7 +78,9 @@ The API follows these design principles:
 - `src/api/config.rs` — Configuration and agent listing handlers
 - `src/api/errors.rs` — ApiError enum and error response handler
 - `src/api/middleware.rs` — Error handling middleware and validation utilities
+- `src/api/openapi.rs` — OpenAPI 3.1 spec generation
 - `src/api/tests.rs` — Integration tests for all endpoints
+- `docs/api/openapi.json` — Machine-readable API documentation
 
 ## Team Orchestration
 
@@ -817,26 +827,26 @@ The team-lead agent will orchestrate execution using these team members:
     pub fn create_router(state: AppState) -> Router {
         Router::new()
             // Health check
-            .route("/api/health", get(execution::health_check))
+            .route("/api/v1/health", get(execution::health_check))
             
             // Plan endpoints
-            .route("/api/plans", get(plans::list_plans).post(plans::create_plan))
-            .route("/api/plans/{branch}/{plan_id}", get(plans::get_plan).put(plans::update_plan).delete(plans::delete_plan))
-            .route("/api/plans/{branch}/{plan_id}/status", patch(plans::transition_plan_status))
+            .route("/api/v1/plans", get(plans::list_plans).post(plans::create_plan))
+            .route("/api/v1/plans/{branch}/{plan_id}", get(plans::get_plan).put(plans::update_plan).delete(plans::delete_plan))
+            .route("/api/v1/plans/{branch}/{plan_id}/status", patch(plans::transition_plan_status))
             
             // Task endpoints
-            .route("/api/plans/{branch}/{plan_id}/tasks", get(tasks::list_tasks).post(tasks::create_task))
-            .route("/api/plans/{branch}/{plan_id}/tasks/{task_id}", get(tasks::get_task).put(tasks::update_task).delete(tasks::delete_task))
-            .route("/api/plans/{branch}/{plan_id}/tasks/{task_id}/status", patch(tasks::transition_task_status))
-            .route("/api/plans/{branch}/{plan_id}/tasks/{task_id}/claim", post(tasks::claim_task))
+            .route("/api/v1/plans/{branch}/{plan_id}/tasks", get(tasks::list_tasks).post(tasks::create_task))
+            .route("/api/v1/plans/{branch}/{plan_id}/tasks/{task_id}", get(tasks::get_task).put(tasks::update_task).delete(tasks::delete_task))
+            .route("/api/v1/plans/{branch}/{plan_id}/tasks/{task_id}/status", patch(tasks::transition_task_status))
+            .route("/api/v1/plans/{branch}/{plan_id}/tasks/{task_id}/claim", post(tasks::claim_task))
             
             // Execution endpoints
-            .route("/api/plans/{branch}/{plan_id}/execution", get(execution::get_execution_state))
-            .route("/api/running", get(execution::list_running_tasks))
+            .route("/api/v1/plans/{branch}/{plan_id}/execution", get(execution::get_execution_state))
+            .route("/api/v1/running", get(execution::list_running_tasks))
             
             // Config endpoints
-            .route("/api/config", get(config::get_config))
-            .route("/api/agents", get(config::list_agents))
+            .route("/api/v1/config", get(config::get_config))
+            .route("/api/v1/agents", get(config::list_agents))
             
             // Middleware
             .layer(middleware::request_id_layer())
@@ -970,17 +980,19 @@ The team-lead agent will orchestrate execution using these team members:
   - Document error response format
   - Document request validation rules
   - Document the AppState and how it's shared via Axum State extractor
+  - Generate OpenAPI 3.1 spec at `docs/api/openapi.json` covering all endpoints, schemas, and error responses
+  - Verify the OpenAPI spec validates against the OpenAPI 3.1 schema
 
 ## Acceptance Criteria
 - `cargo check` succeeds with no errors in the api module
 - `cargo test --package nexum api` passes all tests
 - `cargo clippy --package nexum` produces no warnings in api module
 - All REST endpoints are registered and accessible:
-  - Plans: GET/POST /api/plans, GET/PUT/DELETE /api/plans/{branch}/{plan_id}, PATCH /api/plans/{branch}/{plan_id}/status
-  - Tasks: GET/POST /api/plans/{branch}/{plan_id}/tasks, GET/PUT/DELETE /api/plans/{branch}/{plan_id}/tasks/{task_id}, PATCH /api/plans/{branch}/{plan_id}/tasks/{task_id}/status, POST /api/plans/{branch}/{plan_id}/tasks/{task_id}/claim
-  - Execution: GET /api/plans/{branch}/{plan_id}/execution, GET /api/running
-  - Config: GET /api/config, GET /api/agents
-  - Health: GET /api/health
+  - Plans: GET/POST /api/v1/plans, GET/PUT/DELETE /api/v1/plans/{branch}/{plan_id}, PATCH /api/v1/plans/{branch}/{plan_id}/status
+  - Tasks: GET/POST /api/v1/plans/{branch}/{plan_id}/tasks, GET/PUT/DELETE /api/v1/plans/{branch}/{plan_id}/tasks/{task_id}, PATCH /api/v1/plans/{branch}/{plan_id}/tasks/{task_id}/status, POST /api/v1/plans/{branch}/{plan_id}/tasks/{task_id}/claim
+  - Execution: GET /api/v1/plans/{branch}/{plan_id}/execution, GET /api/v1/running
+  - Config: GET /api/v1/config, GET /api/v1/agents
+  - Health: GET /api/v1/health
 - All handlers return proper HTTP status codes:
   - 200 for successful GET/PUT/PATCH
   - 201 for successful POST (create)
@@ -1004,6 +1016,8 @@ The team-lead agent will orchestrate execution using these team members:
 - `AppState` is shared via Axum `State` extractor
 - Router construction includes all routes and middleware
 - Integration tests cover all endpoints, success paths, and error paths
+- OpenAPI 3.1 spec exists at `docs/api/openapi.json` and covers all endpoints, schemas, and error responses
+- API responses are never UI-coupled (no HTML, no frontend-specific formatting)
 
 ## Validation Commands
 - `cargo check` — Verify Rust project compiles
@@ -1012,12 +1026,15 @@ The team-lead agent will orchestrate execution using these team members:
 - `cargo clippy --package nexum` — Check for Rust lint warnings
 - `cargo doc --package nexum --no-deps` — Verify rustdoc generation succeeds
 - `find src/api/ -type f` — Verify all module files exist
-- `grep -r "api/plans" src/api/` — Verify plan routes are registered
-- `grep -r "api/tasks" src/api/` — Verify task routes are registered
+- `grep -r "api/v1/plans" src/api/` — Verify plan routes are registered
+- `grep -r "api/v1/tasks" src/api/` — Verify task routes are registered
 - `grep -r "ApiError" src/api/` — Verify error handling is used throughout
+- `test -f docs/api/openapi.json` — Verify OpenAPI spec exists
 
 ## Notes
 - This plan depends on chunks 001 (Project Scaffolding), 002 (Configuration System), and 003 (Persistence Layer) being completed first. The `src/api/mod.rs` stub, persistence layer types and functions, and config module must exist before this plan can be executed.
+- **API-first principle**: The API is the public contract. The bundled web UI is just one consumer. All design decisions must support third-party clients (Slack, Discord, CLI, CI/CD). See `design/backend-api.md`.
+- All routes use `/api/v1/` prefix for URL-based versioning.
 - The `tower` crate is needed for middleware layers (request ID). It's a dependency of Axum but may need explicit import.
 - The `axum::extract::Query` extractor automatically deserializes query parameters from the URL.
 - The `axum::extract::Path` extractor automatically deserializes path parameters.
@@ -1027,8 +1044,9 @@ The team-lead agent will orchestrate execution using these team members:
 - The `tempfile` crate should be added as a dev-dependency for testing.
 - The `serde_json::json!` macro is useful for building JSON bodies in tests.
 - Consider adding CORS middleware in a future enhancement if the frontend and backend are served from different origins. For MVP, they're served from the same origin (Axum serves static files).
-- The API version is not versioned in the path (no `/api/v1/`). If versioning is needed later, it can be added.
 - Authentication is not implemented in MVP (localhost-only per tech-stack design). Future auth support should use the Axum session/cookie system or JWT.
 - The `ClaimTaskRequest` includes `agent_pid` which will be the subprocess PID of the spawned agent. This is used for stale heartbeat detection by the Overlord.
 - The PATCH method is used for status transitions because it represents a partial update (only the status field changes).
-- The router uses Axum's `.route()` method for registering handlers. Each route can have multiple HTTP methods chained (e.g., `.route("/api/plans", get(...).post(...))`).
+- The router uses Axum's `.route()` method for registering handlers. Each route can have multiple HTTP methods chained (e.g., `.route("/api/v1/plans", get(...).post(...))`).
+- The OpenAPI 3.1 spec (`docs/api/openapi.json`) must be generated from the implementation. Consider using `utoipa` for derive-macro-based spec generation, or generate the spec manually.
+- WebSocket endpoints (`/api/v1/ws/events`, `/api/v1/ws/agent/{agent_id}`) are deferred to chunk 013 (WebSocket Event Streaming) but must be documented in the OpenAPI spec.

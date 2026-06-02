@@ -1,7 +1,7 @@
 # Plan: 008 - Frontend Dashboard
 
 ## Task Description
-Build the Svelte SPA frontend dashboard for nexum. A vanilla Svelte 5 application with TypeScript (no SvelteKit) providing a web interface for managing plans, tasks, and monitoring agent orchestration. Consumes the REST API from chunk 007, renders plans/tasks in a hierarchical list view with kanban-style task status columns, includes markdown rendering, status badges, and a dark-themed UI matching existing mockup designs.
+Build the Svelte SPA frontend dashboard for nexum. A vanilla Svelte 5 application with TypeScript (no SvelteKit) providing a web interface for managing plans, tasks, and monitoring agent orchestration. This is one consumer of the REST API from chunk 007 — the API is the public contract that also supports third-party clients (Slack, Discord, CLI, CI/CD). See `design/backend-api.md` for the full API contract.
 
 ## Objective
 Create a fully functional Svelte SPA in `web/` that:

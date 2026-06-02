@@ -156,7 +156,7 @@ Multiple instances of the same agent type can run in parallel. Each task gets it
 
 ## Event relay
 
-ACP events from agent subprocesses flow into a central event bus, which broadcasts them to the Svelte frontend via WebSocket. The frontend filters events by task/view client-side.
+ACP events from agent subprocesses flow into a central event bus, which broadcasts them via WebSocket to any connected client (bundled web UI, Slack bot, Discord bot, etc.). Event envelope and types are documented in the OpenAPI spec (see backend-api.md).
 
 ## Configuration location
 

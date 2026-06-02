@@ -24,8 +24,8 @@ Branch creation, worktree spawn/cleanup, task-branch-into-plan-branch merging, d
 ### 6. ACP Client
 JSON-RPC over stdio via `jsonrpsee`, subprocess management via `tokio::process`, session lifecycle (create/run/destroy), event streaming (from `agent-harness-integration.md`)
 
-### 7. REST API
-Plan/task CRUD, status transitions, execution state endpoints via Axum (from `tech-stack.md` architecture)
+### 7. REST API + OpenAPI Spec
+Plan/task CRUD, status transitions, execution state endpoints via Axum. Every endpoint documented in OpenAPI 3.1 spec (from `backend-api.md`, `tech-stack.md` architecture)
 
 ### 8. Frontend Dashboard
 Svelte SPA: plan/task list views, status display, basic markdown rendering (from `interfaces.md`, `tech-stack.md`)
@@ -47,7 +47,7 @@ Post-execution review workflow, `waiting-manual-review` status handling
 LLM-powered user interaction, prioritization, exception handling (from `agent-roles.md`)
 
 ### 13. WebSocket Event Streaming
-Real-time agent events to frontend via axum WS (from `agent-harness-integration.md` event relay)
+Real-time agent events via axum WS. Event envelope and types documented in OpenAPI spec (from `backend-api.md`, `agent-harness-integration.md` event relay)
 
 ### 14. Remote Agent Support
 ACP over HTTP/WebSocket via `reqwest`
@@ -63,3 +63,6 @@ Ad-hoc tasks outside main workflow (from `agent-roles.md`)
 
 ### 18. TUI
 Terminal UI option (from `operation-structure.md`)
+
+### 19. Third-party Integration Examples
+Reference integrations: Slack bot, Discord bot, CLI tool (validates API is usable by non-web clients)

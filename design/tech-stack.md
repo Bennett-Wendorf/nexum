@@ -4,7 +4,8 @@
 
 - **Type safety** — catch bugs at compile time, not runtime
 - **Dependency hygiene** — minimal, well-maintained dependencies
-- **Web-first** — dashboard UI with real-time updates
+- **API-first** — documented REST + WebSocket API; web UI is just one consumer (see backend-api.md)
+- **Web dashboard** — bundled UI with real-time updates
 - **File-based persistence** — no database, markdown is source of truth
 
 ---
@@ -40,6 +41,7 @@ ACP communicates over JSON-RPC 2.0 via stdio. While the envelope is simple, robu
 
 - **`reqwest`** — HTTP client for remote agent support (ACP over HTTP/WebSocket)
 - **Auth** — needed when accessing nexum over network (MVP is localhost-only)
+- **OpenAPI** — `utoipa` or manual spec for machine-readable API documentation
 
 ### Markdown handling
 
@@ -76,7 +78,7 @@ Utility-first CSS keeps the codebase smaller for common patterns while allowing 
 ## Architecture
 
 ```
-Browser
+Any Client (web UI, Slack, Discord, CLI, CI/CD)
     |
     | HTTP + WebSocket
     v
@@ -84,7 +86,7 @@ Axum (Rust API server)
     |
     +-- REST endpoints (plans, tasks, status)
     +-- WebSocket (real-time agent events)
-    +-- Static file serving (Svelte frontend)
+    +-- Static file serving (bundled Svelte frontend)
     |
     +-- File system (markdown plans/tasks, JSON state)
     |
@@ -93,7 +95,7 @@ Axum (Rust API server)
 ACP-compatible agents (subprocess)
 ```
 
-Nexum is a web application with a Rust API backend and Svelte frontend. The backend handles orchestration logic (git, ACP, file management) and serves the frontend as static files. Real-time agent events stream to the frontend via WebSocket.
+Nexum is an API server with a bundled web dashboard. The backend handles orchestration logic (git, ACP, file management) and exposes a documented REST + WebSocket API. The Svelte frontend is one consumer of that API; third-party clients (Slack bots, Discord bots, custom UIs, CLI tools) connect the same way. See backend-api.md for full API contract.
 
 ---
 
