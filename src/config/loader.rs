@@ -76,7 +76,7 @@ fn expand_tilde(path: &str) -> PathBuf {
     if path == "~" {
         PathBuf::from(home)
     } else if path.starts_with("~/") {
-        PathBuf::from(home).join(&path[2..])
+        PathBuf::from(home).join(path.strip_prefix("~/").unwrap())
     } else {
         PathBuf::from(path)
     }
