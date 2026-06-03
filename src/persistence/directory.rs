@@ -5,7 +5,7 @@
 //! traversal utilities.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::errors::{PersistenceError, Result};
 use super::io::create_dir_all;
@@ -35,7 +35,7 @@ pub fn state_dir(repo_root: &str, branch: &str) -> PathBuf {
 ///
 /// Returns `<specs>/<branch>/<plan_id>-<plan_name>/`.
 pub fn plan_dir(repo_root: &str, branch: &str, plan_id: &str, plan_name: &str) -> PathBuf {
-    let slug = format!("{}-{}", plan_id, slugify(plan_name));
+    let slug = plan_slug(plan_id, plan_name);
     specs_dir(repo_root, branch).join(&slug)
 }
 
@@ -50,7 +50,7 @@ pub fn task_dir(
     task_id: &str,
     task_name: &str,
 ) -> PathBuf {
-    let slug = format!("{}-{}", task_id, slugify(task_name));
+    let slug = task_slug(task_id, task_name);
     plan_dir(repo_root, branch, plan_id, plan_name).join("tasks").join(&slug)
 }
 
@@ -95,7 +95,7 @@ pub fn execution_state_path(
     plan_id: &str,
     plan_name: &str,
 ) -> PathBuf {
-    let slug = format!("{}-{}", plan_id, slugify(plan_name));
+    let slug = plan_slug(plan_id, plan_name);
     state_dir(repo_root, branch).join(&slug).join("execution.json")
 }
 
@@ -110,8 +110,8 @@ pub fn task_log_dir(
     task_id: &str,
     task_name: &str,
 ) -> PathBuf {
-    let slug = format!("{}-{}", plan_id, slugify(plan_name));
-    let task_slug = format!("{}-{}", task_id, slugify(task_name));
+    let slug = plan_slug(plan_id, plan_name);
+    let task_slug = task_slug(task_id, task_name);
     state_dir(repo_root, branch)
         .join(&slug)
         .join("logs")
@@ -135,7 +135,7 @@ pub fn ensure_plan_dir(
     // Create specs plan dir
     create_dir_all(&plan_dir(repo_root, branch, plan_id, plan_name))?;
     // Create state plan dir (parent of execution.json)
-    let slug = format!("{}-{}", plan_id, slugify(plan_name));
+    let slug = plan_slug(plan_id, plan_name);
     create_dir_all(&state_dir(repo_root, branch).join(&slug))
 }
 
@@ -153,6 +153,27 @@ pub fn ensure_task_dir(
 
 // ── Directory Traversal ─────────────────────────────────────────────────────
 
+/// Shared helper: list subdirectory names under the given path.
+fn list_subdirs(path: &Path) -> Result<Vec<String>> {
+    if !path.exists() {
+        return Err(PersistenceError::DirectoryNotFound(path.to_path_buf()));
+    }
+    let entries = fs::read_dir(path).map_err(|e| PersistenceError::Io(path.to_path_buf(), e))?;
+    let mut names = entries
+        .filter_map(|entry| {
+            entry.ok().and_then(|e| {
+                if e.file_type().ok()?.is_dir() {
+                    Some(e.file_name().into_string().ok()?)
+                } else {
+                    None
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    names.sort();
+    Ok(names)
+}
+
 /// List all branch names under `.agent/specs/`.
 ///
 /// Returns the names of subdirectories (one per branch).
@@ -161,19 +182,7 @@ pub fn list_branches(repo_root: &str) -> Result<Vec<String>> {
     if !specs_root.exists() {
         return Ok(Vec::new());
     }
-    let entries = fs::read_dir(&specs_root)
-        .map_err(|e| PersistenceError::Io(specs_root.clone(), e))?;
-    let mut branches = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|e| PersistenceError::Io(specs_root.clone(), e))?;
-        if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-            if let Some(name) = entry.file_name().to_str() {
-                branches.push(name.to_string());
-            }
-        }
-    }
-    branches.sort();
-    Ok(branches)
+    list_subdirs(&specs_root)
 }
 
 /// List all plan directory slugs under a branch's specs directory.
@@ -182,19 +191,7 @@ pub fn list_plans(repo_root: &str, branch: &str) -> Result<Vec<String>> {
     if !branch_specs.exists() {
         return Ok(Vec::new());
     }
-    let entries = fs::read_dir(&branch_specs)
-        .map_err(|e| PersistenceError::Io(branch_specs.clone(), e))?;
-    let mut plans = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|e| PersistenceError::Io(branch_specs.clone(), e))?;
-        if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-            if let Some(name) = entry.file_name().to_str() {
-                plans.push(name.to_string());
-            }
-        }
-    }
-    plans.sort();
-    Ok(plans)
+    list_subdirs(&branch_specs)
 }
 
 /// List all task directory slugs under a plan's tasks directory.
@@ -208,19 +205,7 @@ pub fn list_tasks(
     if !tasks_dir.exists() {
         return Ok(Vec::new());
     }
-    let entries = fs::read_dir(&tasks_dir)
-        .map_err(|e| PersistenceError::Io(tasks_dir.clone(), e))?;
-    let mut tasks = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|e| PersistenceError::Io(tasks_dir.clone(), e))?;
-        if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-            if let Some(name) = entry.file_name().to_str() {
-                tasks.push(name.to_string());
-            }
-        }
-    }
-    tasks.sort();
-    Ok(tasks)
+    list_subdirs(&tasks_dir)
 }
 
 /// Find the plan directory for a given plan ID within a branch.
@@ -244,9 +229,10 @@ pub fn find_plan_by_id(repo_root: &str, branch: &str, plan_id: &str) -> Result<P
             }
         }
     }
-    Err(PersistenceError::FileNotFound(
-        branch_specs.join(format!("{}-*", plan_id)),
-    ))
+    Err(PersistenceError::SchemaValidation(format!(
+        "Plan '{}' not found in branch '{}'",
+        plan_id, branch
+    )))
 }
 
 // ── Slug Generation ─────────────────────────────────────────────────────────
@@ -256,17 +242,29 @@ pub fn find_plan_by_id(repo_root: &str, branch: &str, plan_id: &str) -> Result<P
 /// Lowercases the text, replaces spaces with hyphens, and removes all
 /// characters except alphanumeric, hyphens, and underscores.
 pub fn slugify(text: &str) -> String {
-    text.to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else if c.is_whitespace() {
-                '-'
-            } else {
-                '\0' // will be filtered out
+    let mut result = String::new();
+    let mut prev_was_hyphen = false;
+    for c in text.to_lowercase().chars() {
+        if c.is_alphanumeric() || c == '_' {
+            result.push(c);
+            prev_was_hyphen = false;
+        } else if c.is_whitespace() || c == '-' {
+            if !prev_was_hyphen {
+                result.push('-');
+                prev_was_hyphen = true;
             }
-        })
-        .filter(|&c| c != '\0')
-        .collect()
+        }
+        // else: skip the character
+    }
+    result.trim_end_matches('-').to_string()
+}
+
+/// Build a plan slug from plan ID and name.
+fn plan_slug(plan_id: &str, plan_name: &str) -> String {
+    format!("{}-{}", plan_id, slugify(plan_name))
+}
+
+/// Build a task slug from task ID and name.
+fn task_slug(task_id: &str, task_name: &str) -> String {
+    format!("{}-{}", task_id, slugify(task_name))
 }

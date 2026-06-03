@@ -7,6 +7,7 @@
 use std::path::Path;
 
 use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
+use regex::Regex;
 
 use super::errors::Result;
 use super::io::read_file;
@@ -37,6 +38,11 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
 
     let mut current_section = Section::None;
     let mut section_buffer = String::new();
+
+    // For text-based task list parsing
+    let in_list = &mut false;
+    let mut list_item_text = String::new();
+    let task_list_re = Regex::new(r"^\[([ xX])\]\s+\[([^\]]+)\]\s+(.+)$").unwrap();
 
     for event in parser {
         match event {
@@ -82,9 +88,31 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
                 section_buffer.push_str(&text);
             }
 
-            // All other text events: extract plan name and metadata
+            // List handling for task list items
+            Event::Start(Tag::List(_)) => {
+                *in_list = true;
+                list_item_text.clear();
+            }
+            Event::End(TagEnd::Item) => {
+                // Try to parse the collected list item text as a task reference
+                if let Some(task) = parse_task_list_text(&list_item_text, &task_list_re) {
+                    tasks.push(task);
+                }
+                list_item_text.clear();
+            }
+            Event::End(TagEnd::List(_)) => {
+                *in_list = false;
+                list_item_text.clear();
+            }
+
+            // All other text events: extract plan name and metadata, and collect list text
             Event::Text(text) => {
                 let text = text.to_string();
+
+                // If inside a list, collect text for task list parsing
+                if *in_list {
+                    list_item_text.push_str(&text);
+                }
 
                 // Extract plan name from "# Plan: <name>" heading text
                 if name.is_empty() && text.starts_with("Plan: ") {
@@ -105,10 +133,6 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
 
             Event::Html(html) => {
                 let html = html.to_string();
-                // Parse task list items: `- [ ] [TASK-001] description` or `- [x] [TASK-001] description`
-                if let Some(task) = parse_task_list_item(&html) {
-                    tasks.push(task);
-                }
                 // Also try to parse metadata from HTML (sometimes bold is rendered as HTML)
                 if let Some(value) = extract_metadata_value(&html, "ID:") {
                     id = value;
@@ -215,8 +239,6 @@ pub fn parse_task_markdown(path: &Path) -> Result<Task> {
                     &mut current_section,
                     &section_buffer,
                     &mut description,
-                    &mut acceptance_criteria,
-                    &mut files_to_modify,
                     &mut background,
                     &mut notes,
                 );
@@ -266,8 +288,6 @@ pub fn parse_task_markdown(path: &Path) -> Result<Task> {
         &mut current_section,
         &section_buffer,
         &mut description,
-        &mut acceptance_criteria,
-        &mut files_to_modify,
         &mut background,
         &mut notes,
     );
@@ -298,7 +318,7 @@ pub fn render_plan_markdown(plan: &Plan) -> String {
     out.push_str(&format!("**ID: {}**\n", plan.id));
     out.push_str(&format!(
         "**Status: {}**\n",
-        serde_json::to_string(&plan.status).unwrap_or_default()
+        plan_status_display(&plan.status)
     ));
     out.push_str(&format!("**Created: {}**\n", plan.created));
     out.push_str(&format!("**Branch: {}**\n", plan.branch));
@@ -406,33 +426,31 @@ fn extract_metadata_value(text: &str, label: &str) -> Option<String> {
     None
 }
 
-/// Extract the content of a markdown section between headings.
-/// This is a simplified approach that works with the pulldown-cmark event stream.
-fn extract_section(_content: &str, _heading: &str) -> String {
-    // This helper is provided for convenience but the main parsing is done
-    // via the event stream in parse_plan_markdown and parse_task_markdown.
-    String::new()
+/// Convert a PlanStatus to a display string (kebab-case, no quotes).
+fn plan_status_display(status: &PlanStatus) -> &'static str {
+    match status {
+        PlanStatus::Backlog => "backlog",
+        PlanStatus::Queued => "queued",
+        PlanStatus::Planning => "planning",
+        PlanStatus::Reviewing => "reviewing",
+        PlanStatus::PlanComplete => "plan-complete",
+    }
 }
 
-/// Parse a task list item from HTML/text like `- [ ] [TASK-001] description`.
-fn parse_task_list_item(text: &str) -> Option<TaskReference> {
+/// Parse a task list item from text like `- [ ] [TASK-001] description`.
+fn parse_task_list_text(text: &str, re: &Regex) -> Option<TaskReference> {
     let text = text.trim();
-    // Match patterns like `[TASK-001]`
-    if let Some(bracket_start) = text.find('[') {
-        if let Some(bracket_end) = text[bracket_start + 1..].find(']') {
-            let task_id = text[bracket_start + 1..bracket_start + 1 + bracket_end].trim();
-            if task_id.starts_with("TASK-") {
-                // Determine completed status from checkbox
-                let completed = text.contains("[x]") || text.contains("[X]");
-                // Extract description (everything after the task ID bracket)
-                let desc_start = bracket_start + 1 + bracket_end + 1;
-                let description = text[desc_start..].trim().to_string();
-                return Some(TaskReference {
-                    id: task_id.to_string(),
-                    name: description,
-                    completed,
-                });
-            }
+    if let Some(caps) = re.captures(text) {
+        let checkbox = &caps[1];
+        let completed = checkbox == "x" || checkbox == "X";
+        let task_id = &caps[2];
+        let description = &caps[3];
+        if task_id.starts_with("TASK-") {
+            return Some(TaskReference {
+                id: task_id.to_string(),
+                name: description.trim().to_string(),
+                completed,
+            });
         }
     }
     None
@@ -481,8 +499,6 @@ fn flush_task_section(
     section: &mut Section,
     buffer: &str,
     description: &mut String,
-    _acceptance_criteria: &mut Vec<String>,
-    _files_to_modify: &mut Vec<String>,
     background: &mut String,
     notes: &mut String,
 ) {

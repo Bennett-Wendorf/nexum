@@ -5,6 +5,7 @@
 //! to [`PersistenceError::JsonParse`], each carrying path context.
 
 use std::fs;
+use std::io;
 use std::path::Path;
 
 use serde::de::DeserializeOwned;
@@ -18,10 +19,13 @@ use super::errors::{PersistenceError, Result};
 /// or [`PersistenceError::Io`] for other I/O errors.
 pub fn read_file(path: &Path) -> Result<String> {
     let path = path.to_path_buf();
-    if !path.exists() {
-        return Err(PersistenceError::FileNotFound(path));
-    }
-    fs::read_to_string(&path).map_err(|e| PersistenceError::Io(path, e))
+    fs::read_to_string(&path).map_err(|e| {
+        if e.kind() == io::ErrorKind::NotFound {
+            PersistenceError::FileNotFound(path.clone())
+        } else {
+            PersistenceError::Io(path, e)
+        }
+    })
 }
 
 /// Write a string to a file, overwriting any existing content.

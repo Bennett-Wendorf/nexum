@@ -29,8 +29,10 @@ pub struct Plan {
     /// Scope description for the plan.
     pub scope: String,
     /// Background / context for the plan.
+    #[serde(default)]
     pub background: String,
     /// Ordered list of tasks belonging to this plan.
+    #[serde(default)]
     pub tasks: Vec<TaskReference>,
 }
 
@@ -73,16 +75,21 @@ pub struct Task {
     /// ID of the parent plan, e.g. `"PLAN-001"`.
     pub parent_plan: String,
     /// IDs of tasks this task depends on.
+    #[serde(default)]
     pub dependencies: Vec<String>,
     /// Detailed task description.
     pub description: String,
     /// List of acceptance criteria that must be met.
+    #[serde(default)]
     pub acceptance_criteria: Vec<String>,
     /// List of file paths that this task will modify.
+    #[serde(default)]
     pub files_to_modify: Vec<String>,
     /// Background / context for this task.
+    #[serde(default)]
     pub background: String,
     /// Additional notes for this task.
+    #[serde(default)]
     pub notes: String,
 }
 
@@ -96,20 +103,27 @@ pub struct TaskStatus {
     /// Current status value.
     pub status: TaskStatusValue,
     /// Active agent lease, if any agent is working on this task.
+    #[serde(default)]
     pub agent: Option<AgentLease>,
     /// History of status transitions.
+    #[serde(default)]
     pub transitions: Vec<StatusTransition>,
     /// ISO 8601 timestamp when the task started running (if applicable).
+    #[serde(default)]
     pub started_at: Option<String>,
     /// ISO 8601 timestamp when the task completed (if applicable).
+    #[serde(default)]
     pub completed_at: Option<String>,
     /// Number of execution attempts.
     pub attempts: u32,
     /// IDs of tasks this task depends on.
+    #[serde(default)]
     pub dependencies: Vec<String>,
     /// IDs of tasks that depend on this task.
+    #[serde(default)]
     pub dependent_tasks: Vec<String>,
     /// Last heartbeat timestamp from the executing agent.
+    #[serde(default)]
     pub heartbeat_at: Option<String>,
 }
 
@@ -169,7 +183,9 @@ pub struct ExecutionState {
     /// Git branch associated with the plan.
     pub branch: String,
     /// Ordered list of task IDs.
+    #[serde(default)]
     pub tasks: Vec<String>,
     /// Map from task ID to its current status.
+    #[serde(default)]
     pub task_status_map: HashMap<String, TaskStatusValue>,
 }

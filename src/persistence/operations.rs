@@ -5,11 +5,12 @@
 //! file I/O into convenient functions.
 
 use std::collections::HashMap;
+use std::fs;
 
 use chrono::Utc;
 
 use super::directory::*;
-use super::errors::Result;
+use super::errors::{PersistenceError, Result};
 use super::io::*;
 use super::markdown::*;
 use super::schema::*;
@@ -140,8 +141,9 @@ pub fn read_task_status(
 /// 2. Records a transition from the old status to the new status.
 /// 3. Sets `started_at` when transitioning to `Running`.
 /// 4. Sets `completed_at` when transitioning to `Completed`.
-/// 5. Increments `attempts` when transitioning to `Running`.
-/// 6. Writes the updated status atomically.
+/// 5. Increments `attempts` on EVERY transition to `Running`.
+/// 6. Verifies file hasn't changed before writing (TOCTOU mitigation).
+/// 7. Writes the updated status atomically.
 pub fn update_task_status(
     repo_root: &str,
     branch: &str,
@@ -155,7 +157,17 @@ pub fn update_task_status(
     let status_path =
         task_status_path(repo_root, branch, plan_id, plan_name, task_id, task_name);
 
-    let mut status = read_json::<TaskStatus>(&status_path)?;
+    // Read current status
+    let content = fs::read_to_string(&status_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            PersistenceError::FileNotFound(status_path.clone())
+        } else {
+            PersistenceError::Io(status_path.clone(), e)
+        }
+    })?;
+    let mut status: TaskStatus = serde_json::from_str(&content)
+        .map_err(|e| PersistenceError::JsonParse(status_path.clone(), e))?;
+
     let old_status = status.status.clone();
     let now = Utc::now().to_rfc3339();
 
@@ -167,10 +179,10 @@ pub fn update_task_status(
         by: by.to_string(),
     });
 
-    // Set started_at when transitioning to Running
-    if matches!(new_status, TaskStatusValue::Running) && status.started_at.is_none() {
-        status.started_at = Some(now.clone());
+    // Set started_at and increment attempts on EVERY transition to Running
+    if matches!(new_status, TaskStatusValue::Running) {
         status.attempts += 1;
+        status.started_at = Some(now.clone());
     }
 
     // Set completed_at when transitioning to Completed
@@ -179,6 +191,14 @@ pub fn update_task_status(
     }
 
     status.status = new_status;
+
+    // Re-check before writing: verify file hasn't changed
+    let new_content = fs::read_to_string(&status_path).map_err(|e| {
+        PersistenceError::Io(status_path.clone(), e)
+    })?;
+    if new_content != content {
+        return Err(PersistenceError::ConcurrencyConflict(status_path));
+    }
 
     // Write atomically
     atomic_write_json(&status_path, &status)?;
@@ -212,6 +232,8 @@ pub fn update_execution_state(
 }
 
 /// Add a task to the execution state's task list and status map.
+///
+/// Includes TOCTOU mitigation: verifies file hasn't changed before writing.
 pub fn add_task_to_execution(
     repo_root: &str,
     branch: &str,
@@ -221,10 +243,29 @@ pub fn add_task_to_execution(
     status: TaskStatusValue,
 ) -> Result<()> {
     let exec_path = execution_state_path(repo_root, branch, plan_id, plan_name);
-    let mut state = read_json::<ExecutionState>(&exec_path)?;
+
+    // Read current state
+    let content = fs::read_to_string(&exec_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            PersistenceError::FileNotFound(exec_path.clone())
+        } else {
+            PersistenceError::Io(exec_path.clone(), e)
+        }
+    })?;
+    let mut state: ExecutionState = serde_json::from_str(&content)
+        .map_err(|e| PersistenceError::JsonParse(exec_path.clone(), e))?;
 
     state.tasks.push(task_id.to_string());
     state.task_status_map.insert(task_id.to_string(), status);
 
+    // Re-check before writing: verify file hasn't changed
+    let new_content = fs::read_to_string(&exec_path).map_err(|e| {
+        PersistenceError::Io(exec_path.clone(), e)
+    })?;
+    if new_content != content {
+        return Err(PersistenceError::ConcurrencyConflict(exec_path));
+    }
+
+    // Write atomically
     atomic_write_json(&exec_path, &state)
 }

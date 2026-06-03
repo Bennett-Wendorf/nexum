@@ -19,9 +19,17 @@ pub enum PersistenceError {
     #[error("I/O error at {0}: {1}")]
     Io(PathBuf, #[source] io::Error),
 
+    /// A bare I/O error without path context.
+    #[error("I/O error: {0}")]
+    IoBare(#[source] io::Error),
+
     /// JSON deserialization failed for the file at the given path.
     #[error("JSON parse error at {0}: {1}")]
     JsonParse(PathBuf, #[source] serde_json::Error),
+
+    /// A bare JSON parse error without path context.
+    #[error("JSON parse error: {0}")]
+    JsonParseBare(#[source] serde_json::Error),
 
     /// Markdown parsing failed for the file at the given path.
     #[error("Markdown parse error at {0}: {1}")]
@@ -46,19 +54,23 @@ pub enum PersistenceError {
     /// An atomic write (rename) failed at the given path.
     #[error("Atomic write error at {0}: {1}")]
     AtomicWrite(PathBuf, #[source] io::Error),
+
+    /// A concurrency conflict: the file was modified by another process.
+    #[error("Concurrency conflict at {0}: file was modified by another process")]
+    ConcurrencyConflict(PathBuf),
 }
 
-/// Convert a bare `io::Error` into a `PersistenceError::Io` with a path.
+/// Convert a bare `io::Error` into a `PersistenceError::IoBare`.
 impl From<io::Error> for PersistenceError {
     fn from(err: io::Error) -> Self {
-        PersistenceError::Io(PathBuf::new(), err)
+        PersistenceError::IoBare(err)
     }
 }
 
-/// Convert a bare `serde_json::Error` into a `PersistenceError::JsonParse` with a path.
+/// Convert a bare `serde_json::Error` into a `PersistenceError::JsonParseBare`.
 impl From<serde_json::Error> for PersistenceError {
     fn from(err: serde_json::Error) -> Self {
-        PersistenceError::JsonParse(PathBuf::new(), err)
+        PersistenceError::JsonParseBare(err)
     }
 }
 
