@@ -69,7 +69,7 @@ pub fn atomic_write(path: &Path, content: &str) -> Result<()> {
 
     fs::write(&temp_path, content).map_err(|e| {
         let _ = fs::remove_file(&temp_path);
-        PersistenceError::Io(path.clone(), e)
+        PersistenceError::Io(temp_path.clone(), e)
     })?;
 
     fs::rename(&temp_path, &path).map_err(|e| {
@@ -91,14 +91,14 @@ pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
 pub fn write_json<T: Serialize>(path: &Path, data: &T) -> Result<()> {
     let path = path.to_path_buf();
     let json = serde_json::to_string_pretty(data)
-        .map_err(|e| PersistenceError::JsonParse(path.clone(), e))?;
+        .map_err(|e| PersistenceError::JsonSerialize(path.clone(), e))?;
     fs::write(&path, json).map_err(|e| PersistenceError::Io(path, e))
 }
 
 /// Serialize a value to JSON and write it atomically.
 pub fn atomic_write_json<T: Serialize>(path: &Path, data: &T) -> Result<()> {
     let json = serde_json::to_string_pretty(data)
-        .map_err(|e| PersistenceError::JsonParse(path.to_path_buf(), e))?;
+        .map_err(|e| PersistenceError::JsonParseBare(e))?;
     atomic_write(path, &json)
 }
 
@@ -113,8 +113,8 @@ pub fn list_dir(path: &Path) -> Result<Vec<fs::DirEntry>> {
     let path = path.to_path_buf();
     let mut entries = fs::read_dir(&path)
         .map_err(|e| PersistenceError::Io(path.clone(), e))?
-        .collect::<std::result::Result<Vec<_>, _>>()
-        .map_err(|e| PersistenceError::Io(path.clone(), e))?;
+        .filter_map(|entry| entry.ok())
+        .collect::<Vec<_>>();
     entries.sort_by_key(|e| e.file_name());
     Ok(entries)
 }

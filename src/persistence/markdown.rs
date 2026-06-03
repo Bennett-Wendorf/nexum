@@ -5,6 +5,7 @@
 //! into markdown format.
 
 use std::path::Path;
+use std::sync::LazyLock;
 
 use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 use regex::Regex;
@@ -12,6 +13,10 @@ use regex::Regex;
 use super::errors::Result;
 use super::io::read_file;
 use super::schema::{Plan, PlanStatus, Task, TaskReference};
+
+static TASK_LIST_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\[([ xX])\]\s+\[([^\]]+)\]\s+(.+)$").unwrap()
+});
 
 // ── Plan parsing ────────────────────────────────────────────────────────────
 
@@ -40,9 +45,8 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
     let mut section_buffer = String::new();
 
     // For text-based task list parsing
-    let in_list = &mut false;
+    let mut in_list = false;
     let mut list_item_text = String::new();
-    let task_list_re = Regex::new(r"^\[([ xX])\]\s+\[([^\]]+)\]\s+(.+)$").unwrap();
 
     for event in parser {
         match event {
@@ -90,27 +94,27 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
 
             // List handling for task list items
             Event::Start(Tag::List(_)) => {
-                *in_list = true;
+                in_list = true;
                 list_item_text.clear();
             }
             Event::End(TagEnd::Item) => {
                 // Try to parse the collected list item text as a task reference
-                if let Some(task) = parse_task_list_text(&list_item_text, &task_list_re) {
+                if let Some(task) = parse_task_list_text(&list_item_text, &TASK_LIST_RE) {
                     tasks.push(task);
                 }
                 list_item_text.clear();
             }
             Event::End(TagEnd::List(_)) => {
-                *in_list = false;
+                in_list = false;
                 list_item_text.clear();
             }
 
             // All other text events: extract plan name and metadata, and collect list text
-            Event::Text(text) => {
+            Event::Text(text) if current_section == Section::None => {
                 let text = text.to_string();
 
                 // If inside a list, collect text for task list parsing
-                if *in_list {
+                if in_list {
                     list_item_text.push_str(&text);
                 }
 

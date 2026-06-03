@@ -31,6 +31,10 @@ pub enum PersistenceError {
     #[error("JSON parse error: {0}")]
     JsonParseBare(#[source] serde_json::Error),
 
+    /// JSON serialization failed for the file at the given path.
+    #[error("JSON serialize error at {0}: {1}")]
+    JsonSerialize(PathBuf, #[source] serde_json::Error),
+
     /// Markdown parsing failed for the file at the given path.
     #[error("Markdown parse error at {0}: {1}")]
     MarkdownParse(PathBuf, String),

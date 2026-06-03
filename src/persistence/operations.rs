@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 
 use chrono::Utc;
 
@@ -23,7 +24,7 @@ use super::schema::*;
 /// 1. Ensures the plan directory exists (both specs and state).
 /// 2. Writes `plan.md` (non-atomically) via markdown rendering.
 /// 3. Creates `execution.json` atomically with an empty task list.
-pub fn create_plan(repo_root: &str, plan: &Plan) -> Result<()> {
+pub fn create_plan(repo_root: &Path, plan: &Plan) -> Result<()> {
     // Ensure directories exist
     ensure_plan_dir(repo_root, &plan.branch, &plan.id, &plan.name)?;
 
@@ -45,7 +46,7 @@ pub fn create_plan(repo_root: &str, plan: &Plan) -> Result<()> {
 
 /// Read a plan from disk by parsing its markdown file.
 pub fn read_plan(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -56,7 +57,7 @@ pub fn read_plan(
 
 /// Update an existing plan by rewriting its markdown file.
 pub fn update_plan(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -76,7 +77,7 @@ pub fn update_plan(
 /// 2. Writes `task.md` (non-atomically) via markdown rendering.
 /// 3. Creates `status.json` atomically with the initial backlog status.
 pub fn create_task(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -109,7 +110,7 @@ pub fn create_task(
 
 /// Read a task from disk by parsing its markdown file.
 pub fn read_task(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -122,7 +123,7 @@ pub fn read_task(
 
 /// Read a task's current status from its `status.json` file.
 pub fn read_task_status(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -145,7 +146,7 @@ pub fn read_task_status(
 /// 6. Verifies file hasn't changed before writing (TOCTOU mitigation).
 /// 7. Writes the updated status atomically.
 pub fn update_task_status(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -158,13 +159,7 @@ pub fn update_task_status(
         task_status_path(repo_root, branch, plan_id, plan_name, task_id, task_name);
 
     // Read current status
-    let content = fs::read_to_string(&status_path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            PersistenceError::FileNotFound(status_path.clone())
-        } else {
-            PersistenceError::Io(status_path.clone(), e)
-        }
-    })?;
+    let content = read_file(&status_path)?;
     let mut status: TaskStatus = serde_json::from_str(&content)
         .map_err(|e| PersistenceError::JsonParse(status_path.clone(), e))?;
 
@@ -210,7 +205,7 @@ pub fn update_task_status(
 
 /// Read the execution state for a plan.
 pub fn read_execution_state(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -221,7 +216,7 @@ pub fn read_execution_state(
 
 /// Update the execution state for a plan atomically.
 pub fn update_execution_state(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -235,7 +230,7 @@ pub fn update_execution_state(
 ///
 /// Includes TOCTOU mitigation: verifies file hasn't changed before writing.
 pub fn add_task_to_execution(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -245,13 +240,7 @@ pub fn add_task_to_execution(
     let exec_path = execution_state_path(repo_root, branch, plan_id, plan_name);
 
     // Read current state
-    let content = fs::read_to_string(&exec_path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            PersistenceError::FileNotFound(exec_path.clone())
-        } else {
-            PersistenceError::Io(exec_path.clone(), e)
-        }
-    })?;
+    let content = read_file(&exec_path)?;
     let mut state: ExecutionState = serde_json::from_str(&content)
         .map_err(|e| PersistenceError::JsonParse(exec_path.clone(), e))?;
 

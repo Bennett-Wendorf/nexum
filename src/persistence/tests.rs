@@ -10,11 +10,9 @@ use super::markdown::*;
 use super::operations::*;
 use super::schema::*;
 
-fn temp_repo() -> PathBuf {
+fn temp_repo() -> (PathBuf, tempfile::TempDir) {
     let dir = tempfile::tempdir().expect("failed to create temp dir");
-    // Keep the tempdir alive by leaking the guard (tests clean up on exit)
-    let path = dir.keep();
-    path
+    (dir.path().to_path_buf(), dir)
 }
 
 // ── Slugify ─────────────────────────────────────────────────────────────────
@@ -36,31 +34,31 @@ fn test_slugify_special_chars() {
 
 #[test]
 fn test_agent_dir() {
-    let path = agent_dir("/repo");
+    let path = agent_dir(&PathBuf::from("/repo"));
     assert_eq!(path, PathBuf::from("/repo/.agent"));
 }
 
 #[test]
 fn test_specs_dir() {
-    let path = specs_dir("/repo", "main");
+    let path = specs_dir(&PathBuf::from("/repo"), "main");
     assert_eq!(path, PathBuf::from("/repo/.agent/specs/main"));
 }
 
 #[test]
 fn test_state_dir() {
-    let path = state_dir("/repo", "main");
+    let path = state_dir(&PathBuf::from("/repo"), "main");
     assert_eq!(path, PathBuf::from("/repo/.agent/state/main"));
 }
 
 #[test]
 fn test_plan_dir() {
-    let path = plan_dir("/repo", "main", "PLAN-001", "oauth2-flow");
+    let path = plan_dir(&PathBuf::from("/repo"), "main", "PLAN-001", "oauth2-flow");
     assert_eq!(path, PathBuf::from("/repo/.agent/specs/main/PLAN-001-oauth2-flow"));
 }
 
 #[test]
 fn test_task_dir() {
-    let path = task_dir("/repo", "main", "PLAN-001", "oauth2-flow", "TASK-001", "implement-auth");
+    let path = task_dir(&PathBuf::from("/repo"), "main", "PLAN-001", "oauth2-flow", "TASK-001", "implement-auth");
     assert_eq!(
         path,
         PathBuf::from("/repo/.agent/specs/main/PLAN-001-oauth2-flow/tasks/TASK-001-implement-auth")
@@ -71,7 +69,7 @@ fn test_task_dir() {
 
 #[test]
 fn test_read_write_file() -> Result<()> {
-    let repo = temp_repo();
+    let (repo, _temp) = temp_repo();
     let path = repo.join("test.txt");
     write_file(&path, "hello world")?;
     let content = read_file(&path)?;
@@ -82,7 +80,7 @@ fn test_read_write_file() -> Result<()> {
 
 #[test]
 fn test_atomic_write() -> Result<()> {
-    let repo = temp_repo();
+    let (repo, _temp) = temp_repo();
     let path = repo.join("atomic.txt");
     fs::create_dir_all(&repo)?;
     atomic_write(&path, "atomic content")?;
@@ -99,7 +97,7 @@ fn test_read_json_not_found() {
 
 #[test]
 fn test_write_read_json() -> Result<()> {
-    let repo = temp_repo();
+    let (repo, _temp) = temp_repo();
     let path = repo.join("data.json");
     fs::create_dir_all(&repo)?;
     let data = serde_json::json!({"key": "value"});
@@ -160,7 +158,7 @@ fn test_render_task_markdown() {
 
 #[test]
 fn test_create_and_read_plan() -> Result<()> {
-    let repo = temp_repo();
+    let (repo, _temp) = temp_repo();
     let plan = Plan {
         id: "PLAN-001".into(),
         name: "test-plan".into(),
@@ -172,18 +170,18 @@ fn test_create_and_read_plan() -> Result<()> {
         background: "Test background".into(),
         tasks: Vec::new(),
     };
-    create_plan(&repo.to_string_lossy(), &plan)?;
+    create_plan(&repo, &plan)?;
 
     // Verify plan.md exists
-    let plan_path = plan_markdown_path(&repo.to_string_lossy(), "main", "PLAN-001", "test-plan");
+    let plan_path = plan_markdown_path(&repo, "main", "PLAN-001", "test-plan");
     assert!(plan_path.exists());
 
     // Verify execution.json exists
-    let exec_path = execution_state_path(&repo.to_string_lossy(), "main", "PLAN-001", "test-plan");
+    let exec_path = execution_state_path(&repo, "main", "PLAN-001", "test-plan");
     assert!(exec_path.exists());
 
     // Read back
-    let read_plan = read_plan(&repo.to_string_lossy(), "main", "PLAN-001", "test-plan")?;
+    let read_plan = read_plan(&repo, "main", "PLAN-001", "test-plan")?;
     assert_eq!(read_plan.id, "PLAN-001");
     assert_eq!(read_plan.name, "test-plan");
     Ok(())
@@ -191,7 +189,7 @@ fn test_create_and_read_plan() -> Result<()> {
 
 #[test]
 fn test_create_and_read_task() -> Result<()> {
-    let repo = temp_repo();
+    let (repo, _temp) = temp_repo();
 
     // Create plan first
     let plan = Plan {
@@ -205,7 +203,7 @@ fn test_create_and_read_task() -> Result<()> {
         background: "Test".into(),
         tasks: Vec::new(),
     };
-    create_plan(&repo.to_string_lossy(), &plan)?;
+    create_plan(&repo, &plan)?;
 
     // Create task
     let task = Task {
@@ -219,22 +217,22 @@ fn test_create_and_read_task() -> Result<()> {
         background: "Test background".into(),
         notes: "Test notes".into(),
     };
-    create_task(&repo.to_string_lossy(), "main", "PLAN-001", "test-plan", &task)?;
+    create_task(&repo, "main", "PLAN-001", "test-plan", &task)?;
 
     // Read task back
-    let read_task = read_task(&repo.to_string_lossy(), "main", "PLAN-001", "test-plan", "TASK-001", "test-task")?;
+    let read_task = read_task(&repo, "main", "PLAN-001", "test-plan", "TASK-001", "test-task")?;
     assert_eq!(read_task.id, "TASK-001");
     assert_eq!(read_task.name, "test-task");
 
     // Read task status
-    let status = read_task_status(&repo.to_string_lossy(), "main", "PLAN-001", "test-plan", "TASK-001", "test-task")?;
+    let status = read_task_status(&repo, "main", "PLAN-001", "test-plan", "TASK-001", "test-task")?;
     assert!(matches!(status.status, TaskStatusValue::Backlog));
     Ok(())
 }
 
 #[test]
 fn test_update_task_status() -> Result<()> {
-    let repo = temp_repo();
+    let (repo, _temp) = temp_repo();
 
     let plan = Plan {
         id: "PLAN-001".into(),
@@ -247,7 +245,7 @@ fn test_update_task_status() -> Result<()> {
         background: "Test".into(),
         tasks: Vec::new(),
     };
-    create_plan(&repo.to_string_lossy(), &plan)?;
+    create_plan(&repo, &plan)?;
 
     let task = Task {
         id: "TASK-001".into(),
@@ -260,11 +258,11 @@ fn test_update_task_status() -> Result<()> {
         background: "".into(),
         notes: "".into(),
     };
-    create_task(&repo.to_string_lossy(), "main", "PLAN-001", "test-plan", &task)?;
+    create_task(&repo, "main", "PLAN-001", "test-plan", &task)?;
 
     // Transition to Running
     let status = update_task_status(
-        &repo.to_string_lossy(),
+        &repo,
         "main",
         "PLAN-001",
         "test-plan",
@@ -280,7 +278,7 @@ fn test_update_task_status() -> Result<()> {
 
     // Transition to Completed
     let status = update_task_status(
-        &repo.to_string_lossy(),
+        &repo,
         "main",
         "PLAN-001",
         "test-plan",
@@ -297,7 +295,7 @@ fn test_update_task_status() -> Result<()> {
 
 #[test]
 fn test_add_task_to_execution() -> Result<()> {
-    let repo = temp_repo();
+    let (repo, _temp) = temp_repo();
 
     let plan = Plan {
         id: "PLAN-001".into(),
@@ -310,10 +308,10 @@ fn test_add_task_to_execution() -> Result<()> {
         background: "Test".into(),
         tasks: Vec::new(),
     };
-    create_plan(&repo.to_string_lossy(), &plan)?;
+    create_plan(&repo, &plan)?;
 
     add_task_to_execution(
-        &repo.to_string_lossy(),
+        &repo,
         "main",
         "PLAN-001",
         "test-plan",
@@ -321,7 +319,7 @@ fn test_add_task_to_execution() -> Result<()> {
         TaskStatusValue::Backlog,
     )?;
 
-    let state = read_execution_state(&repo.to_string_lossy(), "main", "PLAN-001", "test-plan")?;
+    let state = read_execution_state(&repo, "main", "PLAN-001", "test-plan")?;
     assert_eq!(state.tasks, vec!["TASK-001"]);
     assert_eq!(
         *state.task_status_map.get("TASK-001").unwrap(),
@@ -334,7 +332,7 @@ fn test_add_task_to_execution() -> Result<()> {
 
 #[test]
 fn test_list_branches() -> Result<()> {
-    let repo = temp_repo();
+    let (repo, _temp) = temp_repo();
     let plan = Plan {
         id: "PLAN-001".into(),
         name: "test-plan".into(),
@@ -346,16 +344,16 @@ fn test_list_branches() -> Result<()> {
         background: "Test".into(),
         tasks: Vec::new(),
     };
-    create_plan(&repo.to_string_lossy(), &plan)?;
+    create_plan(&repo, &plan)?;
 
-    let branches = list_branches(&repo.to_string_lossy())?;
+    let branches = list_branches(&repo)?;
     assert!(branches.contains(&"feature-branch".to_string()));
     Ok(())
 }
 
 #[test]
 fn test_find_plan_by_id() -> Result<()> {
-    let repo = temp_repo();
+    let (repo, _temp) = temp_repo();
     let plan = Plan {
         id: "PLAN-001".into(),
         name: "test-plan".into(),
@@ -367,9 +365,9 @@ fn test_find_plan_by_id() -> Result<()> {
         background: "Test".into(),
         tasks: Vec::new(),
     };
-    create_plan(&repo.to_string_lossy(), &plan)?;
+    create_plan(&repo, &plan)?;
 
-    let found = find_plan_by_id(&repo.to_string_lossy(), "main", "PLAN-001")?;
+    let found = find_plan_by_id(&repo, "main", "PLAN-001")?;
     assert!(found.exists());
     assert!(found.to_string_lossy().contains("PLAN-001-test-plan"));
     Ok(())

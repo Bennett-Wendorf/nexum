@@ -4,7 +4,6 @@
 //! `.agent/` directory hierarchy, as well as directory creation and
 //! traversal utilities.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::errors::{PersistenceError, Result};
@@ -13,28 +12,28 @@ use super::io::create_dir_all;
 // ── Path Resolution ─────────────────────────────────────────────────────────
 
 /// Return the path to the `.agent/` directory inside the repo root.
-pub fn agent_dir(repo_root: &str) -> PathBuf {
-    PathBuf::from(repo_root).join(".agent")
+pub fn agent_dir(repo_root: &Path) -> PathBuf {
+    repo_root.join(".agent")
 }
 
 /// Return the path to the specs directory for a given branch.
 ///
 /// Returns `<repo_root>/.agent/specs/<branch>/`.
-pub fn specs_dir(repo_root: &str, branch: &str) -> PathBuf {
+pub fn specs_dir(repo_root: &Path, branch: &str) -> PathBuf {
     agent_dir(repo_root).join("specs").join(branch)
 }
 
 /// Return the path to the state directory for a given branch.
 ///
 /// Returns `<repo_root>/.agent/state/<branch>/`.
-pub fn state_dir(repo_root: &str, branch: &str) -> PathBuf {
+pub fn state_dir(repo_root: &Path, branch: &str) -> PathBuf {
     agent_dir(repo_root).join("state").join(branch)
 }
 
 /// Return the path to a plan's specs directory.
 ///
 /// Returns `<specs>/<branch>/<plan_id>-<plan_name>/`.
-pub fn plan_dir(repo_root: &str, branch: &str, plan_id: &str, plan_name: &str) -> PathBuf {
+pub fn plan_dir(repo_root: &Path, branch: &str, plan_id: &str, plan_name: &str) -> PathBuf {
     let slug = plan_slug(plan_id, plan_name);
     specs_dir(repo_root, branch).join(&slug)
 }
@@ -43,7 +42,7 @@ pub fn plan_dir(repo_root: &str, branch: &str, plan_id: &str, plan_name: &str) -
 ///
 /// Returns `<plan_dir>/tasks/<task_id>-<task_name>/`.
 pub fn task_dir(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -56,7 +55,7 @@ pub fn task_dir(
 
 /// Return the path to a plan's markdown file (`plan.md`).
 pub fn plan_markdown_path(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -66,7 +65,7 @@ pub fn plan_markdown_path(
 
 /// Return the path to a task's markdown file (`task.md`).
 pub fn task_markdown_path(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -78,7 +77,7 @@ pub fn task_markdown_path(
 
 /// Return the path to a task's status JSON file (`status.json`).
 pub fn task_status_path(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -90,7 +89,7 @@ pub fn task_status_path(
 
 /// Return the path to a plan's execution state file (`execution.json`).
 pub fn execution_state_path(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -103,7 +102,7 @@ pub fn execution_state_path(
 ///
 /// Returns `<state>/<branch>/<plan_id>-<plan_name>/logs/<task_id>-<task_name>/`.
 pub fn task_log_dir(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -121,13 +120,13 @@ pub fn task_log_dir(
 // ── Directory Creation ──────────────────────────────────────────────────────
 
 /// Ensure the `.agent/` directory exists under the repo root.
-pub fn ensure_agent_dir(repo_root: &str) -> Result<()> {
+pub fn ensure_agent_dir(repo_root: &Path) -> Result<()> {
     create_dir_all(&agent_dir(repo_root))
 }
 
 /// Ensure the plan directory exists (both specs and state).
 pub fn ensure_plan_dir(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -141,7 +140,7 @@ pub fn ensure_plan_dir(
 
 /// Ensure the task directory exists within a plan.
 pub fn ensure_task_dir(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -158,16 +157,14 @@ fn list_subdirs(path: &Path) -> Result<Vec<String>> {
     if !path.exists() {
         return Err(PersistenceError::DirectoryNotFound(path.to_path_buf()));
     }
-    let entries = fs::read_dir(path).map_err(|e| PersistenceError::Io(path.to_path_buf(), e))?;
+    let entries = super::io::list_dir(path)?;
     let mut names = entries
-        .filter_map(|entry| {
-            entry.ok().and_then(|e| {
-                if e.file_type().ok()?.is_dir() {
-                    Some(e.file_name().into_string().ok()?)
-                } else {
-                    None
-                }
-            })
+        .into_iter().filter_map(|e| {
+            if e.file_type().ok()?.is_dir() {
+                Some(e.file_name().into_string().ok()?)
+            } else {
+                None
+            }
         })
         .collect::<Vec<_>>();
     names.sort();
@@ -177,7 +174,7 @@ fn list_subdirs(path: &Path) -> Result<Vec<String>> {
 /// List all branch names under `.agent/specs/`.
 ///
 /// Returns the names of subdirectories (one per branch).
-pub fn list_branches(repo_root: &str) -> Result<Vec<String>> {
+pub fn list_branches(repo_root: &Path) -> Result<Vec<String>> {
     let specs_root = agent_dir(repo_root).join("specs");
     if !specs_root.exists() {
         return Ok(Vec::new());
@@ -186,7 +183,7 @@ pub fn list_branches(repo_root: &str) -> Result<Vec<String>> {
 }
 
 /// List all plan directory slugs under a branch's specs directory.
-pub fn list_plans(repo_root: &str, branch: &str) -> Result<Vec<String>> {
+pub fn list_plans(repo_root: &Path, branch: &str) -> Result<Vec<String>> {
     let branch_specs = specs_dir(repo_root, branch);
     if !branch_specs.exists() {
         return Ok(Vec::new());
@@ -196,7 +193,7 @@ pub fn list_plans(repo_root: &str, branch: &str) -> Result<Vec<String>> {
 
 /// List all task directory slugs under a plan's tasks directory.
 pub fn list_tasks(
-    repo_root: &str,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
@@ -212,15 +209,13 @@ pub fn list_tasks(
 ///
 /// Searches all subdirectories of the branch's specs directory and returns
 /// the path of the first one whose name starts with `<plan_id>-`.
-pub fn find_plan_by_id(repo_root: &str, branch: &str, plan_id: &str) -> Result<PathBuf> {
+pub fn find_plan_by_id(repo_root: &Path, branch: &str, plan_id: &str) -> Result<PathBuf> {
     let branch_specs = specs_dir(repo_root, branch);
     if !branch_specs.exists() {
         return Err(PersistenceError::DirectoryNotFound(branch_specs));
     }
-    let entries = fs::read_dir(&branch_specs)
-        .map_err(|e| PersistenceError::Io(branch_specs.clone(), e))?;
+    let entries = super::io::list_dir(&branch_specs)?;
     for entry in entries {
-        let entry = entry.map_err(|e| PersistenceError::Io(branch_specs.clone(), e))?;
         if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
             if let Some(name) = entry.file_name().to_str() {
                 if name.starts_with(&format!("{}-", plan_id)) {
