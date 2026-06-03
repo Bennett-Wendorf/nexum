@@ -1,12 +1,12 @@
 //! Unit tests for the configuration module.
 
 use std::path::Path;
+use serial_test::serial;
 use tempfile::TempDir;
 
 use super::schema::{AgentRegistration, Config, GlobalSettings, Preferences};
 use super::loader::{validate, ConfigError, DEFAULT_CONFIG_TEMPLATE};
 use super::accessor::*;
-use serial_test::serial;
 
 // ─── Helper utilities ───────────────────────────────────────────────
 
