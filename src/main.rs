@@ -3,6 +3,7 @@ mod acp;
 mod git;
 mod persistence;
 mod config;
+mod overlord;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

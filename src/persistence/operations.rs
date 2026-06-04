@@ -166,10 +166,10 @@ pub fn update_task_status(
     let old_status = status.status.clone();
     let now = Utc::now().to_rfc3339();
 
-    // Record transition
+    // Record transition (from/to are strings now)
     status.transitions.push(StatusTransition {
-        from: old_status,
-        to: new_status.clone(),
+        from: format!("{:?}", old_status).to_lowercase(),
+        to: format!("{:?}", new_status).to_lowercase(),
         at: now.clone(),
         by: by.to_string(),
     });

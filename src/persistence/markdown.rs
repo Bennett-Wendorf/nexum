@@ -33,7 +33,7 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
 
     let mut name = String::new();
     let mut id = String::new();
-    let mut status = PlanStatus::Backlog;
+    let mut status = PlanStatus::Draft;
     let mut created = String::new();
     let mut branch = String::new();
     let mut goal = String::new();
@@ -433,11 +433,13 @@ fn extract_metadata_value(text: &str, label: &str) -> Option<String> {
 /// Convert a PlanStatus to a display string (kebab-case, no quotes).
 fn plan_status_display(status: &PlanStatus) -> &'static str {
     match status {
-        PlanStatus::Backlog => "backlog",
+        PlanStatus::Draft => "draft",
         PlanStatus::Queued => "queued",
         PlanStatus::Planning => "planning",
         PlanStatus::Reviewing => "reviewing",
-        PlanStatus::PlanComplete => "plan-complete",
+        PlanStatus::Approved => "approved",
+        PlanStatus::Complete => "complete",
+        PlanStatus::Rejected => "rejected",
     }
 }
 
@@ -471,12 +473,17 @@ fn parse_comma_list(text: &str) -> Vec<String> {
 /// Parse a plan status string into a [`PlanStatus`] enum.
 fn parse_plan_status(text: &str) -> PlanStatus {
     match text.trim().to_lowercase().as_str() {
-        "backlog" => PlanStatus::Backlog,
+        "draft" => PlanStatus::Draft,
         "queued" => PlanStatus::Queued,
         "planning" => PlanStatus::Planning,
         "reviewing" => PlanStatus::Reviewing,
-        "plan-complete" => PlanStatus::PlanComplete,
-        _ => PlanStatus::Backlog,
+        "approved" => PlanStatus::Approved,
+        "complete" => PlanStatus::Complete,
+        "rejected" => PlanStatus::Rejected,
+        // Legacy compatibility
+        "backlog" => PlanStatus::Draft,
+        "plan-complete" => PlanStatus::Complete,
+        _ => PlanStatus::Draft,
     }
 }
 
