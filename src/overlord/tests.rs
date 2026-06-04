@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
-use crate::overlord::concurrency_checker::{is_concurrency_gated, ConcurrencyChecker};
+use crate::overlord::concurrency_checker::ConcurrencyChecker;
 use crate::overlord::dependency_resolver::DependencyResolver;
 use crate::overlord::errors::OverlordError;
 use crate::overlord::heartbeat_monitor::HeartbeatMonitor;
@@ -265,11 +265,11 @@ fn test_count_running_zero() {
 }
 
 #[test]
-fn test_is_concurrency_gated() {
-    assert!(is_concurrency_gated(&TaskStatusValue::Running));
-    assert!(is_concurrency_gated(&TaskStatusValue::Reviewing));
-    assert!(!is_concurrency_gated(&TaskStatusValue::Backlog));
-    assert!(!is_concurrency_gated(&TaskStatusValue::Completed));
+fn test_is_concurrency_sensitive() {
+    assert!(is_concurrency_sensitive(&TaskStatusValue::Running));
+    assert!(is_concurrency_sensitive(&TaskStatusValue::Reviewing));
+    assert!(!is_concurrency_sensitive(&TaskStatusValue::Backlog));
+    assert!(!is_concurrency_sensitive(&TaskStatusValue::Completed));
 }
 
 // ── Dependency Resolver Tests ───────────────────────────────────────────────
@@ -326,7 +326,7 @@ fn test_detect_cycles_with_cycle() {
 fn test_fresh_heartbeat_not_stale() {
     let monitor = HeartbeatMonitor::new(30);
     let now = chrono::Utc::now().to_rfc3339();
-    let stale = monitor.is_heartbeat_stale(&now).expect("ok");
+    let (stale, _elapsed) = monitor.is_heartbeat_stale(&now).expect("ok");
     assert!(!stale);
 }
 
@@ -334,7 +334,7 @@ fn test_fresh_heartbeat_not_stale() {
 fn test_old_heartbeat_is_stale() {
     let monitor = HeartbeatMonitor::new(30);
     let old = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
-    let stale = monitor.is_heartbeat_stale(&old).expect("ok");
+    let (stale, _elapsed) = monitor.is_heartbeat_stale(&old).expect("ok");
     assert!(stale);
 }
 

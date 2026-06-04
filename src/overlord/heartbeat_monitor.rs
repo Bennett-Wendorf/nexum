@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use crate::persistence::TaskStatusValue;
 
 use super::errors::{OverlordError, Result};
-use super::status_machine::TaskStateMachine;
+use super::status_machine::{TaskStateMachine, task_status_to_string};
 
 /// A task with a stale heartbeat.
 #[derive(Debug, Clone)]
@@ -56,7 +56,8 @@ impl HeartbeatMonitor {
     /// Check if a heartbeat timestamp is stale.
     ///
     /// Parses `heartbeat_at` as RFC 3339 timestamp and computes elapsed time.
-    pub fn is_heartbeat_stale(&self, heartbeat_at: &str) -> Result<bool> {
+    /// Returns `(is_stale, elapsed_minutes)`.
+    pub fn is_heartbeat_stale(&self, heartbeat_at: &str) -> Result<(bool, f64)> {
         let dt: DateTime<Utc> = chrono::DateTime::parse_from_rfc3339(heartbeat_at)
             .map_err(|e| OverlordError::HeartbeatError(format!("Invalid timestamp: {}", e)))?
             .into();
@@ -64,7 +65,7 @@ impl HeartbeatMonitor {
         let elapsed = Utc::now().signed_duration_since(dt);
         let elapsed_minutes = elapsed.num_minutes() as f64;
 
-        Ok(elapsed_minutes > self.stale_threshold_minutes as f64)
+        Ok((elapsed_minutes > self.stale_threshold_minutes as f64, elapsed_minutes))
     }
 
     /// Scan all plans and tasks for stale heartbeats across a branch.
@@ -131,25 +132,15 @@ impl HeartbeatMonitor {
             }
 
             // Check heartbeat
-            let is_stale = if let Some(heartbeat_at) = &status.heartbeat_at {
+            let (is_stale, elapsed_minutes) = if let Some(heartbeat_at) = &status.heartbeat_at {
                 self.is_heartbeat_stale(heartbeat_at)?
             } else {
                 // Missing heartbeat treated as stale if in running status
-                true
+                (true, f64::MAX)
             };
 
             if is_stale {
                 let last_heartbeat = status.heartbeat_at.clone().unwrap_or_default();
-                let elapsed_minutes = if let Some(hb) = &status.heartbeat_at {
-                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(hb) {
-                        let dt: DateTime<Utc> = dt.into();
-                        Utc::now().signed_duration_since(dt).num_minutes() as f64
-                    } else {
-                        0.0
-                    }
-                } else {
-                    f64::MAX
-                };
 
                 stale_tasks.push(StaleTask {
                     task_id: task_id.to_string(),
@@ -225,12 +216,6 @@ impl HeartbeatMonitor {
         task_id: &str,
         task_name: &str,
     ) -> Result<()> {
-        // Validate transition running -> queued
-        // Note: running -> queued is NOT a valid transition in the standard machine.
-        // For heartbeat recovery, we need a special path. We'll transition via the
-        // persistence layer directly, bypassing the status machine validation.
-        // The recovery is a system action, not a normal workflow transition.
-
         // Read current status
         let mut status = crate::persistence::read_task_status(
             repo_root,
@@ -256,7 +241,7 @@ impl HeartbeatMonitor {
         // Record transition
         let now = Utc::now().to_rfc3339();
         status.transitions.push(crate::persistence::StatusTransition {
-            from: task_status_str(&status.status),
+            from: task_status_to_string(&status.status).to_string(),
             to: "queued".to_string(),
             at: now,
             by: "overlord-heartbeat-recovery".to_string(),
@@ -306,19 +291,5 @@ impl HeartbeatMonitor {
         } else {
             (None, None)
         }
-    }
-}
-
-/// Convert a TaskStatusValue to its kebab-case string representation.
-fn task_status_str(status: &TaskStatusValue) -> String {
-    match status {
-        TaskStatusValue::Backlog => "backlog".to_string(),
-        TaskStatusValue::Queued => "queued".to_string(),
-        TaskStatusValue::Running => "running".to_string(),
-        TaskStatusValue::Reviewing => "reviewing".to_string(),
-        TaskStatusValue::WaitingManualReview => "waiting-manual-review".to_string(),
-        TaskStatusValue::MergeQueue => "merge-queue".to_string(),
-        TaskStatusValue::Abandoned => "abandoned".to_string(),
-        TaskStatusValue::Completed => "completed".to_string(),
     }
 }

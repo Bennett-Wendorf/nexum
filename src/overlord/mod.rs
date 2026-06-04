@@ -20,9 +20,11 @@ mod status_machine;
 mod tests;
 
 pub use concurrency_checker::{ConcurrencyChecker, DispatchInfo};
+pub use concurrency_checker::validate_transition_concurrency;
 pub use dependency_resolver::DependencyResolver;
 pub use errors::{OverlordError, Result};
 pub use heartbeat_monitor::{HeartbeatMonitor, StaleTask};
 pub use id_generator::{PlanIdGenerator, TaskIdGenerator};
 pub use scheduler::OverlordScheduler;
 pub use status_machine::{PlanStateMachine, TaskStateMachine};
+pub use status_machine::{task_status_to_string, plan_status_to_string};

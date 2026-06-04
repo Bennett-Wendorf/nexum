@@ -11,6 +11,7 @@ use crate::config::get_max_parallel;
 use crate::persistence::TaskStatusValue;
 
 use super::errors::{OverlordError, Result};
+use super::status_machine::is_concurrency_sensitive;
 
 /// Structured dispatch information returned by the concurrency checker.
 #[derive(Debug, Clone)]
@@ -45,22 +46,17 @@ impl ConcurrencyChecker {
         plan_id: &str,
         plan_name: &str,
     ) -> Result<u16> {
-        // Try reading from execution.json first
-        let exec_path = crate::persistence::execution_state_path(repo_root, branch, plan_id, plan_name);
-        if !exec_path.exists() {
-            return Ok(0);
+        match crate::persistence::read_execution_state(repo_root, branch, plan_id, plan_name) {
+            Ok(exec_state) => {
+                let count: u16 = exec_state
+                    .task_status_map
+                    .values()
+                    .filter(|s| matches!(s, TaskStatusValue::Running))
+                    .count() as u16;
+                Ok(count)
+            }
+            Err(_) => Ok(0), // File not found = no running tasks
         }
-
-        let exec_state = crate::persistence::read_execution_state(repo_root, branch, plan_id, plan_name)
-            .map_err(|e| OverlordError::PersistenceError(e))?;
-
-        let count: u16 = exec_state
-            .task_status_map
-            .values()
-            .filter(|s| matches!(s, TaskStatusValue::Running))
-            .count() as u16;
-
-        Ok(count)
     }
 
     /// Get the concurrency limit for a plan.
@@ -116,14 +112,6 @@ impl ConcurrencyChecker {
     }
 }
 
-/// Returns true for task statuses that are gated by concurrency limits.
-///
-/// Per `design/resource-constraints.md`: `running` and `reviewing` are
-/// concurrency-sensitive at the task level.
-pub fn is_concurrency_gated(status: &TaskStatusValue) -> bool {
-    matches!(status, TaskStatusValue::Running | TaskStatusValue::Reviewing)
-}
-
 /// Validate that a transition doesn't violate concurrency limits.
 ///
 /// If the target status is `running` or `reviewing`, checks `can_dispatch()`.
@@ -135,17 +123,15 @@ pub fn validate_transition_concurrency(
     plan_name: &str,
     to_status: &TaskStatusValue,
 ) -> Result<()> {
-    if !is_concurrency_gated(to_status) {
+    if !is_concurrency_sensitive(to_status) {
         return Ok(());
     }
 
-    let currently_running = ConcurrencyChecker::count_running(repo_root, branch, plan_id, plan_name)?;
-    let max_parallel = ConcurrencyChecker::get_max_parallel(repo_root, branch, plan_id, plan_name)?;
-
-    if currently_running >= max_parallel {
+    let info = ConcurrencyChecker::dispatch_info(repo_root, branch, plan_id, plan_name)?;
+    if !info.can_dispatch {
         return Err(OverlordError::ConcurrencyLimitExceeded {
-            current: currently_running,
-            max: max_parallel,
+            current: info.currently_running,
+            max: info.max_parallel,
         });
     }
 

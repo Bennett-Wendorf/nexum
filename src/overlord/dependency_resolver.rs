@@ -14,16 +14,12 @@ use super::errors::{OverlordError, Result};
 use super::status_machine::TaskStateMachine;
 
 /// Main dependency resolution struct.
-pub struct DependencyResolver {
-    task_machine: TaskStateMachine,
-}
+pub struct DependencyResolver;
 
 impl DependencyResolver {
-    /// Initialize with a TaskStateMachine instance.
+    /// Initialize the dependency resolver.
     pub fn new() -> Self {
-        Self {
-            task_machine: TaskStateMachine::new(),
-        }
+        Self
     }
 
     /// Check if all dependencies of a task are completed.
@@ -99,12 +95,14 @@ impl DependencyResolver {
     }
 
     /// Find tasks eligible for auto-queue (backlog with all deps met).
+    ///
+    /// Returns a list of (task_id, task_name) tuples for eligible tasks.
     pub fn auto_queue_eligible_tasks(
         repo_root: &Path,
         branch: &str,
         plan_id: &str,
         plan_name: &str,
-    ) -> Result<Vec<String>> {
+    ) -> Result<Vec<(String, String)>> {
         let task_slugs = crate::persistence::list_tasks(repo_root, branch, plan_id, plan_name)
             .map_err(|e| OverlordError::PersistenceError(e))?;
 
@@ -112,11 +110,14 @@ impl DependencyResolver {
 
         for slug in &task_slugs {
             let (task_id, task_name) = Self::parse_task_slug(slug);
-            if task_id.is_none() || task_name.is_none() {
-                continue;
-            }
-            let task_id = task_id.unwrap();
-            let task_name = task_name.unwrap();
+            let task_id = match task_id {
+                Some(id) => id,
+                None => continue,
+            };
+            let task_name = match task_name {
+                Some(name) => name,
+                None => continue,
+            };
 
             let status = crate::persistence::read_task_status(
                 repo_root,
@@ -137,7 +138,7 @@ impl DependencyResolver {
                     task_name,
                 )?
             {
-                eligible.push(task_id.to_string());
+                eligible.push((task_id.to_string(), task_name.to_string()));
             }
         }
 
@@ -158,43 +159,29 @@ impl DependencyResolver {
         let eligible = Self::auto_queue_eligible_tasks(repo_root, branch, plan_id, plan_name)?;
 
         let mut queued = Vec::new();
+        let task_machine = TaskStateMachine::new();
 
-        for task_id in &eligible {
-            // Find the task name
-            let task_slugs = crate::persistence::list_tasks(repo_root, branch, plan_id, plan_name)
-                .map_err(|e| OverlordError::PersistenceError(e))?;
+        for (task_id, task_name) in &eligible {
+            // Validate transition
+            let _ = task_machine.transition(
+                &TaskStatusValue::Backlog,
+                &TaskStatusValue::Queued,
+                "overlord-auto-queue",
+            )?;
 
-            for slug in &task_slugs {
-                if slug.starts_with(&format!("{}-", task_id)) {
-                    let task_name = if let Some(second_hyphen) = slug[task_id.len()..].find('-') {
-                        &slug[task_id.len() + second_hyphen + 1..]
-                    } else {
-                        continue;
-                    };
+            // Perform the transition
+            crate::persistence::update_task_status(
+                repo_root,
+                branch,
+                plan_id,
+                plan_name,
+                task_id,
+                task_name,
+                TaskStatusValue::Queued,
+                "overlord-auto-queue",
+            ).map_err(|e| OverlordError::PersistenceError(e))?;
 
-                    // Validate transition
-                    let _ = self.task_machine.transition(
-                        &TaskStatusValue::Backlog,
-                        &TaskStatusValue::Queued,
-                        "overlord-auto-queue",
-                    )?;
-
-                    // Perform the transition
-                    crate::persistence::update_task_status(
-                        repo_root,
-                        branch,
-                        plan_id,
-                        plan_name,
-                        task_id,
-                        task_name,
-                        TaskStatusValue::Queued,
-                        "overlord-auto-queue",
-                    ).map_err(|e| OverlordError::PersistenceError(e))?;
-
-                    queued.push(task_id.clone());
-                    break;
-                }
-            }
+            queued.push(task_id.clone());
         }
 
         Ok(queued)

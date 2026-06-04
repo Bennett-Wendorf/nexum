@@ -14,10 +14,11 @@ use super::errors::{OverlordError, Result};
 use super::heartbeat_monitor::{HeartbeatMonitor, StaleTask};
 use super::id_generator::{PlanIdGenerator, TaskIdGenerator};
 use super::status_machine::{PlanStateMachine, TaskStateMachine};
+use super::status_machine::{task_status_to_string, plan_status_to_string};
 
 use crate::persistence::{list_branches, list_plans, list_tasks};
 use crate::persistence::{read_plan, read_task_status, update_task_status, update_plan};
-use crate::persistence::{PlanStatus, TaskStatusValue};
+use crate::persistence::{Plan, PlanStatus, TaskStatusValue};
 
 /// The main scheduler that ties all deterministic checks together.
 pub struct OverlordScheduler {
@@ -97,10 +98,11 @@ impl OverlordScheduler {
     async fn tick(&self) -> Result<()> {
         let repo_root = self.repo_root.as_path();
 
-        // 1. Heartbeat recovery
+        // Compute branches once and reuse
         let branches = list_branches(repo_root)
             .map_err(|e| OverlordError::PersistenceError(e))?;
 
+        // 1. Heartbeat recovery
         for branch in &branches {
             if let Err(e) = self.heartbeat_monitor.recover_stale_tasks(repo_root, branch) {
                 tracing::warn!("Heartbeat recovery error in branch {}: {}", branch, e);
@@ -130,19 +132,16 @@ impl OverlordScheduler {
         }
 
         // 3. Dispatch queued tasks
-        self.try_dispatch_queued_tasks().await?;
+        self.try_dispatch_queued_tasks(&branches).await?;
 
         Ok(())
     }
 
     /// Dispatch queued tasks respecting concurrency limits.
-    async fn try_dispatch_queued_tasks(&self) -> Result<()> {
+    async fn try_dispatch_queued_tasks(&self, branches: &[String]) -> Result<()> {
         let repo_root = self.repo_root.as_path();
 
-        let branches = list_branches(repo_root)
-            .map_err(|e| OverlordError::PersistenceError(e))?;
-
-        for branch in &branches {
+        for branch in branches {
             let plans = list_plans(repo_root, branch)
                 .map_err(|e| OverlordError::PersistenceError(e))?;
 
@@ -153,23 +152,27 @@ impl OverlordScheduler {
                         let plan_id = &plan_slug[..pos + 1 + second_pos];
                         let plan_name = &plan_slug[pos + 1 + second_pos + 1..];
 
-                        // Check if we can dispatch
-                        if !ConcurrencyChecker::can_dispatch(
-                            repo_root, branch, plan_id, plan_name,
-                        ).unwrap_or(false) {
-                            continue;
-                        }
-
                         // Find queued tasks
                         let tasks = list_tasks(repo_root, branch, plan_id, plan_name)
                             .map_err(|e| OverlordError::PersistenceError(e))?;
 
                         for task_slug in &tasks {
                             // Re-check concurrency before each dispatch
-                            if !ConcurrencyChecker::can_dispatch(
+                            match ConcurrencyChecker::can_dispatch(
                                 repo_root, branch, plan_id, plan_name,
-                            ).unwrap_or(false) {
-                                break;
+                            ) {
+                                Ok(can) => {
+                                    if !can {
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "Concurrency check failed for plan {}: {}",
+                                        plan_id, e
+                                    );
+                                    break;
+                                }
                             }
 
                             if let Some(pos) = task_slug.find('-') {
@@ -236,8 +239,8 @@ impl OverlordScheduler {
         // Validate transition
         if !self.task_machine.can_transition(&status.status, &new_status) {
             return Err(OverlordError::InvalidTransition {
-                from: status.status.as_str().to_string(),
-                to: new_status.as_str().to_string(),
+                from: task_status_to_string(&status.status).to_string(),
+                to: task_status_to_string(&new_status).to_string(),
                 entity: "task".to_string(),
             });
         }
@@ -276,8 +279,8 @@ impl OverlordScheduler {
         // Validate transition
         if !self.plan_machine.can_transition(&plan.status, &new_status) {
             return Err(OverlordError::InvalidTransition {
-                from: format!("{:?}", plan.status).to_lowercase(),
-                to: format!("{:?}", new_status).to_lowercase(),
+                from: plan_status_to_string(&plan.status).to_string(),
+                to: plan_status_to_string(&new_status).to_string(),
                 entity: "plan".to_string(),
             });
         }
@@ -287,9 +290,11 @@ impl OverlordScheduler {
             // For now, no concurrency check on plans (future enhancement)
         }
 
-        // Update plan
-        let mut updated_plan = plan.clone();
-        updated_plan.status = new_status.clone();
+        // Update plan — use struct update syntax to avoid cloning
+        let updated_plan = Plan {
+            status: new_status.clone(),
+            ..plan
+        };
 
         update_plan(
             repo_root, branch, plan_id, plan_name, &updated_plan,
@@ -360,25 +365,5 @@ impl OverlordScheduler {
     pub async fn get_stale_tasks(&self, branch: &str) -> Result<Vec<StaleTask>> {
         self.heartbeat_monitor
             .detect_stale_tasks(self.repo_root.as_path(), branch)
-    }
-}
-
-// Helper trait for converting enums to string
-trait AsStr {
-    fn as_str(&self) -> &str;
-}
-
-impl AsStr for TaskStatusValue {
-    fn as_str(&self) -> &str {
-        match self {
-            TaskStatusValue::Backlog => "backlog",
-            TaskStatusValue::Queued => "queued",
-            TaskStatusValue::Running => "running",
-            TaskStatusValue::Reviewing => "reviewing",
-            TaskStatusValue::WaitingManualReview => "waiting-manual-review",
-            TaskStatusValue::MergeQueue => "merge-queue",
-            TaskStatusValue::Abandoned => "abandoned",
-            TaskStatusValue::Completed => "completed",
-        }
     }
 }

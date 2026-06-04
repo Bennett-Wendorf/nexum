@@ -74,14 +74,14 @@ impl PlanStateMachine {
     ) -> Result<StatusTransitionRecord> {
         if !self.can_transition(from, to) {
             return Err(OverlordError::InvalidTransition {
-                from: format!("{:?}", from).to_lowercase(),
-                to: format!("{:?}", to).to_lowercase(),
+                from: plan_status_to_string(from).to_string(),
+                to: plan_status_to_string(to).to_string(),
                 entity: "plan".to_string(),
             });
         }
         Ok(StatusTransitionRecord {
-            from: format!("{:?}", from).to_lowercase(),
-            to: format!("{:?}", to).to_lowercase(),
+            from: plan_status_to_string(from).to_string(),
+            to: plan_status_to_string(to).to_string(),
             at: chrono::Utc::now().to_rfc3339(),
             by: by.to_string(),
         })
@@ -156,14 +156,14 @@ impl TaskStateMachine {
     ) -> Result<StatusTransitionRecord> {
         if !self.can_transition(from, to) {
             return Err(OverlordError::InvalidTransition {
-                from: format!("{:?}", from).to_lowercase(),
-                to: format!("{:?}", to).to_lowercase(),
+                from: task_status_to_string(from).to_string(),
+                to: task_status_to_string(to).to_string(),
                 entity: "task".to_string(),
             });
         }
         Ok(StatusTransitionRecord {
-            from: format!("{:?}", from).to_lowercase(),
-            to: format!("{:?}", to).to_lowercase(),
+            from: task_status_to_string(from).to_string(),
+            to: task_status_to_string(to).to_string(),
             at: chrono::Utc::now().to_rfc3339(),
             by: by.to_string(),
         })
@@ -205,4 +205,33 @@ pub fn is_plan_concurrency_sensitive(status: &PlanStatus) -> bool {
         status,
         PlanStatus::Planning | PlanStatus::Reviewing
     )
+}
+
+// ── Status-to-String Conversion ─────────────────────────────────────────────
+
+/// Convert a TaskStatusValue to its kebab-case string representation.
+pub fn task_status_to_string(status: &TaskStatusValue) -> &'static str {
+    match status {
+        TaskStatusValue::Backlog => "backlog",
+        TaskStatusValue::Queued => "queued",
+        TaskStatusValue::Running => "running",
+        TaskStatusValue::Reviewing => "reviewing",
+        TaskStatusValue::WaitingManualReview => "waiting-manual-review",
+        TaskStatusValue::MergeQueue => "merge-queue",
+        TaskStatusValue::Abandoned => "abandoned",
+        TaskStatusValue::Completed => "completed",
+    }
+}
+
+/// Convert a PlanStatus to its kebab-case string representation.
+pub fn plan_status_to_string(status: &PlanStatus) -> &'static str {
+    match status {
+        PlanStatus::Draft => "draft",
+        PlanStatus::Queued => "queued",
+        PlanStatus::Planning => "planning",
+        PlanStatus::Reviewing => "reviewing",
+        PlanStatus::Approved => "approved",
+        PlanStatus::Complete => "complete",
+        PlanStatus::Rejected => "rejected",
+    }
 }
