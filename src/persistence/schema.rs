@@ -48,19 +48,23 @@ pub struct TaskReference {
 }
 
 /// Lifecycle status of a plan.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PlanStatus {
-    /// The plan has not yet been prioritised.
-    Backlog,
-    /// The plan is queued for planning.
+    /// Rough idea, user-created, sparse content.
+    Draft,
+    /// Waiting for planner agent.
     Queued,
-    /// The plan is actively being planned.
+    /// Planner is working on it.
     Planning,
-    /// The plan is under review.
+    /// Plan ready, waiting for human approval.
     Reviewing,
-    /// The plan is fully specified and ready for execution.
-    PlanComplete,
+    /// Human approved, tasks flow to task backlog.
+    Approved,
+    /// All tasks done (terminal).
+    Complete,
+    /// Human rejected (terminal).
+    Rejected,
 }
 
 // ── Task ────────────────────────────────────────────────────────────────────
@@ -128,7 +132,7 @@ pub struct TaskStatus {
 }
 
 /// Possible values for a task's runtime status.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TaskStatusValue {
     /// The task has not yet been prioritised.
@@ -160,16 +164,16 @@ pub struct AgentLease {
     pub leased_at: String,
 }
 
-/// A single status transition event.
+/// A single status transition event (works for both plan and task transitions).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusTransition {
-    /// Previous status.
-    pub from: TaskStatusValue,
-    /// New status.
-    pub to: TaskStatusValue,
+    /// Previous status (as a string, e.g. "queued" or "planning").
+    pub from: String,
+    /// New status (as a string, e.g. "running" or "approved").
+    pub to: String,
     /// ISO 8601 timestamp of the transition.
     pub at: String,
-    /// Actor that performed the transition, e.g. `"builder"`.
+    /// Actor that performed the transition, e.g. "builder" or "overlord".
     pub by: String,
 }
 
