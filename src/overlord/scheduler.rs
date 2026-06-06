@@ -17,7 +17,7 @@ use super::status_machine::{PlanStateMachine, TaskStateMachine};
 use super::status_machine::plan_status_to_string;
 use crate::persistence::task_status_to_string;
 
-use crate::persistence::{list_branches, list_plans, list_tasks};
+use crate::persistence::{list_branches, list_plans, list_tasks, parse_plan_slug, parse_task_slug};
 use crate::persistence::{read_plan, read_task_status, update_task_status, update_plan};
 use crate::persistence::{Plan, PlanStatus, TaskStatusValue};
 
@@ -116,18 +116,14 @@ impl OverlordScheduler {
                 .map_err(|e| OverlordError::PersistenceError(e))?;
 
             for plan_slug in &plans {
-                if let Some(pos) = plan_slug.find('-') {
-                    let after_first = &plan_slug[pos + 1..];
-                    if let Some(second_pos) = after_first.find('-') {
-                        let plan_id = &plan_slug[..pos + 1 + second_pos];
-                        let plan_name = &plan_slug[pos + 1 + second_pos + 1..];
+                let (plan_id, plan_name) = parse_plan_slug(plan_slug);
+                let plan_id = match plan_id { Some(id) => id, None => continue, };
+                let plan_name = match plan_name { Some(name) => name, None => continue, };
 
-                        if let Err(e) = self.dependency_resolver.auto_queue_tasks(
-                            repo_root, branch, plan_id, plan_name,
-                        ) {
-                            tracing::warn!("Auto-queue error in plan {}: {}", plan_id, e);
-                        }
-                    }
+                if let Err(e) = self.dependency_resolver.auto_queue_tasks(
+                    repo_root, branch, plan_id, plan_name,
+                ) {
+                    tracing::warn!("Auto-queue error in plan {}: {}", plan_id, e);
                 }
             }
         }
@@ -147,66 +143,58 @@ impl OverlordScheduler {
                 .map_err(|e| OverlordError::PersistenceError(e))?;
 
             for plan_slug in &plans {
-                if let Some(pos) = plan_slug.find('-') {
-                    let after_first = &plan_slug[pos + 1..];
-                    if let Some(second_pos) = after_first.find('-') {
-                        let plan_id = &plan_slug[..pos + 1 + second_pos];
-                        let plan_name = &plan_slug[pos + 1 + second_pos + 1..];
+                let (plan_id, plan_name) = parse_plan_slug(plan_slug);
+                let plan_id = match plan_id { Some(id) => id, None => continue, };
+                let plan_name = match plan_name { Some(name) => name, None => continue, };
 
-                        // Find queued tasks
-                        let tasks = list_tasks(repo_root, branch, plan_id, plan_name)
-                            .map_err(|e| OverlordError::PersistenceError(e))?;
+                // Find queued tasks
+                let tasks = list_tasks(repo_root, branch, plan_id, plan_name)
+                    .map_err(|e| OverlordError::PersistenceError(e))?;
 
-                        for task_slug in &tasks {
-                            // Re-check concurrency before each dispatch
-                            match ConcurrencyChecker::can_dispatch(
-                                repo_root, branch, plan_id, plan_name,
-                            ) {
-                                Ok(can) => {
-                                    if !can {
-                                        break;
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "Concurrency check failed for plan {}: {}",
-                                        plan_id, e
-                                    );
-                                    break;
-                                }
+                for task_slug in &tasks {
+                    // Re-check concurrency before each dispatch
+                    match ConcurrencyChecker::can_dispatch(
+                        repo_root, branch, plan_id, plan_name,
+                    ) {
+                        Ok(can) => {
+                            if !can {
+                                break;
                             }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Concurrency check failed for plan {}: {}",
+                                plan_id, e
+                            );
+                            break;
+                        }
+                    }
 
-                            if let Some(pos) = task_slug.find('-') {
-                                let after_first = &task_slug[pos + 1..];
-                                if let Some(second_pos) = after_first.find('-') {
-                                    let task_id = &task_slug[..pos + 1 + second_pos];
-                                    let task_name = &task_slug[pos + 1 + second_pos + 1..];
+                    let (task_id, task_name) = parse_task_slug(task_slug);
+                    let task_id = match task_id { Some(id) => id, None => continue, };
+                    let task_name = match task_name { Some(name) => name, None => continue, };
 
-                                    let status = read_task_status(
-                                        repo_root, branch, plan_id, plan_name,
-                                        task_id, task_name,
-                                    ).map_err(|e| OverlordError::PersistenceError(e))?;
+                    let status = read_task_status(
+                        repo_root, branch, plan_id, plan_name,
+                        task_id, task_name,
+                    ).map_err(|e| OverlordError::PersistenceError(e))?;
 
-                                    if matches!(status.status, TaskStatusValue::Queued) {
-                                        // Validate transition
-                                        if self.task_machine.can_transition(
-                                            &TaskStatusValue::Queued,
-                                            &TaskStatusValue::Running,
-                                        ) {
-                                            if let Err(e) = update_task_status(
-                                                repo_root, branch, plan_id, plan_name,
-                                                task_id, task_name,
-                                                TaskStatusValue::Running,
-                                                "overlord-dispatch",
-                                            ) {
-                                                tracing::warn!(
-                                                    "Dispatch error for task {}: {}",
-                                                    task_id, e
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
+                    if matches!(status.status, TaskStatusValue::Queued) {
+                        // Validate transition
+                        if self.task_machine.can_transition(
+                            &TaskStatusValue::Queued,
+                            &TaskStatusValue::Running,
+                        ) {
+                            if let Err(e) = update_task_status(
+                                repo_root, branch, plan_id, plan_name,
+                                task_id, task_name,
+                                TaskStatusValue::Running,
+                                "overlord-dispatch",
+                            ) {
+                                tracing::warn!(
+                                    "Dispatch error for task {}: {}",
+                                    task_id, e
+                                );
                             }
                         }
                     }
@@ -307,20 +295,16 @@ impl OverlordScheduler {
                 .map_err(|e| OverlordError::PersistenceError(e))?;
 
             for task_slug in &tasks {
-                if let Some(pos) = task_slug.find('-') {
-                    let after_first = &task_slug[pos + 1..];
-                    if let Some(second_pos) = after_first.find('-') {
-                        let task_id = &task_slug[..pos + 1 + second_pos];
-                        let task_name = &task_slug[pos + 1 + second_pos + 1..];
+                let (task_id, task_name) = parse_task_slug(task_slug);
+                let task_id = match task_id { Some(id) => id, None => continue, };
+                let task_name = match task_name { Some(name) => name, None => continue, };
 
-                        let _ = update_task_status(
-                            repo_root, branch, plan_id, plan_name,
-                            task_id, task_name,
-                            TaskStatusValue::Backlog,
-                            "overlord-plan-approved",
-                        );
-                    }
-                }
+                let _ = update_task_status(
+                    repo_root, branch, plan_id, plan_name,
+                    task_id, task_name,
+                    TaskStatusValue::Backlog,
+                    "overlord-plan-approved",
+                );
             }
         }
 
