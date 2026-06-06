@@ -170,22 +170,16 @@ impl OverlordScheduler {
                     ).map_err(|e| OverlordError::PersistenceError(e))?;
 
                     if matches!(status.status, TaskStatusValue::Queued) {
-                        // Validate transition
-                        if TaskStateMachine::can_transition(
-                            &TaskStatusValue::Queued,
-                            &TaskStatusValue::Running,
+                        if let Err(e) = update_task_status(
+                            repo_root, branch, plan_id, plan_name,
+                            task_id, task_name,
+                            TaskStatusValue::Running,
+                            "overlord-dispatch",
                         ) {
-                            if let Err(e) = update_task_status(
-                                repo_root, branch, plan_id, plan_name,
-                                task_id, task_name,
-                                TaskStatusValue::Running,
-                                "overlord-dispatch",
-                            ) {
-                                tracing::warn!(
-                                    "Dispatch error for task {}: {}",
-                                    task_id, e
-                                );
-                            }
+                            tracing::warn!(
+                                "Dispatch error for task {}: {}",
+                                task_id, e
+                            );
                         }
                     }
                 }

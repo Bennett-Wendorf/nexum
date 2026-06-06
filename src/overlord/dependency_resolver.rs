@@ -11,7 +11,6 @@ use std::path::Path;
 use crate::persistence::{parse_slug, TaskStatusValue};
 
 use super::errors::{OverlordError, Result};
-use super::status_machine::TaskStateMachine;
 
 /// Main dependency resolution struct.
 pub struct DependencyResolver;
@@ -153,13 +152,6 @@ impl DependencyResolver {
         let mut queued = Vec::new();
 
         for (task_id, task_name) in &eligible {
-            // Validate transition
-            let _ = TaskStateMachine::transition(
-                &TaskStatusValue::Backlog,
-                &TaskStatusValue::Queued,
-                "overlord-auto-queue",
-            )?;
-
             // Perform the transition
             crate::persistence::update_task_status(
                 repo_root,

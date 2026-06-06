@@ -1,6 +1,6 @@
 //! Typed status machines for plans and tasks.
 //!
-//! Zero-sized types (ZSTs) that validate transitions via compile-time match
+//! Zero-sized types (ZSTs) that validate transitions via match
 //! expressions instead of runtime HashMap lookups. Provides `can_transition()`
 //! and `transition()` static methods for both plan and task status machines.
 
@@ -21,7 +21,7 @@ pub struct StatusTransitionRecord {
 
 /// State machine for plan lifecycle transitions.
 ///
-/// Zero-sized type using match expressions for compile-time transition validation.
+/// Zero-sized type using match expressions for transition validation.
 ///
 /// Valid transitions per `design/work-statuses.md`:
 /// - `draft` → `queued`
@@ -34,11 +34,6 @@ pub struct StatusTransitionRecord {
 pub struct PlanStateMachine;
 
 impl PlanStateMachine {
-    /// Create the state machine (returns a ZST, kept for backward compatibility).
-    pub fn new() -> Self {
-        PlanStateMachine
-    }
-
     /// Check if a transition from `from` to `to` is valid.
     pub fn can_transition(from: &PlanStatus, to: &PlanStatus) -> bool {
         match (from, to) {
@@ -82,7 +77,7 @@ impl PlanStateMachine {
 
 /// State machine for task lifecycle transitions.
 ///
-/// Zero-sized type using match expressions for compile-time transition validation.
+/// Zero-sized type using match expressions for transition validation.
 ///
 /// Valid transitions per `design/work-statuses.md`:
 /// - `backlog` → `queued`
@@ -96,11 +91,6 @@ impl PlanStateMachine {
 pub struct TaskStateMachine;
 
 impl TaskStateMachine {
-    /// Create the state machine (returns a ZST, kept for backward compatibility).
-    pub fn new() -> Self {
-        TaskStateMachine
-    }
-
     /// Check if a transition from `from` to `to` is valid.
     pub fn can_transition(from: &TaskStatusValue, to: &TaskStatusValue) -> bool {
         match (from, to) {
