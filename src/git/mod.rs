@@ -8,6 +8,8 @@
 pub mod branch;
 pub mod errors;
 pub mod subprocess;
+pub mod worktree;
 
 pub use errors::{GitError, Result};
 pub use subprocess::{git, GitCommand, GitOutput};
+pub use worktree::WorktreeInfo;
