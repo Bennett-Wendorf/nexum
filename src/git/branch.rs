@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use super::errors::Result;
+use super::errors::{GitError, Result};
 use super::subprocess::git;
 
 /// Create a new branch from an existing branch.
@@ -184,4 +184,82 @@ pub fn task_branch_name(task_id: &str) -> String {
 /// `true` if the branch name starts with `task/`, `false` otherwise.
 pub fn is_task_branch(branch_name: &str) -> bool {
     branch_name.starts_with("task/")
+}
+
+/// Create a new plan branch.
+///
+/// Checks if the branch already exists, creates it from the base branch,
+/// and optionally pushes to remote.
+pub async fn create_plan_branch(
+    repo_root: &Path,
+    plan_branch: &str,
+    from_branch: &str,
+    push_to_remote: bool,
+) -> Result<()> {
+    // Check if branch already exists
+    if branch_exists(repo_root, plan_branch).await? {
+        return Err(GitError::BranchExists { branch: plan_branch.to_string() });
+    }
+    
+    // Create branch
+    create_branch(repo_root, plan_branch, from_branch).await?;
+    
+    // Optionally push to remote
+    if push_to_remote {
+        let _output = git(repo_root, &["push", "-u", "origin", plan_branch]).await?;
+    }
+    
+    Ok(())
+}
+
+/// Set up a complete task workspace: create task branch and spawn worktree.
+///
+/// # Steps
+/// 1. Create task branch from plan branch
+/// 2. Spawn worktree for the task
+/// 3. Return worktree path
+///
+/// On failure, cleans up any partial state.
+pub async fn setup_task_workspace(
+    repo_root: &Path,
+    task_id: &str,
+    plan_branch: &str,
+) -> Result<std::path::PathBuf> {
+    // Step 1: Create task branch
+    let branch_name = create_task_branch(repo_root, task_id, plan_branch).await?;
+    
+    // Step 2: Spawn worktree
+    match super::worktree::spawn_worktree(repo_root, task_id, &branch_name).await {
+        Ok(path) => Ok(path),
+        Err(e) => {
+            // Cleanup: delete the branch we just created
+            let _ = delete_branch(repo_root, &branch_name).await;
+            Err(e)
+        }
+    }
+}
+
+/// Tear down a task workspace: remove worktree and delete task branch.
+///
+/// # Steps
+/// 1. Remove worktree (with force fallback)
+/// 2. Delete task branch
+///
+/// Handles missing branch gracefully (no-op).
+pub async fn teardown_task_workspace(
+    repo_root: &Path,
+    task_id: &str,
+) -> Result<()> {
+    // Step 1: Remove worktree
+    if let Err(e) = super::worktree::remove_worktree(repo_root, task_id).await {
+        // Fallback to force removal
+        tracing::warn!("Worktree removal failed for {}, attempting force: {}", task_id, e);
+        super::worktree::remove_worktree_force(repo_root, task_id).await?;
+    }
+    
+    // Step 2: Delete task branch (no-op if already gone)
+    let branch_name = task_branch_name(task_id);
+    delete_branch(repo_root, &branch_name).await?;
+    
+    Ok(())
 }
