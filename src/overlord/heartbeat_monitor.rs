@@ -9,7 +9,7 @@ use std::path::Path;
 
 use chrono::{DateTime, Utc};
 
-use crate::persistence::TaskStatusValue;
+use crate::persistence::{parse_plan_slug, parse_task_slug, TaskStatusValue};
 
 use super::errors::{OverlordError, Result};
 use super::status_machine::TaskStateMachine;
@@ -77,7 +77,7 @@ impl HeartbeatMonitor {
             .map_err(|e| OverlordError::PersistenceError(e))?;
 
         for plan_slug in &plan_slugs {
-            let (plan_id, plan_name) = Self::parse_plan_slug(plan_slug);
+            let (plan_id, plan_name) = parse_plan_slug(plan_slug);
             let plan_id = match plan_id {
                 Some(id) => id,
                 None => continue,
@@ -107,7 +107,7 @@ impl HeartbeatMonitor {
             .map_err(|e| OverlordError::PersistenceError(e))?;
 
         for slug in &task_slugs {
-            let (task_id, task_name) = Self::parse_task_slug(slug);
+            let (task_id, task_name) = parse_task_slug(slug);
             let task_id = match task_id {
                 Some(id) => id,
                 None => continue,
@@ -246,37 +246,5 @@ impl HeartbeatMonitor {
         ).map_err(|e| OverlordError::PersistenceError(e))?;
 
         Ok(())
-    }
-
-    /// Parse plan ID and name from a slug like "PLAN-001-my-plan".
-    fn parse_plan_slug(slug: &str) -> (Option<&str>, Option<&str>) {
-        if let Some(first_hyphen) = slug.find('-') {
-            let after_first = &slug[first_hyphen + 1..];
-            if let Some(second_hyphen) = after_first.find('-') {
-                let plan_id = &slug[..first_hyphen + 1 + second_hyphen];
-                let plan_name = &slug[first_hyphen + 1 + second_hyphen + 1..];
-                (Some(plan_id), Some(plan_name))
-            } else {
-                (None, None)
-            }
-        } else {
-            (None, None)
-        }
-    }
-
-    /// Parse task ID and name from a slug like "TASK-001-my-task".
-    fn parse_task_slug(slug: &str) -> (Option<&str>, Option<&str>) {
-        if let Some(first_hyphen) = slug.find('-') {
-            let after_first = &slug[first_hyphen + 1..];
-            if let Some(second_hyphen) = after_first.find('-') {
-                let task_id = &slug[..first_hyphen + 1 + second_hyphen];
-                let task_name = &slug[first_hyphen + 1 + second_hyphen + 1..];
-                (Some(task_id), Some(task_name))
-            } else {
-                (None, None)
-            }
-        } else {
-            (None, None)
-        }
     }
 }
