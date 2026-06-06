@@ -72,7 +72,11 @@ impl OverlordScheduler {
                 tracing::error!("Scheduler tick error: {}", e);
                 // Continue on error — don't crash the loop
             }
-            tokio::time::sleep(self.interval).await;
+            // Check running flag during sleep to allow prompt shutdown
+            tokio::select! {
+                _ = tokio::time::sleep(self.interval) => {},
+                _ = self.check_shutdown() => break,
+            }
         }
 
         tracing::info!("Overlord scheduler stopped");
@@ -82,6 +86,16 @@ impl OverlordScheduler {
     /// Stop the scheduler loop.
     pub fn stop(&self) {
         self.running.store(false, Ordering::SeqCst);
+    }
+
+    /// Poll the running flag with a short interval for responsive shutdown.
+    async fn check_shutdown(&self) {
+        loop {
+            if !self.running.load(Ordering::SeqCst) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 
     /// Check scheduler state.
