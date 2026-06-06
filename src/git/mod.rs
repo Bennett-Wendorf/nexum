@@ -5,6 +5,7 @@
 //! through the [`subprocess`] module, ensuring consistent error handling
 //! and timeout enforcement.
 
+pub mod branch;
 pub mod errors;
 pub mod subprocess;
 
