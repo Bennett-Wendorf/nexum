@@ -27,4 +27,5 @@ pub use heartbeat_monitor::{HeartbeatMonitor, StaleTask};
 pub use id_generator::{PlanIdGenerator, TaskIdGenerator};
 pub use scheduler::OverlordScheduler;
 pub use status_machine::{PlanStateMachine, TaskStateMachine};
-pub use status_machine::{task_status_to_string, plan_status_to_string};
+pub use status_machine::plan_status_to_string;
+pub use crate::persistence::task_status_to_string;

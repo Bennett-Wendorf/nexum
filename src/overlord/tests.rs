@@ -374,6 +374,7 @@ fn test_recover_task_status_clears_fields() {
 
     let status = crate::persistence::recover_task_status(
         dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
+        TaskStatusValue::Queued,
         "overlord-heartbeat-recovery",
     ).expect("ok");
 
@@ -399,6 +400,7 @@ fn test_recovery_increments_attempts() {
     // Recover and verify attempts incremented
     let status = crate::persistence::recover_task_status(
         dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
+        TaskStatusValue::Queued,
         "overlord-heartbeat-recovery",
     ).expect("ok");
 

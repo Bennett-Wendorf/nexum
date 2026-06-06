@@ -168,8 +168,8 @@ pub fn update_task_status(
 
     // Record transition (from/to are strings now)
     status.transitions.push(StatusTransition {
-        from: format!("{:?}", old_status).to_lowercase(),
-        to: format!("{:?}", new_status).to_lowercase(),
+        from: task_status_to_string(&old_status).to_string(),
+        to: task_status_to_string(&new_status).to_string(),
         at: now.clone(),
         by: by.to_string(),
     });
@@ -201,14 +201,14 @@ pub fn update_task_status(
     Ok(status)
 }
 
-/// Recover a task from stale heartbeat by transitioning it back to queued status.
+/// Recover a task from stale heartbeat by transitioning it to the target status.
 ///
 /// This function:
 /// 1. Reads the current status.
-/// 2. Records a transition from the old status to `Queued`.
+/// 2. Records the transition using correct kebab-case strings.
 /// 3. Clears `agent`, `started_at`, and `heartbeat_at`.
 /// 4. Increments `attempts`.
-/// 5. Sets the new status to `Queued`.
+/// 5. Sets the new status to `target_status`.
 /// 6. Verifies file hasn't changed before writing (TOCTOU mitigation).
 /// 7. Writes the updated status atomically.
 pub fn recover_task_status(
@@ -218,12 +218,13 @@ pub fn recover_task_status(
     plan_name: &str,
     task_id: &str,
     task_name: &str,
+    target_status: TaskStatusValue,
     by: &str,
 ) -> Result<TaskStatus> {
     let status_path =
         task_status_path(repo_root, branch, plan_id, plan_name, task_id, task_name);
 
-    // Read current status
+    // Read current status (single read — validation happens here)
     let content = read_file(&status_path)?;
     let mut status: TaskStatus = serde_json::from_str(&content)
         .map_err(|e| PersistenceError::JsonParse(status_path.clone(), e))?;
@@ -231,24 +232,24 @@ pub fn recover_task_status(
     let old_status = status.status.clone();
     let now = Utc::now().to_rfc3339();
 
-    // Record transition from old status to Queued
+    // Record transition with correct kebab-case strings
     status.transitions.push(StatusTransition {
-        from: format!("{:?}", old_status).to_lowercase(),
-        to: "queued".to_string(),
+        from: task_status_to_string(&old_status).to_string(),
+        to: task_status_to_string(&target_status).to_string(),
         at: now.clone(),
         by: by.to_string(),
     });
 
-    // Clear agent, started_at, and heartbeat_at
+    // Clear recovery fields
     status.agent = None;
     status.started_at = None;
     status.heartbeat_at = None;
 
-    // Increment attempts unconditionally
+    // Increment attempts
     status.attempts += 1;
 
-    // Set the new status to Queued
-    status.status = TaskStatusValue::Queued;
+    // Set new status
+    status.status = target_status;
 
     // Re-check before writing: verify file hasn't changed
     let new_content = fs::read_to_string(&status_path).map_err(|e| {
@@ -263,6 +264,7 @@ pub fn recover_task_status(
 
     Ok(status)
 }
+
 
 // ── Execution State Operations ──────────────────────────────────────────────
 

@@ -241,6 +241,7 @@ impl HeartbeatMonitor {
             plan_name,
             task_id,
             task_name,
+            TaskStatusValue::Queued,
             "overlord-heartbeat-recovery",
         ).map_err(|e| OverlordError::PersistenceError(e))?;
 

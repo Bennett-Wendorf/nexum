@@ -153,6 +153,20 @@ pub enum TaskStatusValue {
     Completed,
 }
 
+/// Convert a TaskStatusValue to its kebab-case string representation.
+pub fn task_status_to_string(status: &TaskStatusValue) -> &'static str {
+    match status {
+        TaskStatusValue::Backlog => "backlog",
+        TaskStatusValue::Queued => "queued",
+        TaskStatusValue::Running => "running",
+        TaskStatusValue::Reviewing => "reviewing",
+        TaskStatusValue::WaitingManualReview => "waiting-manual-review",
+        TaskStatusValue::MergeQueue => "merge-queue",
+        TaskStatusValue::Abandoned => "abandoned",
+        TaskStatusValue::Completed => "completed",
+    }
+}
+
 /// Lease held by an agent working on a task.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentLease {
