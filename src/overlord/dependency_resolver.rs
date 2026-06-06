@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::persistence::{parse_task_slug, TaskStatusValue};
+use crate::persistence::{parse_slug, TaskStatusValue};
 
 use super::errors::{OverlordError, Result};
 use super::status_machine::TaskStateMachine;
@@ -109,15 +109,7 @@ impl DependencyResolver {
         let mut eligible = Vec::new();
 
         for slug in &task_slugs {
-            let (task_id, task_name) = parse_task_slug(slug);
-            let task_id = match task_id {
-                Some(id) => id,
-                None => continue,
-            };
-            let task_name = match task_name {
-                Some(name) => name,
-                None => continue,
-            };
+            let (Some(task_id), Some(task_name)) = parse_slug(slug) else { continue };
 
             let status = crate::persistence::read_task_status(
                 repo_root,
@@ -201,15 +193,7 @@ impl DependencyResolver {
         let mut newly_eligible = Vec::new();
 
         for slug in &task_slugs {
-            let (task_id, task_name) = parse_task_slug(slug);
-            let task_id = match task_id {
-                Some(id) => id,
-                None => continue,
-            };
-            let task_name = match task_name {
-                Some(name) => name,
-                None => continue,
-            };
+            let (Some(task_id), Some(task_name)) = parse_slug(slug) else { continue };
 
             if task_id == completed_task_id {
                 continue;
@@ -257,15 +241,7 @@ impl DependencyResolver {
         let mut graph: HashMap<String, Vec<String>> = HashMap::new();
 
         for slug in &task_slugs {
-            let (task_id, task_name) = parse_task_slug(slug);
-            let task_id = match task_id {
-                Some(id) => id,
-                None => continue,
-            };
-            let task_name = match task_name {
-                Some(name) => name,
-                None => continue,
-            };
+            let (Some(task_id), Some(task_name)) = parse_slug(slug) else { continue };
 
             let status = crate::persistence::read_task_status(
                 repo_root,

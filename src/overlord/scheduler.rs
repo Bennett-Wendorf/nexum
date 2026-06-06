@@ -17,7 +17,7 @@ use super::status_machine::{PlanStateMachine, TaskStateMachine};
 use super::status_machine::plan_status_to_string;
 use crate::persistence::task_status_to_string;
 
-use crate::persistence::{list_branches, list_plans, list_tasks, parse_plan_slug, parse_task_slug};
+use crate::persistence::{list_branches, list_plans, list_tasks, parse_slug};
 use crate::persistence::{read_plan, read_task_status, update_task_status, update_plan};
 use crate::persistence::{Plan, PlanStatus, TaskStatusValue};
 
@@ -116,9 +116,7 @@ impl OverlordScheduler {
                 .map_err(|e| OverlordError::PersistenceError(e))?;
 
             for plan_slug in &plans {
-                let (plan_id, plan_name) = parse_plan_slug(plan_slug);
-                let plan_id = match plan_id { Some(id) => id, None => continue, };
-                let plan_name = match plan_name { Some(name) => name, None => continue, };
+                let (Some(plan_id), Some(plan_name)) = parse_slug(plan_slug) else { continue };
 
                 if let Err(e) = self.dependency_resolver.auto_queue_tasks(
                     repo_root, branch, plan_id, plan_name,
@@ -143,9 +141,7 @@ impl OverlordScheduler {
                 .map_err(|e| OverlordError::PersistenceError(e))?;
 
             for plan_slug in &plans {
-                let (plan_id, plan_name) = parse_plan_slug(plan_slug);
-                let plan_id = match plan_id { Some(id) => id, None => continue, };
-                let plan_name = match plan_name { Some(name) => name, None => continue, };
+                let (Some(plan_id), Some(plan_name)) = parse_slug(plan_slug) else { continue };
 
                 // Find queued tasks
                 let tasks = list_tasks(repo_root, branch, plan_id, plan_name)
@@ -170,9 +166,7 @@ impl OverlordScheduler {
                         }
                     }
 
-                    let (task_id, task_name) = parse_task_slug(task_slug);
-                    let task_id = match task_id { Some(id) => id, None => continue, };
-                    let task_name = match task_name { Some(name) => name, None => continue, };
+                    let (Some(task_id), Some(task_name)) = parse_slug(task_slug) else { continue };
 
                     let status = read_task_status(
                         repo_root, branch, plan_id, plan_name,
@@ -295,9 +289,7 @@ impl OverlordScheduler {
                 .map_err(|e| OverlordError::PersistenceError(e))?;
 
             for task_slug in &tasks {
-                let (task_id, task_name) = parse_task_slug(task_slug);
-                let task_id = match task_id { Some(id) => id, None => continue, };
-                let task_name = match task_name { Some(name) => name, None => continue, };
+                let (Some(task_id), Some(task_name)) = parse_slug(task_slug) else { continue };
 
                 let _ = update_task_status(
                     repo_root, branch, plan_id, plan_name,

@@ -264,36 +264,21 @@ fn task_slug(task_id: &str, task_name: &str) -> String {
     format!("{}-{}", task_id, slugify(task_name))
 }
 
-/// Parse plan ID and name from a slug like "PLAN-001-my-plan".
-///
-/// Returns `(plan_id, plan_name)` where `plan_id` includes the trailing hyphen
-/// (e.g., `"PLAN-001"`). Returns `(None, None)` if the slug format is invalid.
-pub fn parse_plan_slug(slug: &str) -> (Option<&str>, Option<&str>) {
-    if let Some(first_hyphen) = slug.find('-') {
-        let after_first = &slug[first_hyphen + 1..];
-        if let Some(second_hyphen) = after_first.find('-') {
-            let plan_id = &slug[..first_hyphen + 1 + second_hyphen];
-            let plan_name = &slug[first_hyphen + 1 + second_hyphen + 1..];
-            (Some(plan_id), Some(plan_name))
-        } else {
-            (None, None)
-        }
-    } else {
-        (None, None)
-    }
-}
 
-/// Parse task ID and name from a slug like "TASK-001-my-task".
+/// Parse an ID and name from a slug like "PLAN-001-my-plan" or "TASK-001-my-task".
 ///
-/// Returns `(task_id, task_name)` where `task_id` includes the trailing hyphen
-/// (e.g., `"TASK-001"`). Returns `(None, None)` if the slug format is invalid.
-pub fn parse_task_slug(slug: &str) -> (Option<&str>, Option<&str>) {
+/// Returns `(id, name)` where `id` includes the trailing hyphen (e.g., `"PLAN-001"`).
+/// Returns `(None, None)` if the slug format is invalid or the name is empty.
+pub fn parse_slug(slug: &str) -> (Option<&str>, Option<&str>) {
     if let Some(first_hyphen) = slug.find('-') {
         let after_first = &slug[first_hyphen + 1..];
         if let Some(second_hyphen) = after_first.find('-') {
-            let task_id = &slug[..first_hyphen + 1 + second_hyphen];
-            let task_name = &slug[first_hyphen + 1 + second_hyphen + 1..];
-            (Some(task_id), Some(task_name))
+            let id = &slug[..first_hyphen + 1 + second_hyphen];
+            let name = &slug[first_hyphen + 1 + second_hyphen + 1..];
+            if name.is_empty() {
+                return (None, None);
+            }
+            (Some(id), Some(name))
         } else {
             (None, None)
         }

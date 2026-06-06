@@ -9,7 +9,7 @@ use std::path::Path;
 
 use chrono::{DateTime, Utc};
 
-use crate::persistence::{parse_plan_slug, parse_task_slug, TaskStatusValue};
+use crate::persistence::{parse_slug, TaskStatusValue};
 
 use super::errors::{OverlordError, Result};
 use super::status_machine::TaskStateMachine;
@@ -77,15 +77,7 @@ impl HeartbeatMonitor {
             .map_err(|e| OverlordError::PersistenceError(e))?;
 
         for plan_slug in &plan_slugs {
-            let (plan_id, plan_name) = parse_plan_slug(plan_slug);
-            let plan_id = match plan_id {
-                Some(id) => id,
-                None => continue,
-            };
-            let plan_name = match plan_name {
-                Some(name) => name,
-                None => continue,
-            };
+            let (Some(plan_id), Some(plan_name)) = parse_slug(plan_slug) else { continue };
             let stale = self.detect_stale_in_plan(repo_root, branch, plan_id, plan_name)?;
             stale_tasks.extend(stale);
         }
@@ -107,15 +99,7 @@ impl HeartbeatMonitor {
             .map_err(|e| OverlordError::PersistenceError(e))?;
 
         for slug in &task_slugs {
-            let (task_id, task_name) = parse_task_slug(slug);
-            let task_id = match task_id {
-                Some(id) => id,
-                None => continue,
-            };
-            let task_name = match task_name {
-                Some(name) => name,
-                None => continue,
-            };
+            let (Some(task_id), Some(task_name)) = parse_slug(slug) else { continue };
 
             let status = crate::persistence::read_task_status(
                 repo_root,
