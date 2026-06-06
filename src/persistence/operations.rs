@@ -201,6 +201,69 @@ pub fn update_task_status(
     Ok(status)
 }
 
+/// Recover a task from stale heartbeat by transitioning it back to queued status.
+///
+/// This function:
+/// 1. Reads the current status.
+/// 2. Records a transition from the old status to `Queued`.
+/// 3. Clears `agent`, `started_at`, and `heartbeat_at`.
+/// 4. Increments `attempts`.
+/// 5. Sets the new status to `Queued`.
+/// 6. Verifies file hasn't changed before writing (TOCTOU mitigation).
+/// 7. Writes the updated status atomically.
+pub fn recover_task_status(
+    repo_root: &Path,
+    branch: &str,
+    plan_id: &str,
+    plan_name: &str,
+    task_id: &str,
+    task_name: &str,
+    by: &str,
+) -> Result<TaskStatus> {
+    let status_path =
+        task_status_path(repo_root, branch, plan_id, plan_name, task_id, task_name);
+
+    // Read current status
+    let content = read_file(&status_path)?;
+    let mut status: TaskStatus = serde_json::from_str(&content)
+        .map_err(|e| PersistenceError::JsonParse(status_path.clone(), e))?;
+
+    let old_status = status.status.clone();
+    let now = Utc::now().to_rfc3339();
+
+    // Record transition from old status to Queued
+    status.transitions.push(StatusTransition {
+        from: format!("{:?}", old_status).to_lowercase(),
+        to: "queued".to_string(),
+        at: now.clone(),
+        by: by.to_string(),
+    });
+
+    // Clear agent, started_at, and heartbeat_at
+    status.agent = None;
+    status.started_at = None;
+    status.heartbeat_at = None;
+
+    // Increment attempts unconditionally
+    status.attempts += 1;
+
+    // Set the new status to Queued
+    status.status = TaskStatusValue::Queued;
+
+    // Re-check before writing: verify file hasn't changed
+    let new_content = fs::read_to_string(&status_path).map_err(|e| {
+        PersistenceError::Io(status_path.clone(), e)
+    })?;
+    if new_content != content {
+        return Err(PersistenceError::ConcurrencyConflict(status_path));
+    }
+
+    // Write atomically
+    atomic_write_json(&status_path, &status)?;
+
+    Ok(status)
+}
+
 // ── Execution State Operations ──────────────────────────────────────────────
 
 /// Read the execution state for a plan.
