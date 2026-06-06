@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::persistence::{PlanStatus, TaskStatusValue};
+use crate::persistence::{PlanStatus, TaskStatusValue, task_status_to_string};
 
 use super::errors::{OverlordError, Result};
 
@@ -121,7 +121,10 @@ impl TaskStateMachine {
         let mut transitions = HashMap::new();
         transitions.insert(TaskStatusValue::Backlog, vec![TaskStatusValue::Queued]);
         transitions.insert(TaskStatusValue::Queued, vec![TaskStatusValue::Running]);
-        transitions.insert(TaskStatusValue::Running, vec![TaskStatusValue::Reviewing]);
+        transitions.insert(
+            TaskStatusValue::Running,
+            vec![TaskStatusValue::Reviewing, TaskStatusValue::Queued],
+        );
         transitions.insert(
             TaskStatusValue::Reviewing,
             vec![
@@ -208,20 +211,6 @@ pub fn is_plan_concurrency_sensitive(status: &PlanStatus) -> bool {
 }
 
 // ── Status-to-String Conversion ─────────────────────────────────────────────
-
-/// Convert a TaskStatusValue to its kebab-case string representation.
-pub fn task_status_to_string(status: &TaskStatusValue) -> &'static str {
-    match status {
-        TaskStatusValue::Backlog => "backlog",
-        TaskStatusValue::Queued => "queued",
-        TaskStatusValue::Running => "running",
-        TaskStatusValue::Reviewing => "reviewing",
-        TaskStatusValue::WaitingManualReview => "waiting-manual-review",
-        TaskStatusValue::MergeQueue => "merge-queue",
-        TaskStatusValue::Abandoned => "abandoned",
-        TaskStatusValue::Completed => "completed",
-    }
-}
 
 /// Convert a PlanStatus to its kebab-case string representation.
 pub fn plan_status_to_string(status: &PlanStatus) -> &'static str {

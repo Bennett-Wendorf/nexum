@@ -14,7 +14,8 @@ use super::errors::{OverlordError, Result};
 use super::heartbeat_monitor::{HeartbeatMonitor, StaleTask};
 use super::id_generator::{PlanIdGenerator, TaskIdGenerator};
 use super::status_machine::{PlanStateMachine, TaskStateMachine};
-use super::status_machine::{task_status_to_string, plan_status_to_string};
+use super::status_machine::plan_status_to_string;
+use crate::persistence::task_status_to_string;
 
 use crate::persistence::{list_branches, list_plans, list_tasks};
 use crate::persistence::{read_plan, read_task_status, update_task_status, update_plan};

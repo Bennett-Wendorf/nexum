@@ -353,6 +353,60 @@ fn test_detect_stale_tasks_empty() {
     assert!(stale.is_empty());
 }
 
+// ── Recovery Tests ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_recovery_transition_running_to_queued() {
+    let m = TaskStateMachine::new();
+    assert!(m.can_transition(&TaskStatusValue::Running, &TaskStatusValue::Queued));
+    let record = m.transition(&TaskStatusValue::Running, &TaskStatusValue::Queued, "overlord-heartbeat-recovery").expect("ok");
+    assert_eq!(record.from, "running");
+    assert_eq!(record.to, "queued");
+    assert_eq!(record.by, "overlord-heartbeat-recovery");
+}
+
+#[test]
+fn test_recover_task_status_clears_fields() {
+    let dir = create_test_repo();
+    setup_test_plan(dir.path(), "main", "PLAN-001", "test-plan");
+    create_task_status(dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
+        TaskStatusValue::Running, Some(chrono::Utc::now().to_rfc3339()), vec![]);
+
+    let status = crate::persistence::recover_task_status(
+        dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
+        TaskStatusValue::Queued,
+        "overlord-heartbeat-recovery",
+    ).expect("ok");
+
+    assert_eq!(status.status, TaskStatusValue::Queued);
+    assert!(status.agent.is_none());
+    assert!(status.started_at.is_none());
+    assert!(status.heartbeat_at.is_none());
+}
+
+#[test]
+fn test_recovery_increments_attempts() {
+    let dir = create_test_repo();
+    setup_test_plan(dir.path(), "main", "PLAN-001", "test-plan");
+    create_task_status(dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
+        TaskStatusValue::Running, Some(chrono::Utc::now().to_rfc3339()), vec![]);
+
+    // Initial attempts is 0
+    let initial = crate::persistence::read_task_status(
+        dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
+    ).expect("ok");
+    assert_eq!(initial.attempts, 0);
+
+    // Recover and verify attempts incremented
+    let status = crate::persistence::recover_task_status(
+        dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
+        TaskStatusValue::Queued,
+        "overlord-heartbeat-recovery",
+    ).expect("ok");
+
+    assert_eq!(status.attempts, 1);
+}
+
 // ── Scheduler Tests ─────────────────────────────────────────────────────────
 
 #[tokio::test]

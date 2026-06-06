@@ -12,7 +12,7 @@ use chrono::{DateTime, Utc};
 use crate::persistence::TaskStatusValue;
 
 use super::errors::{OverlordError, Result};
-use super::status_machine::{TaskStateMachine, task_status_to_string};
+use super::status_machine::TaskStateMachine;
 
 /// A task with a stale heartbeat.
 #[derive(Debug, Clone)]
@@ -216,8 +216,8 @@ impl HeartbeatMonitor {
         task_id: &str,
         task_name: &str,
     ) -> Result<()> {
-        // Read current status
-        let mut status = crate::persistence::read_task_status(
+        // Read current status for state machine validation
+        let status = crate::persistence::read_task_status(
             repo_root,
             branch,
             plan_id,
@@ -226,37 +226,24 @@ impl HeartbeatMonitor {
             task_name,
         ).map_err(|e| OverlordError::PersistenceError(e))?;
 
-        // Increment attempts
-        status.attempts += 1;
+        // Validate transition via state machine
+        self.task_machine.transition(
+            &status.status,
+            &TaskStatusValue::Queued,
+            "overlord-heartbeat-recovery",
+        )?;
 
-        // Clear agent lease
-        status.agent = None;
-
-        // Clear started_at
-        status.started_at = None;
-
-        // Clear heartbeat
-        status.heartbeat_at = None;
-
-        // Record transition
-        let now = Utc::now().to_rfc3339();
-        status.transitions.push(crate::persistence::StatusTransition {
-            from: task_status_to_string(&status.status).to_string(),
-            to: "queued".to_string(),
-            at: now,
-            by: "overlord-heartbeat-recovery".to_string(),
-        });
-
-        // Update status
-        status.status = TaskStatusValue::Queued;
-
-        // Write atomically via persistence layer
-        // We need to write the status directly since this is a recovery action
-        let status_path = crate::persistence::task_status_path(
-            repo_root, branch, plan_id, plan_name, task_id, task_name,
-        );
-        crate::persistence::atomic_write_json(&status_path, &status)
-            .map_err(|e| OverlordError::PersistenceError(e))?;
+        // Delegate recovery to persistence layer
+        crate::persistence::recover_task_status(
+            repo_root,
+            branch,
+            plan_id,
+            plan_name,
+            task_id,
+            task_name,
+            TaskStatusValue::Queued,
+            "overlord-heartbeat-recovery",
+        ).map_err(|e| OverlordError::PersistenceError(e))?;
 
         Ok(())
     }

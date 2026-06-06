@@ -168,8 +168,8 @@ pub fn update_task_status(
 
     // Record transition (from/to are strings now)
     status.transitions.push(StatusTransition {
-        from: format!("{:?}", old_status).to_lowercase(),
-        to: format!("{:?}", new_status).to_lowercase(),
+        from: task_status_to_string(&old_status).to_string(),
+        to: task_status_to_string(&new_status).to_string(),
         at: now.clone(),
         by: by.to_string(),
     });
@@ -200,6 +200,71 @@ pub fn update_task_status(
 
     Ok(status)
 }
+
+/// Recover a task from stale heartbeat by transitioning it to the target status.
+///
+/// This function:
+/// 1. Reads the current status.
+/// 2. Records the transition using correct kebab-case strings.
+/// 3. Clears `agent`, `started_at`, and `heartbeat_at`.
+/// 4. Increments `attempts`.
+/// 5. Sets the new status to `target_status`.
+/// 6. Verifies file hasn't changed before writing (TOCTOU mitigation).
+/// 7. Writes the updated status atomically.
+pub fn recover_task_status(
+    repo_root: &Path,
+    branch: &str,
+    plan_id: &str,
+    plan_name: &str,
+    task_id: &str,
+    task_name: &str,
+    target_status: TaskStatusValue,
+    by: &str,
+) -> Result<TaskStatus> {
+    let status_path =
+        task_status_path(repo_root, branch, plan_id, plan_name, task_id, task_name);
+
+    // Read current status (single read — validation happens here)
+    let content = read_file(&status_path)?;
+    let mut status: TaskStatus = serde_json::from_str(&content)
+        .map_err(|e| PersistenceError::JsonParse(status_path.clone(), e))?;
+
+    let old_status = status.status.clone();
+    let now = Utc::now().to_rfc3339();
+
+    // Record transition with correct kebab-case strings
+    status.transitions.push(StatusTransition {
+        from: task_status_to_string(&old_status).to_string(),
+        to: task_status_to_string(&target_status).to_string(),
+        at: now.clone(),
+        by: by.to_string(),
+    });
+
+    // Clear recovery fields
+    status.agent = None;
+    status.started_at = None;
+    status.heartbeat_at = None;
+
+    // Increment attempts
+    status.attempts += 1;
+
+    // Set new status
+    status.status = target_status;
+
+    // Re-check before writing: verify file hasn't changed
+    let new_content = fs::read_to_string(&status_path).map_err(|e| {
+        PersistenceError::Io(status_path.clone(), e)
+    })?;
+    if new_content != content {
+        return Err(PersistenceError::ConcurrencyConflict(status_path));
+    }
+
+    // Write atomically
+    atomic_write_json(&status_path, &status)?;
+
+    Ok(status)
+}
+
 
 // ── Execution State Operations ──────────────────────────────────────────────
 
