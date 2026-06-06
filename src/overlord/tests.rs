@@ -101,45 +101,41 @@ fn create_task_status(
 
 #[test]
 fn test_plan_valid_transitions() {
-    let m = PlanStateMachine::new();
-    assert!(m.can_transition(&PlanStatus::Draft, &PlanStatus::Queued));
-    assert!(m.can_transition(&PlanStatus::Queued, &PlanStatus::Planning));
-    assert!(m.can_transition(&PlanStatus::Planning, &PlanStatus::Reviewing));
-    assert!(m.can_transition(&PlanStatus::Reviewing, &PlanStatus::Approved));
-    assert!(m.can_transition(&PlanStatus::Reviewing, &PlanStatus::Rejected));
-    assert!(m.can_transition(&PlanStatus::Approved, &PlanStatus::Complete));
-    assert!(m.can_transition(&PlanStatus::Approved, &PlanStatus::Rejected));
+    assert!(PlanStateMachine::can_transition(&PlanStatus::Draft, &PlanStatus::Queued));
+    assert!(PlanStateMachine::can_transition(&PlanStatus::Queued, &PlanStatus::Planning));
+    assert!(PlanStateMachine::can_transition(&PlanStatus::Planning, &PlanStatus::Reviewing));
+    assert!(PlanStateMachine::can_transition(&PlanStatus::Reviewing, &PlanStatus::Approved));
+    assert!(PlanStateMachine::can_transition(&PlanStatus::Reviewing, &PlanStatus::Rejected));
+    assert!(PlanStateMachine::can_transition(&PlanStatus::Approved, &PlanStatus::Complete));
+    assert!(PlanStateMachine::can_transition(&PlanStatus::Approved, &PlanStatus::Rejected));
 }
 
 #[test]
 fn test_plan_invalid_transitions() {
-    let m = PlanStateMachine::new();
-    assert!(!m.can_transition(&PlanStatus::Draft, &PlanStatus::Planning));
-    assert!(!m.can_transition(&PlanStatus::Draft, &PlanStatus::Complete));
-    assert!(!m.can_transition(&PlanStatus::Complete, &PlanStatus::Queued));
-    assert!(!m.can_transition(&PlanStatus::Rejected, &PlanStatus::Queued));
+    assert!(!PlanStateMachine::can_transition(&PlanStatus::Draft, &PlanStatus::Planning));
+    assert!(!PlanStateMachine::can_transition(&PlanStatus::Draft, &PlanStatus::Complete));
+    assert!(!PlanStateMachine::can_transition(&PlanStatus::Complete, &PlanStatus::Queued));
+    assert!(!PlanStateMachine::can_transition(&PlanStatus::Rejected, &PlanStatus::Queued));
 }
 
 #[test]
 fn test_task_valid_transitions() {
-    let m = TaskStateMachine::new();
-    assert!(m.can_transition(&TaskStatusValue::Backlog, &TaskStatusValue::Queued));
-    assert!(m.can_transition(&TaskStatusValue::Queued, &TaskStatusValue::Running));
-    assert!(m.can_transition(&TaskStatusValue::Running, &TaskStatusValue::Reviewing));
-    assert!(m.can_transition(&TaskStatusValue::Reviewing, &TaskStatusValue::WaitingManualReview));
-    assert!(m.can_transition(&TaskStatusValue::Reviewing, &TaskStatusValue::MergeQueue));
-    assert!(m.can_transition(&TaskStatusValue::WaitingManualReview, &TaskStatusValue::MergeQueue));
-    assert!(m.can_transition(&TaskStatusValue::WaitingManualReview, &TaskStatusValue::Abandoned));
-    assert!(m.can_transition(&TaskStatusValue::MergeQueue, &TaskStatusValue::Completed));
+    assert!(TaskStateMachine::can_transition(&TaskStatusValue::Backlog, &TaskStatusValue::Queued));
+    assert!(TaskStateMachine::can_transition(&TaskStatusValue::Queued, &TaskStatusValue::Running));
+    assert!(TaskStateMachine::can_transition(&TaskStatusValue::Running, &TaskStatusValue::Reviewing));
+    assert!(TaskStateMachine::can_transition(&TaskStatusValue::Reviewing, &TaskStatusValue::WaitingManualReview));
+    assert!(TaskStateMachine::can_transition(&TaskStatusValue::Reviewing, &TaskStatusValue::MergeQueue));
+    assert!(TaskStateMachine::can_transition(&TaskStatusValue::WaitingManualReview, &TaskStatusValue::MergeQueue));
+    assert!(TaskStateMachine::can_transition(&TaskStatusValue::WaitingManualReview, &TaskStatusValue::Abandoned));
+    assert!(TaskStateMachine::can_transition(&TaskStatusValue::MergeQueue, &TaskStatusValue::Completed));
 }
 
 #[test]
 fn test_task_invalid_transitions() {
-    let m = TaskStateMachine::new();
-    assert!(!m.can_transition(&TaskStatusValue::Backlog, &TaskStatusValue::Running));
-    assert!(!m.can_transition(&TaskStatusValue::Backlog, &TaskStatusValue::Completed));
-    assert!(!m.can_transition(&TaskStatusValue::Completed, &TaskStatusValue::Queued));
-    assert!(!m.can_transition(&TaskStatusValue::Abandoned, &TaskStatusValue::Queued));
+    assert!(!TaskStateMachine::can_transition(&TaskStatusValue::Backlog, &TaskStatusValue::Running));
+    assert!(!TaskStateMachine::can_transition(&TaskStatusValue::Backlog, &TaskStatusValue::Completed));
+    assert!(!TaskStateMachine::can_transition(&TaskStatusValue::Completed, &TaskStatusValue::Queued));
+    assert!(!TaskStateMachine::can_transition(&TaskStatusValue::Abandoned, &TaskStatusValue::Queued));
 }
 
 #[test]
@@ -160,8 +156,7 @@ fn test_task_terminal_states() {
 
 #[test]
 fn test_transition_record_creation() {
-    let m = PlanStateMachine::new();
-    let r = m.transition(&PlanStatus::Draft, &PlanStatus::Queued, "test-actor").expect("ok");
+    let r = PlanStateMachine::transition(&PlanStatus::Draft, &PlanStatus::Queued, "test-actor").expect("ok");
     assert_eq!(r.from, "draft");
     assert_eq!(r.to, "queued");
     assert_eq!(r.by, "test-actor");
@@ -170,8 +165,7 @@ fn test_transition_record_creation() {
 
 #[test]
 fn test_invalid_transition_error() {
-    let m = PlanStateMachine::new();
-    let result = m.transition(&PlanStatus::Complete, &PlanStatus::Queued, "test");
+    let result = PlanStateMachine::transition(&PlanStatus::Complete, &PlanStatus::Queued, "test");
     assert!(matches!(result, Err(OverlordError::InvalidTransition { .. })));
 }
 
@@ -357,9 +351,8 @@ fn test_detect_stale_tasks_empty() {
 
 #[test]
 fn test_recovery_transition_running_to_queued() {
-    let m = TaskStateMachine::new();
-    assert!(m.can_transition(&TaskStatusValue::Running, &TaskStatusValue::Queued));
-    let record = m.transition(&TaskStatusValue::Running, &TaskStatusValue::Queued, "overlord-heartbeat-recovery").expect("ok");
+    assert!(TaskStateMachine::can_transition(&TaskStatusValue::Running, &TaskStatusValue::Queued));
+    let record = TaskStateMachine::transition(&TaskStatusValue::Running, &TaskStatusValue::Queued, "overlord-heartbeat-recovery").expect("ok");
     assert_eq!(record.from, "running");
     assert_eq!(record.to, "queued");
     assert_eq!(record.by, "overlord-heartbeat-recovery");
