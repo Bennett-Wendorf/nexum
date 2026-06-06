@@ -121,7 +121,10 @@ impl TaskStateMachine {
         let mut transitions = HashMap::new();
         transitions.insert(TaskStatusValue::Backlog, vec![TaskStatusValue::Queued]);
         transitions.insert(TaskStatusValue::Queued, vec![TaskStatusValue::Running]);
-        transitions.insert(TaskStatusValue::Running, vec![TaskStatusValue::Reviewing]);
+        transitions.insert(
+            TaskStatusValue::Running,
+            vec![TaskStatusValue::Reviewing, TaskStatusValue::Queued],
+        );
         transitions.insert(
             TaskStatusValue::Reviewing,
             vec![
