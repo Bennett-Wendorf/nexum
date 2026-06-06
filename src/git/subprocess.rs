@@ -164,7 +164,7 @@ impl GitCommand {
                     // terminating the git subprocess)
                     wait_handle.abort();
                     return Err(GitError::Timeout {
-                        timeout: timeout_dur,
+                        duration: timeout_dur,
                         command: command_desc,
                     });
                 }
@@ -180,6 +180,7 @@ impl GitCommand {
 
         if !success {
             return Err(GitError::SubprocessFailure {
+                command: command_desc,
                 stdout,
                 stderr,
                 exit_code,
