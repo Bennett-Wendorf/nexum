@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::persistence::TaskStatusValue;
+use crate::persistence::{parse_task_slug, TaskStatusValue};
 
 use super::errors::{OverlordError, Result};
 use super::status_machine::TaskStateMachine;
@@ -109,7 +109,7 @@ impl DependencyResolver {
         let mut eligible = Vec::new();
 
         for slug in &task_slugs {
-            let (task_id, task_name) = Self::parse_task_slug(slug);
+            let (task_id, task_name) = parse_task_slug(slug);
             let task_id = match task_id {
                 Some(id) => id,
                 None => continue,
@@ -201,7 +201,7 @@ impl DependencyResolver {
         let mut newly_eligible = Vec::new();
 
         for slug in &task_slugs {
-            let (task_id, task_name) = Self::parse_task_slug(slug);
+            let (task_id, task_name) = parse_task_slug(slug);
             let task_id = match task_id {
                 Some(id) => id,
                 None => continue,
@@ -243,21 +243,6 @@ impl DependencyResolver {
         Ok(newly_eligible)
     }
 
-    /// Parse task ID and name from a slug like "TASK-001-my-task".
-    fn parse_task_slug(slug: &str) -> (Option<&str>, Option<&str>) {
-        if let Some(first_hyphen) = slug.find('-') {
-            let after_first = &slug[first_hyphen + 1..];
-            if let Some(second_hyphen) = after_first.find('-') {
-                let task_id = &slug[..first_hyphen + 1 + second_hyphen];
-                let task_name = &slug[first_hyphen + 1 + second_hyphen + 1..];
-                (Some(task_id), Some(task_name))
-            } else {
-                (None, None)
-            }
-        } else {
-            (None, None)
-        }
-    }
 
     /// Build the full dependency graph for a plan.
     pub fn build_dependency_graph(
@@ -272,7 +257,7 @@ impl DependencyResolver {
         let mut graph: HashMap<String, Vec<String>> = HashMap::new();
 
         for slug in &task_slugs {
-            let (task_id, task_name) = Self::parse_task_slug(slug);
+            let (task_id, task_name) = parse_task_slug(slug);
             let task_id = match task_id {
                 Some(id) => id,
                 None => continue,
