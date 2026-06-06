@@ -7,6 +7,7 @@
 
 pub mod branch;
 pub mod errors;
+pub mod merge;
 pub mod subprocess;
 pub mod worktree;
 
