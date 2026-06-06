@@ -406,6 +406,7 @@ fn test_recovery_increments_attempts() {
 
     assert_eq!(status.attempts, 1);
 }
+
 // ── Scheduler Tests ─────────────────────────────────────────────────────────
 
 #[tokio::test]

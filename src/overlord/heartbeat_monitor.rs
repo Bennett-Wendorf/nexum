@@ -216,7 +216,7 @@ impl HeartbeatMonitor {
         task_id: &str,
         task_name: &str,
     ) -> Result<()> {
-        // Read current status to validate transition
+        // Read current status for state machine validation
         let status = crate::persistence::read_task_status(
             repo_root,
             branch,
