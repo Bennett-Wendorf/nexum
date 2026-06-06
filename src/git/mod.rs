@@ -86,3 +86,6 @@ pub use subprocess::git;
 // ── Re-exported types: Merge ─────────────────────────────────────────────────
 
 pub use merge::MergePlan;
+
+#[cfg(test)]
+mod tests;
