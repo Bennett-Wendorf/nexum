@@ -36,7 +36,6 @@ pub struct StaleTask {
 /// Stale heartbeat detection struct.
 pub struct HeartbeatMonitor {
     stale_threshold_minutes: u64,
-    task_machine: TaskStateMachine,
 }
 
 impl HeartbeatMonitor {
@@ -44,7 +43,6 @@ impl HeartbeatMonitor {
     pub fn new(stale_threshold_minutes: u64) -> Self {
         Self {
             stale_threshold_minutes,
-            task_machine: TaskStateMachine::new(),
         }
     }
 
@@ -211,7 +209,7 @@ impl HeartbeatMonitor {
         ).map_err(|e| OverlordError::PersistenceError(e))?;
 
         // Validate transition via state machine
-        self.task_machine.transition(
+        TaskStateMachine::transition(
             &status.status,
             &TaskStatusValue::Queued,
             "overlord-heartbeat-recovery",

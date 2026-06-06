@@ -1,10 +1,8 @@
 //! Typed status machines for plans and tasks.
 //!
-//! Validates transitions against the allowed transition maps from
-//! `design/work-statuses.md`. Provides `can_transition()` and `transition()`
-//! methods for both plan and task status machines.
-
-use std::collections::HashMap;
+//! Zero-sized types (ZSTs) that validate transitions via compile-time match
+//! expressions instead of runtime HashMap lookups. Provides `can_transition()`
+//! and `transition()` static methods for both plan and task status machines.
 
 use crate::persistence::{PlanStatus, TaskStatusValue, task_status_to_string};
 
@@ -23,6 +21,8 @@ pub struct StatusTransitionRecord {
 
 /// State machine for plan lifecycle transitions.
 ///
+/// Zero-sized type using match expressions for compile-time transition validation.
+///
 /// Valid transitions per `design/work-statuses.md`:
 /// - `draft` → `queued`
 /// - `queued` → `planning`
@@ -31,48 +31,33 @@ pub struct StatusTransitionRecord {
 /// - `approved` → `complete` OR `rejected`
 /// - `complete` — terminal, no outgoing transitions
 /// - `rejected` — terminal, no outgoing transitions
-pub struct PlanStateMachine {
-    transitions: HashMap<PlanStatus, Vec<PlanStatus>>,
-}
+pub struct PlanStateMachine;
 
 impl PlanStateMachine {
-    /// Initialize with the transition map from `design/work-statuses.md`.
+    /// Create the state machine (returns a ZST, kept for backward compatibility).
     pub fn new() -> Self {
-        let mut transitions = HashMap::new();
-        // Pre-planning transitions
-        transitions.insert(PlanStatus::Draft, vec![PlanStatus::Queued]);
-        transitions.insert(PlanStatus::Queued, vec![PlanStatus::Planning]);
-        transitions.insert(PlanStatus::Planning, vec![PlanStatus::Reviewing]);
-        transitions.insert(
-            PlanStatus::Reviewing,
-            vec![PlanStatus::Approved, PlanStatus::Rejected],
-        );
-        // Post-planning transitions
-        transitions.insert(
-            PlanStatus::Approved,
-            vec![PlanStatus::Complete, PlanStatus::Rejected],
-        );
-        // Terminal states — no outgoing transitions
-        // PlanStatus::Complete and PlanStatus::Rejected have no transitions
-        Self { transitions }
+        PlanStateMachine
     }
 
     /// Check if a transition from `from` to `to` is valid.
-    pub fn can_transition(&self, from: &PlanStatus, to: &PlanStatus) -> bool {
-        self.transitions
-            .get(from)
-            .map(|targets| targets.contains(to))
-            .unwrap_or(false)
+    pub fn can_transition(from: &PlanStatus, to: &PlanStatus) -> bool {
+        match (from, to) {
+            (PlanStatus::Draft, PlanStatus::Queued) => true,
+            (PlanStatus::Queued, PlanStatus::Planning) => true,
+            (PlanStatus::Planning, PlanStatus::Reviewing) => true,
+            (PlanStatus::Reviewing, PlanStatus::Approved | PlanStatus::Rejected) => true,
+            (PlanStatus::Approved, PlanStatus::Complete | PlanStatus::Rejected) => true,
+            _ => false,
+        }
     }
 
     /// Create a transition record, validating the transition first.
     pub fn transition(
-        &self,
         from: &PlanStatus,
         to: &PlanStatus,
         by: &str,
     ) -> Result<StatusTransitionRecord> {
-        if !self.can_transition(from, to) {
+        if !Self::can_transition(from, to) {
             return Err(OverlordError::InvalidTransition {
                 from: plan_status_to_string(from).to_string(),
                 to: plan_status_to_string(to).to_string(),
@@ -91,73 +76,51 @@ impl PlanStateMachine {
     pub fn is_terminal(status: &PlanStatus) -> bool {
         matches!(status, PlanStatus::Complete | PlanStatus::Rejected)
     }
-
-    /// Expose the transition map for testing.
-    pub fn all_transitions(&self) -> &HashMap<PlanStatus, Vec<PlanStatus>> {
-        &self.transitions
-    }
 }
 
 // ── Task Status Machine ─────────────────────────────────────────────────────
 
 /// State machine for task lifecycle transitions.
 ///
+/// Zero-sized type using match expressions for compile-time transition validation.
+///
 /// Valid transitions per `design/work-statuses.md`:
 /// - `backlog` → `queued`
 /// - `queued` → `running`
-/// - `running` → `reviewing`
+/// - `running` → `reviewing` OR `queued` (re-queue)
 /// - `reviewing` → `waiting-manual-review` OR `merge-queue`
 /// - `waiting-manual-review` → `merge-queue` OR `abandoned`
 /// - `merge-queue` → `completed`
 /// - `abandoned` — terminal, no outgoing transitions
 /// - `completed` — terminal, no outgoing transitions
-pub struct TaskStateMachine {
-    transitions: HashMap<TaskStatusValue, Vec<TaskStatusValue>>,
-}
+pub struct TaskStateMachine;
 
 impl TaskStateMachine {
-    /// Initialize with the transition map from `design/work-statuses.md`.
+    /// Create the state machine (returns a ZST, kept for backward compatibility).
     pub fn new() -> Self {
-        let mut transitions = HashMap::new();
-        transitions.insert(TaskStatusValue::Backlog, vec![TaskStatusValue::Queued]);
-        transitions.insert(TaskStatusValue::Queued, vec![TaskStatusValue::Running]);
-        transitions.insert(
-            TaskStatusValue::Running,
-            vec![TaskStatusValue::Reviewing, TaskStatusValue::Queued],
-        );
-        transitions.insert(
-            TaskStatusValue::Reviewing,
-            vec![
-                TaskStatusValue::WaitingManualReview,
-                TaskStatusValue::MergeQueue,
-            ],
-        );
-        transitions.insert(
-            TaskStatusValue::WaitingManualReview,
-            vec![TaskStatusValue::MergeQueue, TaskStatusValue::Abandoned],
-        );
-        transitions.insert(TaskStatusValue::MergeQueue, vec![TaskStatusValue::Completed]);
-        // Terminal states — no outgoing transitions
-        // TaskStatusValue::Abandoned and TaskStatusValue::Completed have no transitions
-        Self { transitions }
+        TaskStateMachine
     }
 
     /// Check if a transition from `from` to `to` is valid.
-    pub fn can_transition(&self, from: &TaskStatusValue, to: &TaskStatusValue) -> bool {
-        self.transitions
-            .get(from)
-            .map(|targets| targets.contains(to))
-            .unwrap_or(false)
+    pub fn can_transition(from: &TaskStatusValue, to: &TaskStatusValue) -> bool {
+        match (from, to) {
+            (TaskStatusValue::Backlog, TaskStatusValue::Queued) => true,
+            (TaskStatusValue::Queued, TaskStatusValue::Running) => true,
+            (TaskStatusValue::Running, TaskStatusValue::Reviewing | TaskStatusValue::Queued) => true,
+            (TaskStatusValue::Reviewing, TaskStatusValue::WaitingManualReview | TaskStatusValue::MergeQueue) => true,
+            (TaskStatusValue::WaitingManualReview, TaskStatusValue::MergeQueue | TaskStatusValue::Abandoned) => true,
+            (TaskStatusValue::MergeQueue, TaskStatusValue::Completed) => true,
+            _ => false,
+        }
     }
 
     /// Create a transition record, validating the transition first.
     pub fn transition(
-        &self,
         from: &TaskStatusValue,
         to: &TaskStatusValue,
         by: &str,
     ) -> Result<StatusTransitionRecord> {
-        if !self.can_transition(from, to) {
+        if !Self::can_transition(from, to) {
             return Err(OverlordError::InvalidTransition {
                 from: task_status_to_string(from).to_string(),
                 to: task_status_to_string(to).to_string(),
@@ -178,11 +141,6 @@ impl TaskStateMachine {
             status,
             TaskStatusValue::Completed | TaskStatusValue::Abandoned
         )
-    }
-
-    /// Expose the transition map for testing.
-    pub fn all_transitions(&self) -> &HashMap<TaskStatusValue, Vec<TaskStatusValue>> {
-        &self.transitions
     }
 }
 

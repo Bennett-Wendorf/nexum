@@ -151,11 +151,10 @@ impl DependencyResolver {
         let eligible = Self::auto_queue_eligible_tasks(repo_root, branch, plan_id, plan_name)?;
 
         let mut queued = Vec::new();
-        let task_machine = TaskStateMachine::new();
 
         for (task_id, task_name) in &eligible {
             // Validate transition
-            let _ = task_machine.transition(
+            let _ = TaskStateMachine::transition(
                 &TaskStatusValue::Backlog,
                 &TaskStatusValue::Queued,
                 "overlord-auto-queue",

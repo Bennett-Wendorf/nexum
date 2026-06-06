@@ -23,8 +23,6 @@ use crate::persistence::{Plan, PlanStatus, TaskStatusValue};
 
 /// The main scheduler that ties all deterministic checks together.
 pub struct OverlordScheduler {
-    task_machine: TaskStateMachine,
-    plan_machine: PlanStateMachine,
     plan_id_generator: PlanIdGenerator,
     task_id_generator: TaskIdGenerator,
     concurrency_checker: ConcurrencyChecker,
@@ -39,8 +37,6 @@ impl OverlordScheduler {
     /// Initialize all sub-components with defaults.
     pub fn new(repo_root: PathBuf) -> Self {
         Self {
-            task_machine: TaskStateMachine::new(),
-            plan_machine: PlanStateMachine::new(),
             plan_id_generator: PlanIdGenerator,
             task_id_generator: TaskIdGenerator,
             concurrency_checker: ConcurrencyChecker::new(),
@@ -175,7 +171,7 @@ impl OverlordScheduler {
 
                     if matches!(status.status, TaskStatusValue::Queued) {
                         // Validate transition
-                        if self.task_machine.can_transition(
+                        if TaskStateMachine::can_transition(
                             &TaskStatusValue::Queued,
                             &TaskStatusValue::Running,
                         ) {
@@ -220,7 +216,7 @@ impl OverlordScheduler {
         ).map_err(|e| OverlordError::PersistenceError(e))?;
 
         // Validate transition
-        if !self.task_machine.can_transition(&status.status, &new_status) {
+        if !TaskStateMachine::can_transition(&status.status, &new_status) {
             return Err(OverlordError::InvalidTransition {
                 from: task_status_to_string(&status.status).to_string(),
                 to: task_status_to_string(&new_status).to_string(),
@@ -260,7 +256,7 @@ impl OverlordScheduler {
             .map_err(|e| OverlordError::PersistenceError(e))?;
 
         // Validate transition
-        if !self.plan_machine.can_transition(&plan.status, &new_status) {
+        if !PlanStateMachine::can_transition(&plan.status, &new_status) {
             return Err(OverlordError::InvalidTransition {
                 from: plan_status_to_string(&plan.status).to_string(),
                 to: plan_status_to_string(&new_status).to_string(),
