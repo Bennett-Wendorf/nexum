@@ -336,7 +336,7 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
     
     let mut result = Vec::new();
     while let Some(task) = queue.pop_front() {
-        result.push(task);
+        result.push(task.clone());
         if let Some(neighbors) = adj.get(&task) {
             for neighbor in neighbors {
                 let degree = in_degree.get_mut(neighbor).unwrap();
@@ -369,7 +369,8 @@ pub fn next_mergeable_tasks(plan: &MergePlan) -> Result<Vec<String>> {
     
     let mut ready = Vec::new();
     for task in &plan.pending_tasks {
-        let deps = plan.dependencies.get(task).unwrap_or(&Vec::new());
+        let empty: Vec<String> = Vec::new();
+        let deps = plan.dependencies.get(task).unwrap_or(&empty);
         let all_satisfied = deps.iter().all(|dep| merged.contains(dep.as_str()));
         if all_satisfied {
             ready.push(task.clone());

@@ -76,8 +76,8 @@ pub use merge::cleanup_merged_task;
 
 // ── Re-exported functions: Workspace ─────────────────────────────────────────
 
-pub use worktree::setup_task_workspace;
-pub use worktree::teardown_task_workspace;
+pub use branch::setup_task_workspace;
+pub use branch::teardown_task_workspace;
 
 // ── Re-exported functions: Subprocess ────────────────────────────────────────
 
