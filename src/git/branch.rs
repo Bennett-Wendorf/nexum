@@ -162,12 +162,19 @@ pub async fn current_branch(repo_root: &Path) -> Result<String> {
 ///
 /// # Arguments
 ///
-/// * `task_id` - The task identifier (e.g., `TASK-001`).
+/// * `task_id` - The task identifier (e.g., `TASK-001`). Expected format:
+///   a non-empty alphanumeric string with optional hyphens (e.g., `TASK-001`).
+///   If `task_id` is empty, the result will be `"task/"` — callers should
+///   validate input before passing it to this function.
 ///
 /// # Returns
 ///
 /// The branch name string (e.g., `task/TASK-001`).
 pub fn task_branch_name(task_id: &str) -> String {
+    if task_id.is_empty() {
+        tracing::warn!("task_branch_name called with empty task_id");
+        return "task/".to_string();
+    }
     format!("task/{}", task_id)
 }
 

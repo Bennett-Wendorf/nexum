@@ -72,13 +72,6 @@ pub enum GitError {
     #[error("git binary not found in PATH")]
     GitNotInstalled,
 
-    /// Failed to parse git output.
-    #[error("failed to parse {field}: {raw}")]
-    ParseError {
-        field: String,
-        raw: String,
-    },
-
     /// File system I/O error during worktree path operations.
     #[error("I/O error at {path}: {source}")]
     Io {
@@ -97,12 +90,6 @@ pub enum GitError {
     /// Failed to spawn the git subprocess.
     #[error("failed to spawn git subprocess: {0}")]
     SpawnFailed(#[source] io::Error),
-}
-
-impl From<io::Error> for GitError {
-    fn from(err: io::Error) -> Self {
-        GitError::SpawnFailed(err)
-    }
 }
 
 /// Result type alias for git operations.

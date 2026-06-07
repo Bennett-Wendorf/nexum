@@ -88,17 +88,7 @@ pub async fn spawn_worktree(repo_root: &Path, task_id: &str, branch_name: &str) 
     let output = git(repo_root, &["worktree", "add", &wt_path.to_string_lossy(), branch_name]).await;
 
     match output {
-        Ok(_) => {
-            // Validate the worktree was created
-            if !worktree_exists(repo_root, task_id).await? {
-                // Clean up partial directory
-                let _ = fs::remove_dir_all(&wt_path).await;
-                return Err(GitError::WorktreeNotFound {
-                    path: wt_path.clone(),
-                });
-            }
-            Ok(wt_path)
-        }
+        Ok(_) => Ok(wt_path),
         Err(e) => {
             // Clean up partial directory creation
             let _ = fs::remove_dir_all(&wt_path).await;

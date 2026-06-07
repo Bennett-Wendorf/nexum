@@ -59,7 +59,7 @@ mod tests {
     async fn test_git_command_success() {
         let (_dir, repo) = create_test_repo();
         let output = GitCommand::new(&repo).args(&["status"]).execute().await.unwrap();
-        assert!(output.success);
+        assert!(output.success());
         assert_eq!(output.exit_code, 0);
     }
 
@@ -77,7 +77,7 @@ mod tests {
     async fn test_git_convenience_function() {
         let (_dir, repo) = create_test_repo();
         let output = git(&repo, &["status"]).await.unwrap();
-        assert!(output.success);
+        assert!(output.success());
     }
 
     // --- Branch Tests ---
@@ -183,7 +183,7 @@ mod tests {
         let (_dir, repo) = create_test_repo();
         create_branch(&repo, "feature/merge-test", "main").await.unwrap();
         let output = merge_branch(&repo, "feature/merge-test", "main").await.unwrap();
-        assert!(output.success);
+        assert!(output.success());
     }
 
     #[tokio::test]
@@ -297,5 +297,96 @@ mod tests {
         teardown_task_workspace(&repo, "TASK-LC1").await.unwrap();
         assert!(!worktree_exists(&repo, "TASK-LC1").await.unwrap());
         assert!(!branch_exists(&repo, "task/TASK-LC1").await.unwrap());
+    }
+
+    // --- FIX #16: test_delete_branch_nonexistent_noop ---
+
+    #[tokio::test]
+    async fn test_delete_branch_nonexistent_noop() {
+        let (_dir, repo) = create_test_repo();
+        // Deleting a non-existent branch should succeed (no-op)
+        delete_branch(&repo, "nonexistent-branch").await.unwrap();
+    }
+
+    // --- FIX #17: test_merge_conflict_detection ---
+
+    #[tokio::test]
+    async fn test_merge_conflict_detection() {
+        let (_dir, repo) = create_test_repo();
+
+        // Create a feature branch from main
+        create_branch(&repo, "feature/conflict", "main").await.unwrap();
+
+        // Write conflicting content to README.md on main
+        std::fs::write(repo.join("README.md"), "# Main content\n").unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo)
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo)
+            .args(["commit", "-m", "Update main"])
+            .output()
+            .unwrap();
+
+        // Checkout feature branch and write conflicting content
+        checkout_branch(&repo, "feature/conflict").await.unwrap();
+        std::fs::write(repo.join("README.md"), "# Feature content\n").unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo)
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo)
+            .args(["commit", "-m", "Update feature"])
+            .output()
+            .unwrap();
+
+        // Attempt merge — should produce a MergeConflict error
+        let result = merge_branch(&repo, "feature/conflict", "main").await;
+        match result {
+            Err(GitError::MergeConflict { conflicts, .. }) => {
+                assert!(!conflicts.is_empty(), "Expected at least one conflicted file");
+                assert!(conflicts.contains(&"README.md".to_string()));
+            }
+            Ok(_) => panic!("Expected merge conflict, but merge succeeded"),
+            Err(e) => panic!("Expected MergeConflict, got: {:?}", e),
+        }
+
+        // Clean up the failed merge state
+        abort_merge(&repo).await.unwrap();
+    }
+
+    // --- FIX #18: test_circular_dependency ---
+
+    #[test]
+    fn test_circular_dependency() {
+        let mut deps = std::collections::HashMap::new();
+        // TASK-001 depends on TASK-002, and TASK-002 depends on TASK-001
+        deps.insert("TASK-001".to_string(), vec!["TASK-002".to_string()]);
+        deps.insert("TASK-002".to_string(), vec!["TASK-001".to_string()]);
+
+        let plan = MergePlan {
+            repo_root: PathBuf::from("/tmp"),
+            plan_branch: "feature/test".to_string(),
+            pending_tasks: vec![
+                "TASK-001".to_string(),
+                "TASK-002".to_string(),
+            ],
+            merged_tasks: vec![],
+            dependencies: deps,
+        };
+
+        let result = determine_merge_order(&plan);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let err_msg = format!("{}", err);
+        assert!(
+            err_msg.contains("Circular dependency"),
+            "Expected circular dependency error, got: {}",
+            err_msg
+        );
     }
 }

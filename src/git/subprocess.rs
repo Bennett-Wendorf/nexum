@@ -31,6 +31,9 @@ use tokio::process::Command;
 
 use super::errors::{GitError, Result};
 
+/// Default timeout for git subprocess operations (30 seconds).
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Builder for constructing and executing git commands.
 ///
 /// Uses the builder pattern to accumulate command arguments, environment
@@ -176,9 +179,8 @@ impl GitCommand {
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let exit_code = output.status.code().unwrap_or(-1);
-        let success = exit_code == 0;
 
-        if !success {
+        if exit_code != 0 {
             return Err(GitError::SubprocessFailure {
                 command: command_desc,
                 stdout,
@@ -191,7 +193,6 @@ impl GitCommand {
             stdout,
             stderr,
             exit_code,
-            success,
         })
     }
 }
@@ -206,9 +207,13 @@ pub struct GitOutput {
 
     /// Exit code of the git subprocess.
     pub exit_code: i32,
+}
 
-    /// Whether the command succeeded (exit code == 0).
-    pub success: bool,
+impl GitOutput {
+    /// Returns `true` if the command succeeded (exit code == 0).
+    pub fn success(&self) -> bool {
+        self.exit_code == 0
+    }
 }
 
 /// Convenience function for executing simple git commands.
@@ -230,7 +235,7 @@ pub struct GitOutput {
 pub async fn git(repo_root: &Path, args: &[&str]) -> Result<GitOutput> {
     GitCommand::new(repo_root)
         .args(args)
-        .timeout(Duration::from_secs(30))
+        .timeout(DEFAULT_TIMEOUT)
         .execute()
         .await
 }

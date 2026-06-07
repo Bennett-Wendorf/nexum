@@ -12,6 +12,40 @@ use super::errors::{GitError, Result};
 use super::subprocess::{git, GitCommand, GitOutput};
 use super::worktree::{remove_worktree, remove_worktree_force};
 
+/// Detect merge conflicts after a failed merge attempt.
+///
+/// Runs `git diff --name-only --diff-filter=U` to identify conflicted files.
+/// Returns `GitError::MergeConflict` if conflicts are found, otherwise
+/// returns `GitError::SubprocessFailure` as a fallback.
+async fn check_merge_conflicts(
+    repo_root: &Path,
+    source: &str,
+    target: &str,
+) -> GitError {
+    let conflict_output = git(repo_root, &["diff", "--name-only", "--diff-filter=U"]).await;
+    let conflicted_files: Vec<String> = match conflict_output {
+        Ok(out) => out.stdout.lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| line.trim().to_string())
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+    if !conflicted_files.is_empty() {
+        GitError::MergeConflict {
+            branch: source.to_string(),
+            plan_branch: target.to_string(),
+            conflicts: conflicted_files,
+        }
+    } else {
+        GitError::SubprocessFailure {
+            command: format!("git merge --no-ff {}", source),
+            exit_code: 1,
+            stdout: String::new(),
+            stderr: "Merge failed but no conflicts detected".to_string(),
+        }
+    }
+}
+
 /// Merge a source branch into a target branch.
 ///
 /// 1. Records the current branch for later restoration.
@@ -59,40 +93,10 @@ pub async fn merge_branch(
         }
         Err(GitError::SubprocessFailure {
             exit_code,
-            stdout,
-            stderr,
-            command,
+            ..
         }) if exit_code == 1 => {
             // Step 5: Exit code 1 — check for merge conflicts
-            let conflict_output =
-                git(repo_root, &["diff", "--name-only", "--diff-filter=U"]).await;
-
-            let conflicted_files: Vec<String> = match conflict_output {
-                Ok(out) => out
-                    .stdout
-                    .lines()
-                    .filter(|line| !line.trim().is_empty())
-                    .map(|line| line.trim().to_string())
-                    .collect(),
-                Err(_) => Vec::new(),
-            };
-
-            if !conflicted_files.is_empty() {
-                // Step 5a: Conflicts detected
-                Err(GitError::MergeConflict {
-                    branch: source_branch.to_string(),
-                    plan_branch: target_branch.to_string(),
-                    conflicts: conflicted_files,
-                })
-            } else {
-                // Step 5b: No conflicts — generic failure
-                Err(GitError::SubprocessFailure {
-                    command,
-                    exit_code,
-                    stdout,
-                    stderr,
-                })
-            }
+            return Err(check_merge_conflicts(repo_root, source_branch, target_branch).await);
         }
         Err(e) => {
             // Other error — restore to original branch
@@ -195,7 +199,6 @@ pub async fn is_merging(repo_root: &Path) -> Result<bool> {
 /// * `repo_root` - The root directory of the git repository.
 /// * `task_id` - The task identifier (e.g., `TASK-001`).
 /// * `plan_branch` - The plan branch to merge into.
-/// * `merged_tasks` - List of already-merged tasks (caller handles dependency checking).
 ///
 /// # Errors
 ///
@@ -205,10 +208,7 @@ pub async fn merge_task_branch(
     repo_root: &Path,
     task_id: &str,
     plan_branch: &str,
-    merged_tasks: &[String],
 ) -> Result<()> {
-    let _ = merged_tasks; // Accepted for context; caller handles dependency checking
-
     // Step 1: Validate task branch exists
     let branch_name = task_branch_name(task_id);
     if !branch_exists(repo_root, &branch_name).await? {
@@ -235,38 +235,10 @@ pub async fn merge_task_branch(
         }
         Err(GitError::SubprocessFailure {
             exit_code,
-            stdout,
-            stderr,
-            command,
+            ..
         }) if exit_code == 1 => {
             // Check for conflicts
-            let conflict_output =
-                git(repo_root, &["diff", "--name-only", "--diff-filter=U"]).await;
-
-            let conflicted_files: Vec<String> = match conflict_output {
-                Ok(out) => out
-                    .stdout
-                    .lines()
-                    .filter(|line| !line.trim().is_empty())
-                    .map(|line| line.trim().to_string())
-                    .collect(),
-                Err(_) => Vec::new(),
-            };
-
-            if !conflicted_files.is_empty() {
-                Err(GitError::MergeConflict {
-                    branch: branch_name,
-                    plan_branch: plan_branch.to_string(),
-                    conflicts: conflicted_files,
-                })
-            } else {
-                Err(GitError::SubprocessFailure {
-                    command,
-                    exit_code,
-                    stdout,
-                    stderr,
-                })
-            }
+            return Err(check_merge_conflicts(repo_root, &branch_name, plan_branch).await);
         }
         Err(e) => {
             let _ = checkout_branch(repo_root, &original_branch).await;
@@ -339,7 +311,7 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
         result.push(task.clone());
         if let Some(neighbors) = adj.get(&task) {
             for neighbor in neighbors {
-                let degree = in_degree.get_mut(neighbor).unwrap();
+                let degree = in_degree.get_mut(neighbor).expect("neighbor not in in_degree map");
                 *degree -= 1;
                 if *degree == 0 {
                     queue.push_back(neighbor.clone());
@@ -397,7 +369,7 @@ pub async fn execute_merge_sequence(plan: &mut MergePlan) -> Result<Vec<String>>
         }
         
         for task_id in &ready {
-            merge_task_branch(&plan.repo_root, task_id, &plan.plan_branch, &plan.merged_tasks).await?;
+            merge_task_branch(&plan.repo_root, task_id, &plan.plan_branch).await?;
             
             // Move task from pending to merged
             plan.pending_tasks.retain(|t| t != task_id);
@@ -405,7 +377,11 @@ pub async fn execute_merge_sequence(plan: &mut MergePlan) -> Result<Vec<String>>
             merged.push(task_id.clone());
         }
     }
-    
+
+    if !plan.pending_tasks.is_empty() {
+        tracing::warn!("{} tasks could not be merged: {:?}", plan.pending_tasks.len(), plan.pending_tasks);
+    }
+
     Ok(merged)
 }
 
