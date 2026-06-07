@@ -92,9 +92,9 @@ pub async fn merge_branch(
             Ok(output)
         }
         Err(GitError::SubprocessFailure {
-            exit_code,
+            exit_code: 1,
             ..
-        }) if exit_code == 1 => {
+        }) => {
             // Step 5: Exit code 1 — check for merge conflicts
             return Err(check_merge_conflicts(repo_root, source_branch, target_branch).await);
         }
@@ -234,9 +234,9 @@ pub async fn merge_task_branch(
             Ok(())
         }
         Err(GitError::SubprocessFailure {
-            exit_code,
+            exit_code: 1,
             ..
-        }) if exit_code == 1 => {
+        }) => {
             // Check for conflicts
             return Err(check_merge_conflicts(repo_root, &branch_name, plan_branch).await);
         }
@@ -283,7 +283,7 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
     
     for task in &plan.pending_tasks {
         in_degree.entry(task.clone()).or_insert(0);
-        adj.entry(task.clone()).or_insert_with(Vec::new);
+        adj.entry(task.clone()).or_default();
     }
     
     for (task, deps) in &plan.dependencies {
@@ -293,7 +293,7 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
         for dep in deps {
             if pending.contains(dep.as_str()) {
                 *in_degree.entry(task.clone()).or_insert(0) += 1;
-                adj.entry(dep.clone()).or_insert_with(Vec::new).push(task.clone());
+                adj.entry(dep.clone()).or_default().push(task.clone());
             }
         }
     }

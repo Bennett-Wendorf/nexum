@@ -141,7 +141,6 @@ impl GitCommand {
         );
 
         let child = cmd.spawn().map_err(GitError::SpawnFailed)?;
-        let mut child = tokio::process::Child::from(child);
 
         let output = if let Some(timeout_dur) = self.timeout {
             // Spawn the wait in a separate task so we can kill the child
@@ -157,8 +156,7 @@ impl GitCommand {
                 Ok(Err(_)) => {
                     // Channel closed unexpectedly; abort the wait task
                     wait_handle.abort();
-                    return Err(GitError::SpawnFailed(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    return Err(GitError::SpawnFailed(std::io::Error::other(
                         "wait channel closed unexpectedly",
                     )));
                 }
