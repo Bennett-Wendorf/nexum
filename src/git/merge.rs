@@ -96,7 +96,11 @@ pub async fn merge_branch(
             ..
         }) => {
             // Step 5: Exit code 1 — check for merge conflicts
-            return Err(check_merge_conflicts(repo_root, source_branch, target_branch).await);
+            let conflict_error = check_merge_conflicts(repo_root, source_branch, target_branch).await;
+            // Conflicts detected — abort merge and restore original branch
+            let _ = abort_merge(repo_root).await;
+            let _ = checkout_branch(repo_root, &original_branch).await;
+            return Err(conflict_error);
         }
         Err(e) => {
             // Other error — restore to original branch
@@ -238,7 +242,11 @@ pub async fn merge_task_branch(
             ..
         }) => {
             // Check for conflicts
-            return Err(check_merge_conflicts(repo_root, &branch_name, plan_branch).await);
+            let conflict_error = check_merge_conflicts(repo_root, &branch_name, plan_branch).await;
+            // Conflicts detected — abort merge and restore original branch
+            let _ = abort_merge(repo_root).await;
+            let _ = checkout_branch(repo_root, &original_branch).await;
+            return Err(conflict_error);
         }
         Err(e) => {
             let _ = checkout_branch(repo_root, &original_branch).await;
