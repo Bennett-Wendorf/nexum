@@ -100,7 +100,7 @@ pub async fn merge_branch(
             // Conflicts detected — abort merge and restore original branch
             let _ = abort_merge(repo_root).await;
             let _ = checkout_branch(repo_root, &original_branch).await;
-            return Err(conflict_error);
+            Err(conflict_error)
         }
         Err(e) => {
             // Other error — restore to original branch
@@ -246,7 +246,7 @@ pub async fn merge_task_branch(
             // Conflicts detected — abort merge and restore original branch
             let _ = abort_merge(repo_root).await;
             let _ = checkout_branch(repo_root, &original_branch).await;
-            return Err(conflict_error);
+            Err(conflict_error)
         }
         Err(e) => {
             let _ = checkout_branch(repo_root, &original_branch).await;
