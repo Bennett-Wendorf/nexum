@@ -426,7 +426,7 @@ mod tests {
         let (_dir, repo) = create_test_repo();
 
         // Create a plan branch
-        create_plan_branch(&repo, "plan/test", "main").await.unwrap();
+        create_plan_branch(&repo, "plan/test", "main", false).await.unwrap();
 
         // Create a task branch from the plan branch
         create_task_branch(&repo, "TASK-CLR", "plan/test").await.unwrap();
