@@ -359,6 +359,134 @@ mod tests {
         abort_merge(&repo).await.unwrap();
     }
 
+    #[tokio::test]
+    async fn test_merge_branch_conflict_cleanup() {
+        let (_dir, repo) = create_test_repo();
+
+        // Create a feature branch from main
+        create_branch(&repo, "feature/cleanup-conflict", "main").await.unwrap();
+
+        // Write conflicting content to README.md on main
+        std::fs::write(repo.join("README.md"), "# Main content\n").unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo)
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo)
+            .args(["commit", "-m", "Update main"])
+            .output()
+            .unwrap();
+
+        // Checkout feature branch and write conflicting content
+        checkout_branch(&repo, "feature/cleanup-conflict").await.unwrap();
+        std::fs::write(repo.join("README.md"), "# Feature content\n").unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo)
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo)
+            .args(["commit", "-m", "Update feature"])
+            .output()
+            .unwrap();
+
+        // Record original branch before merge attempt
+        let original = current_branch(&repo).await.unwrap();
+
+        // Attempt merge — should produce a MergeConflict error
+        let result = merge_branch(&repo, "feature/cleanup-conflict", "main").await;
+        match result {
+            Err(GitError::MergeConflict { conflicts, .. }) => {
+                assert!(!conflicts.is_empty(), "Expected at least one conflicted file");
+            }
+            Ok(_) => panic!("Expected merge conflict, but merge succeeded"),
+            Err(e) => panic!("Expected MergeConflict, got: {:?}", e),
+        }
+
+        // Verify cleanup: repo is NOT in a merging state
+        assert!(
+            !is_merging(&repo).await.unwrap(),
+            "Repository should NOT be in a merging state after conflict cleanup"
+        );
+
+        // Verify cleanup: current branch is restored to original
+        let current = current_branch(&repo).await.unwrap();
+        assert_eq!(
+            current, original,
+            "Current branch '{}' should be restored to original '{}'",
+            current, original
+        );
+    }
+
+    #[tokio::test]
+    async fn test_merge_task_branch_conflict_cleanup() {
+        let (_dir, repo) = create_test_repo();
+
+        // Create a plan branch
+        create_plan_branch(&repo, "plan/test", "main").await.unwrap();
+
+        // Create a task branch from the plan branch
+        create_task_branch(&repo, "TASK-CLR", "plan/test").await.unwrap();
+
+        // Write conflicting content to README.md on plan branch
+        checkout_branch(&repo, "plan/test").await.unwrap();
+        std::fs::write(repo.join("README.md"), "# Plan content\n").unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo)
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo)
+            .args(["commit", "-m", "Update plan"])
+            .output()
+            .unwrap();
+
+        // Checkout task branch and write conflicting content
+        checkout_branch(&repo, "task/TASK-CLR").await.unwrap();
+        std::fs::write(repo.join("README.md"), "# Task content\n").unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo)
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .current_dir(&repo)
+            .args(["commit", "-m", "Update task"])
+            .output()
+            .unwrap();
+
+        // Record original branch before merge attempt
+        let original = current_branch(&repo).await.unwrap();
+
+        // Attempt merge — should produce a MergeConflict error
+        let result = merge_task_branch(&repo, "TASK-CLR", "plan/test").await;
+        match result {
+            Err(GitError::MergeConflict { conflicts, .. }) => {
+                assert!(!conflicts.is_empty(), "Expected at least one conflicted file");
+            }
+            Ok(_) => panic!("Expected merge conflict, but merge succeeded"),
+            Err(e) => panic!("Expected MergeConflict, got: {:?}", e),
+        }
+
+        // Verify cleanup: repo is NOT in a merging state
+        assert!(
+            !is_merging(&repo).await.unwrap(),
+            "Repository should NOT be in a merging state after conflict cleanup"
+        );
+
+        // Verify cleanup: current branch is restored to original
+        let current = current_branch(&repo).await.unwrap();
+        assert_eq!(
+            current, original,
+            "Current branch '{}' should be restored to original '{}'",
+            current, original
+        );
+    }
+
     // --- FIX #18: test_circular_dependency ---
 
     #[test]
