@@ -528,6 +528,12 @@ mod tests {
             plan.pending_tasks.contains(&"TASK-002".to_string()),
             "TASK-002 should still be in pending_tasks (batch 2 failed, atomic rollback)"
         );
+
+        // Verify repository is clean after failure
+        assert!(
+            !is_merging(&repo).await.unwrap(),
+            "Repository should NOT be in a merging state after batch failure"
+        );
     }
 
     #[tokio::test]
@@ -577,5 +583,11 @@ mod tests {
         assert!(merged.contains(&"TASK-001".to_string()));
         assert!(merged.contains(&"TASK-002".to_string()));
         assert!(merged.contains(&"TASK-003".to_string()));
+
+        // Verify repository is clean after execution
+        assert!(
+            !is_merging(&repo).await.unwrap(),
+            "Repository should NOT be in a merging state after successful batch"
+        );
     }
 }
