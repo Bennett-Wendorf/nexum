@@ -21,35 +21,15 @@ mod tests {
 
     // --- Test Infrastructure ---
 
-    fn create_test_repo() -> (tempfile::TempDir, PathBuf) {
+    async fn create_test_repo().await -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::TempDir::with_prefix("nexum-test-").unwrap();
         let path = dir.path().to_path_buf();
-        std::process::Command::new("git")
-            .current_dir(&path)
-            .args(["init"])
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .current_dir(&path)
-            .args(["config", "user.email", "test@nexum.local"])
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .current_dir(&path)
-            .args(["config", "user.name", "Test User"])
-            .output()
-            .unwrap();
+        let _ = git(&path, &["init"]).await.unwrap();
+        let _ = git(&path, &["config", "user.email", "test@nexum.local"]).await.unwrap();
+        let _ = git(&path, &["config", "user.name", "Test User"]).await.unwrap();
         std::fs::write(path.join("README.md"), "# Test Repo").unwrap();
-        std::process::Command::new("git")
-            .current_dir(&path)
-            .args(["add", "."])
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .current_dir(&path)
-            .args(["commit", "-m", "Initial commit"])
-            .output()
-            .unwrap();
+        let _ = git(&path, &["add", "."]).await.unwrap();
+        let _ = git(&path, &["commit", "-m", "Initial commit"]).await.unwrap();
         (dir, path)
     }
 
@@ -57,7 +37,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_git_command_success() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         let output = GitCommand::new(&repo).args(&["status"]).execute().await.unwrap();
         assert!(output.success());
         assert_eq!(output.exit_code, 0);
@@ -65,7 +45,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_git_command_failure() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         let result = GitCommand::new(&repo)
             .args(&["not-a-command"])
             .execute()
@@ -75,7 +55,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_git_convenience_function() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         let output = git(&repo, &["status"]).await.unwrap();
         assert!(output.success());
     }
@@ -84,14 +64,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_branch() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         create_branch(&repo, "feature/test", "main").await.unwrap();
         assert!(branch_exists(&repo, "feature/test").await.unwrap());
     }
 
     #[tokio::test]
     async fn test_create_task_branch() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         let name = create_task_branch(&repo, "TASK-001", "main").await.unwrap();
         assert_eq!(name, "task/TASK-001");
         assert!(branch_exists(&repo, &name).await.unwrap());
@@ -99,7 +79,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_branch() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         create_branch(&repo, "to-delete", "main").await.unwrap();
         assert!(branch_exists(&repo, "to-delete").await.unwrap());
         delete_branch(&repo, "to-delete").await.unwrap();
@@ -108,14 +88,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_branch_exists() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         assert!(branch_exists(&repo, "main").await.unwrap());
         assert!(!branch_exists(&repo, "nonexistent").await.unwrap());
     }
 
     #[tokio::test]
     async fn test_list_local_branches() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         create_branch(&repo, "feature/a", "main").await.unwrap();
         create_branch(&repo, "feature/b", "main").await.unwrap();
         let branches = list_local_branches(&repo).await.unwrap();
@@ -126,7 +106,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_current_branch() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         let branch = current_branch(&repo).await.unwrap();
         assert_eq!(branch, "main");
     }
@@ -154,7 +134,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_spawn_worktree() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         create_task_branch(&repo, "TASK-001", "main").await.unwrap();
         let wt_path = spawn_worktree(&repo, "TASK-001", "task/TASK-001").await.unwrap();
         assert!(wt_path.exists());
@@ -163,7 +143,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_remove_worktree() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         create_task_branch(&repo, "TASK-002", "main").await.unwrap();
         spawn_worktree(&repo, "TASK-002", "task/TASK-002").await.unwrap();
         remove_worktree(&repo, "TASK-002").await.unwrap();
@@ -172,7 +152,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_worktree_exists() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         assert!(!worktree_exists(&repo, "NONEXISTENT").await.unwrap());
     }
 
@@ -180,7 +160,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_merge_branch_success() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         create_branch(&repo, "feature/merge-test", "main").await.unwrap();
         let output = merge_branch(&repo, "feature/merge-test", "main").await.unwrap();
         assert!(output.success());
@@ -188,13 +168,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_is_merging() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         assert!(!is_merging(&repo).await.unwrap());
     }
 
     #[tokio::test]
     async fn test_abort_merge_noop() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         // No merge in progress, should be no-op
         abort_merge(&repo).await.unwrap();
     }
@@ -271,7 +251,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_setup_task_workspace() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         create_branch(&repo, "feature/workspace", "main").await.unwrap();
         let wt_path = setup_task_workspace(&repo, "TASK-WS1", "feature/workspace").await.unwrap();
         assert!(wt_path.exists());
@@ -280,7 +260,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_teardown_task_workspace() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         create_branch(&repo, "feature/teardown", "main").await.unwrap();
         setup_task_workspace(&repo, "TASK-TD1", "feature/teardown").await.unwrap();
         teardown_task_workspace(&repo, "TASK-TD1").await.unwrap();
@@ -290,7 +270,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_setup_then_teardown() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         create_branch(&repo, "feature/lifecycle", "main").await.unwrap();
         let wt_path = setup_task_workspace(&repo, "TASK-LC1", "feature/lifecycle").await.unwrap();
         assert!(wt_path.exists());
@@ -303,7 +283,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_delete_branch_nonexistent_noop() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
         // Deleting a non-existent branch should succeed (no-op)
         delete_branch(&repo, "nonexistent-branch").await.unwrap();
     }
@@ -312,37 +292,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_merge_conflict_detection() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
 
         // Create a feature branch from main
         create_branch(&repo, "feature/conflict", "main").await.unwrap();
 
         // Write conflicting content to README.md on main
         std::fs::write(repo.join("README.md"), "# Main content\n").unwrap();
-        std::process::Command::new("git")
-            .current_dir(&repo)
-            .args(["add", "."])
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .current_dir(&repo)
-            .args(["commit", "-m", "Update main"])
-            .output()
-            .unwrap();
+        let _ = git(&repo, &["add", "."]).await.unwrap();
+        let _ = git(&repo, &["commit", "-m", "Update main"]).await.unwrap();
 
         // Checkout feature branch and write conflicting content
         checkout_branch(&repo, "feature/conflict").await.unwrap();
         std::fs::write(repo.join("README.md"), "# Feature content\n").unwrap();
-        std::process::Command::new("git")
-            .current_dir(&repo)
-            .args(["add", "."])
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .current_dir(&repo)
-            .args(["commit", "-m", "Update feature"])
-            .output()
-            .unwrap();
+        let _ = git(&repo, &["add", "."]).await.unwrap();
+        let _ = git(&repo, &["commit", "-m", "Update feature"]).await.unwrap();
 
         // Attempt merge — should produce a MergeConflict error
         let result = merge_branch(&repo, "feature/conflict", "main").await;
@@ -361,37 +325,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_merge_branch_conflict_cleanup() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
 
         // Create a feature branch from main
         create_branch(&repo, "feature/cleanup-conflict", "main").await.unwrap();
 
         // Write conflicting content to README.md on main
         std::fs::write(repo.join("README.md"), "# Main content\n").unwrap();
-        std::process::Command::new("git")
-            .current_dir(&repo)
-            .args(["add", "."])
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .current_dir(&repo)
-            .args(["commit", "-m", "Update main"])
-            .output()
-            .unwrap();
+        let _ = git(&repo, &["add", "."]).await.unwrap();
+        let _ = git(&repo, &["commit", "-m", "Update main"]).await.unwrap();
 
         // Checkout feature branch and write conflicting content
         checkout_branch(&repo, "feature/cleanup-conflict").await.unwrap();
         std::fs::write(repo.join("README.md"), "# Feature content\n").unwrap();
-        std::process::Command::new("git")
-            .current_dir(&repo)
-            .args(["add", "."])
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .current_dir(&repo)
-            .args(["commit", "-m", "Update feature"])
-            .output()
-            .unwrap();
+        let _ = git(&repo, &["add", "."]).await.unwrap();
+        let _ = git(&repo, &["commit", "-m", "Update feature"]).await.unwrap();
 
         // Record original branch before merge attempt
         let original = current_branch(&repo).await.unwrap();
@@ -423,7 +371,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_merge_task_branch_conflict_cleanup() {
-        let (_dir, repo) = create_test_repo();
+        let (_dir, repo) = create_test_repo().await;
 
         // Create a plan branch
         create_plan_branch(&repo, "plan/test", "main", false).await.unwrap();
@@ -434,30 +382,14 @@ mod tests {
         // Write conflicting content to README.md on plan branch
         checkout_branch(&repo, "plan/test").await.unwrap();
         std::fs::write(repo.join("README.md"), "# Plan content\n").unwrap();
-        std::process::Command::new("git")
-            .current_dir(&repo)
-            .args(["add", "."])
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .current_dir(&repo)
-            .args(["commit", "-m", "Update plan"])
-            .output()
-            .unwrap();
+        let _ = git(&repo, &["add", "."]).await.unwrap();
+        let _ = git(&repo, &["commit", "-m", "Update plan"]).await.unwrap();
 
         // Checkout task branch and write conflicting content
         checkout_branch(&repo, "task/TASK-CLR").await.unwrap();
         std::fs::write(repo.join("README.md"), "# Task content\n").unwrap();
-        std::process::Command::new("git")
-            .current_dir(&repo)
-            .args(["add", "."])
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .current_dir(&repo)
-            .args(["commit", "-m", "Update task"])
-            .output()
-            .unwrap();
+        let _ = git(&repo, &["add", "."]).await.unwrap();
+        let _ = git(&repo, &["commit", "-m", "Update task"]).await.unwrap();
 
         // Record original branch before merge attempt
         let original = current_branch(&repo).await.unwrap();
