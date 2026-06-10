@@ -444,7 +444,7 @@ mod tests {
         let err = result.unwrap_err();
         let err_msg = format!("{}", err);
         assert!(
-            err_msg.contains("Circular dependency"),
+            err_msg.contains("circular dependency"),
             "Expected circular dependency error, got: {}",
             err_msg
         );
