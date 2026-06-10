@@ -21,7 +21,7 @@ mod tests {
 
     // --- Test Infrastructure ---
 
-    async fn create_test_repo().await -> (tempfile::TempDir, PathBuf) {
+    async fn create_test_repo() -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::TempDir::with_prefix("nexum-test-").unwrap();
         let path = dir.path().to_path_buf();
         let _ = git(&path, &["init"]).await.unwrap();
