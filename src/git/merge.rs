@@ -24,11 +24,11 @@ async fn check_merge_conflicts(
 ) -> GitError {
     let conflict_output = git(repo_root, &["diff", "--name-only", "--diff-filter=U"]).await;
     let conflicted_files: Vec<String> = match conflict_output {
-        Ok(out) => out.stdout.lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(|line| line.trim().to_string())
-            .collect(),
-        Err(_) => Vec::new(),
+        Ok(out) => parse_conflicted_files(&out.stdout),
+        Err(e) => {
+            tracing::error!("git diff --name-only --diff-filter=U failed: {}", e);
+            Vec::new()
+        }
     };
     if !conflicted_files.is_empty() {
         GitError::MergeConflict {
@@ -38,12 +38,20 @@ async fn check_merge_conflicts(
         }
     } else {
         GitError::SubprocessFailure {
-            command: format!("git merge --no-ff {}", source),
+            command: "git diff --name-only --diff-filter=U".to_string(),
             exit_code: 1,
             stdout: String::new(),
-            stderr: "Merge failed but no conflicts detected".to_string(),
+            stderr: "Merge failed and conflict detection could not determine conflicted files".to_string(),
         }
     }
+}
+
+/// Parse git diff output into a list of conflicted file paths.
+fn parse_conflicted_files(stdout: &str) -> Vec<String> {
+    stdout.lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.trim().to_string())
+        .collect()
 }
 
 /// Merge a source branch into a target branch.
@@ -96,7 +104,11 @@ pub async fn merge_branch(
             ..
         }) => {
             // Step 5: Exit code 1 — check for merge conflicts
-            return Err(check_merge_conflicts(repo_root, source_branch, target_branch).await);
+            let conflict_error = check_merge_conflicts(repo_root, source_branch, target_branch).await;
+            // Conflicts detected — abort merge and restore original branch
+            let _ = abort_merge(repo_root).await;
+            let _ = checkout_branch(repo_root, &original_branch).await;
+            Err(conflict_error)
         }
         Err(e) => {
             // Other error — restore to original branch
@@ -160,12 +172,7 @@ pub async fn has_merge_conflicts(repo_root: &Path) -> Result<bool> {
 /// A vector of file path strings that have merge conflicts.
 pub async fn list_conflicted_files(repo_root: &Path) -> Result<Vec<String>> {
     let output = git(repo_root, &["diff", "--name-only", "--diff-filter=U"]).await?;
-    let files: Vec<String> = output
-        .stdout
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| line.trim().to_string())
-        .collect();
+    let files = parse_conflicted_files(&output.stdout);
     Ok(files)
 }
 
@@ -215,7 +222,7 @@ pub async fn merge_task_branch(
         return Err(GitError::BranchNotFound { branch: branch_name });
     }
 
-    // Record original branch for restoration
+    // Step 2: Record original branch for restoration
     let original_branch = current_branch(repo_root).await?;
 
     // Step 3: Checkout plan branch
@@ -238,7 +245,11 @@ pub async fn merge_task_branch(
             ..
         }) => {
             // Check for conflicts
-            return Err(check_merge_conflicts(repo_root, &branch_name, plan_branch).await);
+            let conflict_error = check_merge_conflicts(repo_root, &branch_name, plan_branch).await;
+            // Conflicts detected — abort merge and restore original branch
+            let _ = abort_merge(repo_root).await;
+            let _ = checkout_branch(repo_root, &original_branch).await;
+            Err(conflict_error)
         }
         Err(e) => {
             let _ = checkout_branch(repo_root, &original_branch).await;
@@ -273,7 +284,7 @@ pub struct MergePlan {
 ///
 /// # Errors
 ///
-/// Returns `GitError::SubprocessFailure` if a circular dependency is detected.
+/// Returns `GitError::CircularDependency` if a circular dependency is detected.
 pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
     let pending: HashSet<&str> = plan.pending_tasks.iter().map(|s| s.as_str()).collect();
     
@@ -311,7 +322,9 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
         result.push(task.clone());
         if let Some(neighbors) = adj.get(&task) {
             for neighbor in neighbors {
-                let degree = in_degree.get_mut(neighbor).expect("neighbor not in in_degree map");
+                let degree = in_degree.get_mut(neighbor).ok_or_else(|| GitError::CircularDependency {
+                    tasks: vec![neighbor.clone()],
+                })?;
                 *degree -= 1;
                 if *degree == 0 {
                     queue.push_back(neighbor.clone());
@@ -321,12 +334,13 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
     }
     
     if result.len() != pending.len() {
-        return Err(GitError::SubprocessFailure {
-            command: "determine_merge_order".to_string(),
-            exit_code: -1,
-            stdout: String::new(),
-            stderr: "Circular dependency detected in merge order".to_string(),
-        });
+        // Tasks not in result are part of a circular dependency
+        let unresolved: Vec<String> = plan.pending_tasks
+            .iter()
+            .filter(|t| !result.contains(*t))
+            .cloned()
+            .collect();
+        return Err(GitError::CircularDependency { tasks: unresolved });
     }
     
     Ok(result)
@@ -340,8 +354,8 @@ pub fn next_mergeable_tasks(plan: &MergePlan) -> Result<Vec<String>> {
     let merged: HashSet<&str> = plan.merged_tasks.iter().map(|s| s.as_str()).collect();
     
     let mut ready = Vec::new();
+    let empty: Vec<String> = Vec::new();
     for task in &plan.pending_tasks {
-        let empty: Vec<String> = Vec::new();
         let deps = plan.dependencies.get(task).unwrap_or(&empty);
         let all_satisfied = deps.iter().all(|dep| merged.contains(dep.as_str()));
         if all_satisfied {
