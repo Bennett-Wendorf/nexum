@@ -529,4 +529,53 @@ mod tests {
             "TASK-002 should still be in pending_tasks (batch 2 failed, atomic rollback)"
         );
     }
+
+    #[tokio::test]
+    async fn test_execute_merge_sequence_successful_batch() {
+        let (_dir, repo) = create_test_repo().await;
+
+        // Create plan branch
+        create_plan_branch(&repo, "plan/test", "main", false).await.unwrap();
+
+        // Create 3 independent task branches (no dependencies, all merge in one batch)
+        for (task_id, filename) in [("TASK-001", "task1.txt"), ("TASK-002", "task2.txt"), ("TASK-003", "task3.txt")] {
+            create_task_branch(&repo, task_id, "plan/test").await.unwrap();
+            checkout_branch(&repo, &task_branch_name(task_id)).await.unwrap();
+            std::fs::write(repo.join(filename), &format!("{} content\n", task_id)).unwrap();
+            let _ = git(&repo, &["add", "."]).await.unwrap();
+            let _ = git(&repo, &["commit", "-m", task_id]).await.unwrap();
+        }
+
+        let mut plan = MergePlan {
+            repo_root: repo.clone(),
+            plan_branch: "plan/test".to_string(),
+            pending_tasks: vec![
+                "TASK-001".to_string(),
+                "TASK-002".to_string(),
+                "TASK-003".to_string(),
+            ],
+            merged_tasks: vec![],
+            dependencies: std::collections::HashMap::new(),
+        };
+
+        // Execute — all tasks should merge successfully in one batch
+        let result = execute_merge_sequence(&mut plan).await;
+        assert!(result.is_ok(), "Expected all merges to succeed");
+
+        let merged = result.unwrap();
+
+        // All tasks should be in merged_tasks
+        assert!(plan.merged_tasks.contains(&"TASK-001".to_string()));
+        assert!(plan.merged_tasks.contains(&"TASK-002".to_string()));
+        assert!(plan.merged_tasks.contains(&"TASK-003".to_string()));
+
+        // No tasks should remain in pending_tasks
+        assert!(plan.pending_tasks.is_empty(), "All tasks should be merged, pending should be empty");
+
+        // Return value should contain all merged task IDs
+        assert_eq!(merged.len(), 3);
+        assert!(merged.contains(&"TASK-001".to_string()));
+        assert!(merged.contains(&"TASK-002".to_string()));
+        assert!(merged.contains(&"TASK-003".to_string()));
+    }
 }
