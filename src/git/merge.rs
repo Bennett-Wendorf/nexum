@@ -372,20 +372,28 @@ pub fn next_mergeable_tasks(plan: &MergePlan) -> Result<Vec<String>> {
 /// them into the plan branch, and updates the merged_tasks list.
 /// Continues until no more tasks are mergeable or all are merged.
 ///
+/// Merges are applied atomically per batch — plan state is only updated
+/// after all merges in a batch succeed. On partial failure, the plan
+/// remains unmodified so the caller can retry.
+///
 /// Returns the list of successfully merged task IDs.
 pub async fn execute_merge_sequence(plan: &mut MergePlan) -> Result<Vec<String>> {
     let mut merged = Vec::new();
-    
+
     loop {
         let ready = next_mergeable_tasks(plan)?;
         if ready.is_empty() {
             break;
         }
-        
+
+        let mut batch_merged: Vec<String> = Vec::new();
         for task_id in &ready {
             merge_task_branch(&plan.repo_root, task_id, &plan.plan_branch).await?;
-            
-            // Move task from pending to merged
+            batch_merged.push(task_id.clone());
+        }
+
+        // Batch succeeded — update plan state atomically
+        for task_id in &batch_merged {
             plan.pending_tasks.retain(|t| t != task_id);
             plan.merged_tasks.push(task_id.clone());
             merged.push(task_id.clone());
