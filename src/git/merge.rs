@@ -129,8 +129,8 @@ pub async fn merge_branch(
 ///
 /// # Errors
 ///
-/// Returns an error only if the abort operation itself fails for a
-/// reason unrelated to "no merge in progress".
+/// Returns an error if the abort operation fails, or if checking merge
+/// state fails (e.g., IO error reading MERGE_HEAD).
 pub async fn abort_merge(repo_root: &Path) -> Result<()> {
     // If no merge is in progress, skip the abort (no-op)
     if !is_merging(repo_root).await? {
@@ -237,7 +237,7 @@ pub async fn merge_task_branch(
     match merge_result {
         Ok(_) => {
             // Merge succeeded — restore to original branch
-            let _ = checkout_branch(repo_root, &original_branch).await;
+            checkout_branch(repo_root, &original_branch).await?;
             Ok(())
         }
         Err(GitError::SubprocessFailure {
@@ -349,7 +349,8 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
 /// Determine which pending tasks can be merged next.
 ///
 /// A task is mergeable when ALL of its dependencies are in the
-/// `merged_tasks` list. Returns tasks that can be merged in parallel.
+/// `merged_tasks` list. Returns tasks whose dependencies are satisfied
+/// and that can be merged in the next batch.
 pub fn next_mergeable_tasks(plan: &MergePlan) -> Result<Vec<String>> {
     let merged: HashSet<&str> = plan.merged_tasks.iter().map(|s| s.as_str()).collect();
     
@@ -386,10 +387,16 @@ pub async fn execute_merge_sequence(plan: &mut MergePlan) -> Result<Vec<String>>
             break;
         }
 
-        let mut batch_merged: Vec<String> = Vec::new();
+        let mut batch_merged = Vec::new();
         for task_id in &ready {
-            merge_task_branch(&plan.repo_root, task_id, &plan.plan_branch).await?;
-            batch_merged.push(task_id.clone());
+            match merge_task_branch(&plan.repo_root, task_id, &plan.plan_branch).await {
+                Ok(()) => batch_merged.push(task_id.clone()),
+                Err(e) => {
+                    // Attempt cleanup on failure
+                    let _ = abort_merge(&plan.repo_root).await;
+                    return Err(e);
+                }
+            }
         }
 
         // Batch succeeded — update plan state atomically
