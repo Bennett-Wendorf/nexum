@@ -87,6 +87,12 @@ pub enum GitError {
         unmet_deps: Vec<String>,
     },
 
+    /// Circular dependency detected in the merge task dependency graph.
+    #[error("circular dependency detected among tasks: {tasks:?}")]
+    CircularDependency {
+        tasks: Vec<String>,
+    },
+
     /// Failed to spawn the git subprocess.
     #[error("failed to spawn git subprocess: {0}")]
     SpawnFailed(#[source] io::Error),

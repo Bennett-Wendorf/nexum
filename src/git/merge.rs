@@ -281,7 +281,7 @@ pub struct MergePlan {
 ///
 /// # Errors
 ///
-/// Returns `GitError::SubprocessFailure` if a circular dependency is detected.
+/// Returns `GitError::CircularDependency` if a circular dependency is detected.
 pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
     let pending: HashSet<&str> = plan.pending_tasks.iter().map(|s| s.as_str()).collect();
     
@@ -329,12 +329,13 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
     }
     
     if result.len() != pending.len() {
-        return Err(GitError::SubprocessFailure {
-            command: "determine_merge_order".to_string(),
-            exit_code: -1,
-            stdout: String::new(),
-            stderr: "Circular dependency detected in merge order".to_string(),
-        });
+        // Tasks not in result are part of a circular dependency
+        let unresolved: Vec<String> = plan.pending_tasks
+            .iter()
+            .filter(|t| !result.contains(*t))
+            .cloned()
+            .collect();
+        return Err(GitError::CircularDependency { tasks: unresolved });
     }
     
     Ok(result)
