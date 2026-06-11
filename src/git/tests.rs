@@ -230,6 +230,34 @@ mod tests {
     }
 
     #[test]
+    fn test_determine_merge_order_circular_dependency() {
+        let mut deps = std::collections::HashMap::new();
+        deps.insert("TASK-001".to_string(), vec!["TASK-002".to_string()]);
+        deps.insert("TASK-002".to_string(), vec!["TASK-001".to_string()]);
+
+        let plan = MergePlan {
+            repo_root: PathBuf::from("/tmp"),
+            plan_branch: "feature/test".to_string(),
+            pending_tasks: vec![
+                "TASK-001".to_string(),
+                "TASK-002".to_string(),
+            ],
+            merged_tasks: vec![],
+            dependencies: deps,
+        };
+
+        let result = determine_merge_order(&plan);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            GitError::CircularDependency { tasks } => {
+                assert!(tasks.contains(&"TASK-001".to_string()));
+                assert!(tasks.contains(&"TASK-002".to_string()));
+            }
+            other => panic!("Expected CircularDependency, got: {:?}", other),
+        }
+    }
+
+    #[test]
     fn test_next_mergeable_tasks() {
         let mut deps = std::collections::HashMap::new();
         deps.insert("TASK-002".to_string(), vec!["TASK-001".to_string()]);
