@@ -15,7 +15,9 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum GitError {
     /// The git subprocess failed with a non-zero exit code.
-    #[error("git command failed (exit {exit_code}): {command}\nstdout: {stdout}\nstderr: {stderr}")]
+    #[error(
+        "git command failed (exit {exit_code}): {command}\nstdout: {stdout}\nstderr: {stderr}"
+    )]
     SubprocessFailure {
         command: String,
         exit_code: i32,
@@ -25,10 +27,7 @@ pub enum GitError {
 
     /// The git subprocess exceeded the configured timeout.
     #[error("git command timed out after {duration:?}: {command}")]
-    Timeout {
-        command: String,
-        duration: Duration,
-    },
+    Timeout { command: String, duration: Duration },
 
     /// Merge produced conflicts that require resolution.
     #[error("merge conflict between '{branch}' and '{plan_branch}': conflicts in {conflicts:?}")]
@@ -40,33 +39,23 @@ pub enum GitError {
 
     /// Referenced branch does not exist.
     #[error("branch not found: {branch}")]
-    BranchNotFound {
-        branch: String,
-    },
+    BranchNotFound { branch: String },
 
     /// Branch already exists (unexpected).
     #[error("branch already exists: {branch}")]
-    BranchExists {
-        branch: String,
-    },
+    BranchExists { branch: String },
 
     /// Expected worktree does not exist at the given path.
     #[error("worktree not found at: {path}")]
-    WorktreeNotFound {
-        path: PathBuf,
-    },
+    WorktreeNotFound { path: PathBuf },
 
     /// Worktree already exists at the given path.
     #[error("worktree already exists at: {path}")]
-    WorktreeExists {
-        path: PathBuf,
-    },
+    WorktreeExists { path: PathBuf },
 
     /// Worktree is stale (lock file present).
     #[error("worktree is stale (lock file present): {path}")]
-    WorktreeStale {
-        path: PathBuf,
-    },
+    WorktreeStale { path: PathBuf },
 
     /// git binary not found in PATH.
     #[error("git binary not found in PATH")]
@@ -89,9 +78,7 @@ pub enum GitError {
 
     /// Circular dependency detected in the merge task dependency graph.
     #[error("circular dependency detected among tasks: {tasks:?}")]
-    CircularDependency {
-        tasks: Vec<String>,
-    },
+    CircularDependency { tasks: Vec<String> },
 
     /// Failed to spawn the git subprocess.
     #[error("failed to spawn git subprocess: {0}")]

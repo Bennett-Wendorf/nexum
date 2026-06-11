@@ -1,9 +1,9 @@
-mod api;
 mod acp;
-mod git;
-mod persistence;
+mod api;
 mod config;
+mod git;
 mod overlord;
+mod persistence;
 
 use tokio::signal::unix::{signal, SignalKind};
 

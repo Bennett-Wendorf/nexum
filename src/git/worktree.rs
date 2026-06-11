@@ -85,7 +85,11 @@ pub async fn spawn_worktree(repo_root: &Path, task_id: &str, branch_name: &str) 
     }
 
     // Spawn the worktree
-    let output = git(repo_root, &["worktree", "add", &wt_path.to_string_lossy(), branch_name]).await;
+    let output = git(
+        repo_root,
+        &["worktree", "add", &wt_path.to_string_lossy(), branch_name],
+    )
+    .await;
 
     match output {
         Ok(_) => Ok(wt_path),
@@ -122,7 +126,11 @@ pub async fn remove_worktree(repo_root: &Path, task_id: &str) -> Result<()> {
     }
 
     // Try normal removal first
-    let output = git(repo_root, &["worktree", "remove", &wt_path.to_string_lossy()]).await;
+    let output = git(
+        repo_root,
+        &["worktree", "remove", &wt_path.to_string_lossy()],
+    )
+    .await;
 
     match output {
         Ok(_) => {
@@ -133,7 +141,11 @@ pub async fn remove_worktree(repo_root: &Path, task_id: &str) -> Result<()> {
         Err(_) => {
             // Normal removal failed — likely stale (lock file present).
             // Try force removal.
-            let force_output = git(repo_root, &["worktree", "remove", "--force", &wt_path.to_string_lossy()]).await;
+            let force_output = git(
+                repo_root,
+                &["worktree", "remove", "--force", &wt_path.to_string_lossy()],
+            )
+            .await;
 
             match force_output {
                 Ok(_) => {
@@ -143,10 +155,12 @@ pub async fn remove_worktree(repo_root: &Path, task_id: &str) -> Result<()> {
                 }
                 Err(_) => {
                     // Force removal also failed — fall back to manual cleanup
-                    fs::remove_dir_all(&wt_path).await.map_err(|e| GitError::Io {
-                        path: wt_path.clone(),
-                        source: e,
-                    })?;
+                    fs::remove_dir_all(&wt_path)
+                        .await
+                        .map_err(|e| GitError::Io {
+                            path: wt_path.clone(),
+                            source: e,
+                        })?;
                     Ok(())
                 }
             }
@@ -178,7 +192,11 @@ pub async fn remove_worktree_force(repo_root: &Path, task_id: &str) -> Result<()
     }
 
     // Try force removal via git
-    let output = git(repo_root, &["worktree", "remove", "--force", &wt_path.to_string_lossy()]).await;
+    let output = git(
+        repo_root,
+        &["worktree", "remove", "--force", &wt_path.to_string_lossy()],
+    )
+    .await;
 
     match output {
         Ok(_) => {
@@ -188,10 +206,12 @@ pub async fn remove_worktree_force(repo_root: &Path, task_id: &str) -> Result<()
         }
         Err(_) => {
             // Git force removal failed — fall back to manual directory removal
-            fs::remove_dir_all(&wt_path).await.map_err(|e| GitError::Io {
-                path: wt_path.clone(),
-                source: e,
-            })?;
+            fs::remove_dir_all(&wt_path)
+                .await
+                .map_err(|e| GitError::Io {
+                    path: wt_path.clone(),
+                    source: e,
+                })?;
             Ok(())
         }
     }

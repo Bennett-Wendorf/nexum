@@ -97,8 +97,7 @@ pub fn write_json<T: Serialize>(path: &Path, data: &T) -> Result<()> {
 
 /// Serialize a value to JSON and write it atomically.
 pub fn atomic_write_json<T: Serialize>(path: &Path, data: &T) -> Result<()> {
-    let json = serde_json::to_string_pretty(data)
-        .map_err(|e| PersistenceError::JsonParseBare(e))?;
+    let json = serde_json::to_string_pretty(data).map_err(PersistenceError::JsonParseBare)?;
     atomic_write(path, &json)
 }
 

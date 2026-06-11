@@ -9,15 +9,11 @@ mod tests {
     };
     use crate::git::errors::GitError;
     use crate::git::merge::{
-        abort_merge, cleanup_merged_task, determine_merge_order, execute_merge_sequence,
-        has_merge_conflicts, is_merging, list_conflicted_files, merge_branch, merge_task_branch,
-        next_mergeable_tasks, MergePlan,
+        abort_merge, determine_merge_order, execute_merge_sequence, is_merging, merge_branch,
+        merge_task_branch, next_mergeable_tasks, MergePlan,
     };
-    use crate::git::subprocess::{git, GitCommand, GitOutput};
-    use crate::git::worktree::{
-        list_worktrees, remove_worktree, remove_worktree_force, spawn_worktree, worktree_exists,
-        worktree_path,
-    };
+    use crate::git::subprocess::{git, GitCommand};
+    use crate::git::worktree::{remove_worktree, spawn_worktree, worktree_exists, worktree_path};
 
     // --- Test Infrastructure ---
 
@@ -25,12 +21,20 @@ mod tests {
         let dir = tempfile::TempDir::with_prefix("nexum-test-").unwrap();
         let path = dir.path().to_path_buf();
         let _ = git(&path, &["init"]).await.unwrap();
-        let _ = git(&path, &["config", "user.email", "test@nexum.local"]).await.unwrap();
-        let _ = git(&path, &["config", "user.name", "Test User"]).await.unwrap();
-        let _ = git(&path, &["config", "commit.gpgSign", "false"]).await.unwrap();
+        let _ = git(&path, &["config", "user.email", "test@nexum.local"])
+            .await
+            .unwrap();
+        let _ = git(&path, &["config", "user.name", "Test User"])
+            .await
+            .unwrap();
+        let _ = git(&path, &["config", "commit.gpgSign", "false"])
+            .await
+            .unwrap();
         std::fs::write(path.join("README.md"), "# Test Repo").unwrap();
         let _ = git(&path, &["add", "."]).await.unwrap();
-        let _ = git(&path, &["commit", "-m", "Initial commit"]).await.unwrap();
+        let _ = git(&path, &["commit", "-m", "Initial commit"])
+            .await
+            .unwrap();
         (dir, path)
     }
 
@@ -39,7 +43,11 @@ mod tests {
     #[tokio::test]
     async fn test_git_command_success() {
         let (_dir, repo) = create_test_repo().await;
-        let output = GitCommand::new(&repo).args(&["status"]).execute().await.unwrap();
+        let output = GitCommand::new(&repo)
+            .args(&["status"])
+            .execute()
+            .await
+            .unwrap();
         assert!(output.success());
         assert_eq!(output.exit_code, 0);
     }
@@ -137,7 +145,9 @@ mod tests {
     async fn test_spawn_worktree() {
         let (_dir, repo) = create_test_repo().await;
         create_task_branch(&repo, "TASK-001", "main").await.unwrap();
-        let wt_path = spawn_worktree(&repo, "TASK-001", "task/TASK-001").await.unwrap();
+        let wt_path = spawn_worktree(&repo, "TASK-001", "task/TASK-001")
+            .await
+            .unwrap();
         assert!(wt_path.exists());
         assert!(worktree_exists(&repo, "TASK-001").await.unwrap());
     }
@@ -146,7 +156,9 @@ mod tests {
     async fn test_remove_worktree() {
         let (_dir, repo) = create_test_repo().await;
         create_task_branch(&repo, "TASK-002", "main").await.unwrap();
-        spawn_worktree(&repo, "TASK-002", "task/TASK-002").await.unwrap();
+        spawn_worktree(&repo, "TASK-002", "task/TASK-002")
+            .await
+            .unwrap();
         remove_worktree(&repo, "TASK-002").await.unwrap();
         assert!(!worktree_exists(&repo, "TASK-002").await.unwrap());
     }
@@ -162,8 +174,12 @@ mod tests {
     #[tokio::test]
     async fn test_merge_branch_success() {
         let (_dir, repo) = create_test_repo().await;
-        create_branch(&repo, "feature/merge-test", "main").await.unwrap();
-        let output = merge_branch(&repo, "feature/merge-test", "main").await.unwrap();
+        create_branch(&repo, "feature/merge-test", "main")
+            .await
+            .unwrap();
+        let output = merge_branch(&repo, "feature/merge-test", "main")
+            .await
+            .unwrap();
         assert!(output.success());
     }
 
@@ -186,7 +202,10 @@ mod tests {
     fn test_determine_merge_order() {
         let mut deps = std::collections::HashMap::new();
         deps.insert("TASK-002".to_string(), vec!["TASK-001".to_string()]);
-        deps.insert("TASK-003".to_string(), vec!["TASK-001".to_string(), "TASK-002".to_string()]);
+        deps.insert(
+            "TASK-003".to_string(),
+            vec!["TASK-001".to_string(), "TASK-002".to_string()],
+        );
 
         let plan = MergePlan {
             repo_root: PathBuf::from("/tmp"),
@@ -218,10 +237,7 @@ mod tests {
         let plan = MergePlan {
             repo_root: PathBuf::from("/tmp"),
             plan_branch: "feature/test".to_string(),
-            pending_tasks: vec![
-                "TASK-001".to_string(),
-                "TASK-002".to_string(),
-            ],
+            pending_tasks: vec!["TASK-001".to_string(), "TASK-002".to_string()],
             merged_tasks: vec![],
             dependencies: deps,
         };
@@ -253,8 +269,12 @@ mod tests {
     #[tokio::test]
     async fn test_setup_task_workspace() {
         let (_dir, repo) = create_test_repo().await;
-        create_branch(&repo, "feature/workspace", "main").await.unwrap();
-        let wt_path = setup_task_workspace(&repo, "TASK-WS1", "feature/workspace").await.unwrap();
+        create_branch(&repo, "feature/workspace", "main")
+            .await
+            .unwrap();
+        let wt_path = setup_task_workspace(&repo, "TASK-WS1", "feature/workspace")
+            .await
+            .unwrap();
         assert!(wt_path.exists());
         assert!(branch_exists(&repo, "task/TASK-WS1").await.unwrap());
     }
@@ -262,8 +282,12 @@ mod tests {
     #[tokio::test]
     async fn test_teardown_task_workspace() {
         let (_dir, repo) = create_test_repo().await;
-        create_branch(&repo, "feature/teardown", "main").await.unwrap();
-        setup_task_workspace(&repo, "TASK-TD1", "feature/teardown").await.unwrap();
+        create_branch(&repo, "feature/teardown", "main")
+            .await
+            .unwrap();
+        setup_task_workspace(&repo, "TASK-TD1", "feature/teardown")
+            .await
+            .unwrap();
         teardown_task_workspace(&repo, "TASK-TD1").await.unwrap();
         assert!(!branch_exists(&repo, "task/TASK-TD1").await.unwrap());
         assert!(!worktree_exists(&repo, "TASK-TD1").await.unwrap());
@@ -272,8 +296,12 @@ mod tests {
     #[tokio::test]
     async fn test_setup_then_teardown() {
         let (_dir, repo) = create_test_repo().await;
-        create_branch(&repo, "feature/lifecycle", "main").await.unwrap();
-        let wt_path = setup_task_workspace(&repo, "TASK-LC1", "feature/lifecycle").await.unwrap();
+        create_branch(&repo, "feature/lifecycle", "main")
+            .await
+            .unwrap();
+        let wt_path = setup_task_workspace(&repo, "TASK-LC1", "feature/lifecycle")
+            .await
+            .unwrap();
         assert!(wt_path.exists());
         teardown_task_workspace(&repo, "TASK-LC1").await.unwrap();
         assert!(!worktree_exists(&repo, "TASK-LC1").await.unwrap());
@@ -296,7 +324,9 @@ mod tests {
         let (_dir, repo) = create_test_repo().await;
 
         // Create a feature branch from main
-        create_branch(&repo, "feature/conflict", "main").await.unwrap();
+        create_branch(&repo, "feature/conflict", "main")
+            .await
+            .unwrap();
 
         // Write conflicting content to README.md on main
         std::fs::write(repo.join("README.md"), "# Main content\n").unwrap();
@@ -307,13 +337,18 @@ mod tests {
         checkout_branch(&repo, "feature/conflict").await.unwrap();
         std::fs::write(repo.join("README.md"), "# Feature content\n").unwrap();
         let _ = git(&repo, &["add", "."]).await.unwrap();
-        let _ = git(&repo, &["commit", "-m", "Update feature"]).await.unwrap();
+        let _ = git(&repo, &["commit", "-m", "Update feature"])
+            .await
+            .unwrap();
 
         // Attempt merge — should produce a MergeConflict error
         let result = merge_branch(&repo, "feature/conflict", "main").await;
         match result {
             Err(GitError::MergeConflict { conflicts, .. }) => {
-                assert!(!conflicts.is_empty(), "Expected at least one conflicted file");
+                assert!(
+                    !conflicts.is_empty(),
+                    "Expected at least one conflicted file"
+                );
                 assert!(conflicts.contains(&"README.md".to_string()));
             }
             Ok(_) => panic!("Expected merge conflict, but merge succeeded"),
@@ -329,7 +364,9 @@ mod tests {
         let (_dir, repo) = create_test_repo().await;
 
         // Create a feature branch from main
-        create_branch(&repo, "feature/cleanup-conflict", "main").await.unwrap();
+        create_branch(&repo, "feature/cleanup-conflict", "main")
+            .await
+            .unwrap();
 
         // Write conflicting content to README.md on main
         std::fs::write(repo.join("README.md"), "# Main content\n").unwrap();
@@ -337,10 +374,14 @@ mod tests {
         let _ = git(&repo, &["commit", "-m", "Update main"]).await.unwrap();
 
         // Checkout feature branch and write conflicting content
-        checkout_branch(&repo, "feature/cleanup-conflict").await.unwrap();
+        checkout_branch(&repo, "feature/cleanup-conflict")
+            .await
+            .unwrap();
         std::fs::write(repo.join("README.md"), "# Feature content\n").unwrap();
         let _ = git(&repo, &["add", "."]).await.unwrap();
-        let _ = git(&repo, &["commit", "-m", "Update feature"]).await.unwrap();
+        let _ = git(&repo, &["commit", "-m", "Update feature"])
+            .await
+            .unwrap();
 
         // Record original branch before merge attempt
         let original = current_branch(&repo).await.unwrap();
@@ -349,7 +390,10 @@ mod tests {
         let result = merge_branch(&repo, "feature/cleanup-conflict", "main").await;
         match result {
             Err(GitError::MergeConflict { conflicts, .. }) => {
-                assert!(!conflicts.is_empty(), "Expected at least one conflicted file");
+                assert!(
+                    !conflicts.is_empty(),
+                    "Expected at least one conflicted file"
+                );
             }
             Ok(_) => panic!("Expected merge conflict, but merge succeeded"),
             Err(e) => panic!("Expected MergeConflict, got: {:?}", e),
@@ -375,10 +419,14 @@ mod tests {
         let (_dir, repo) = create_test_repo().await;
 
         // Create a plan branch
-        create_plan_branch(&repo, "plan/test", "main", false).await.unwrap();
+        create_plan_branch(&repo, "plan/test", "main", false)
+            .await
+            .unwrap();
 
         // Create a task branch from the plan branch
-        create_task_branch(&repo, "TASK-CLR", "plan/test").await.unwrap();
+        create_task_branch(&repo, "TASK-CLR", "plan/test")
+            .await
+            .unwrap();
 
         // Write conflicting content to README.md on plan branch
         checkout_branch(&repo, "plan/test").await.unwrap();
@@ -399,7 +447,10 @@ mod tests {
         let result = merge_task_branch(&repo, "TASK-CLR", "plan/test").await;
         match result {
             Err(GitError::MergeConflict { conflicts, .. }) => {
-                assert!(!conflicts.is_empty(), "Expected at least one conflicted file");
+                assert!(
+                    !conflicts.is_empty(),
+                    "Expected at least one conflicted file"
+                );
             }
             Ok(_) => panic!("Expected merge conflict, but merge succeeded"),
             Err(e) => panic!("Expected MergeConflict, got: {:?}", e),
@@ -432,10 +483,7 @@ mod tests {
         let plan = MergePlan {
             repo_root: PathBuf::from("/tmp"),
             plan_branch: "feature/test".to_string(),
-            pending_tasks: vec![
-                "TASK-001".to_string(),
-                "TASK-002".to_string(),
-            ],
+            pending_tasks: vec!["TASK-001".to_string(), "TASK-002".to_string()],
             merged_tasks: vec![],
             dependencies: deps,
         };
@@ -458,24 +506,32 @@ mod tests {
         let (_dir, repo) = create_test_repo().await;
 
         // Create plan branch
-        create_plan_branch(&repo, "plan/test", "main", false).await.unwrap();
+        create_plan_branch(&repo, "plan/test", "main", false)
+            .await
+            .unwrap();
 
         // Create TASK-001 branch (no deps, merges in batch 1)
-        create_task_branch(&repo, "TASK-001", "plan/test").await.unwrap();
+        create_task_branch(&repo, "TASK-001", "plan/test")
+            .await
+            .unwrap();
         checkout_branch(&repo, "task/TASK-001").await.unwrap();
         std::fs::write(repo.join("task1.txt"), "task 1 content\n").unwrap();
         let _ = git(&repo, &["add", "."]).await.unwrap();
         let _ = git(&repo, &["commit", "-m", "Task 1"]).await.unwrap();
 
         // Create TASK-003 branch (no deps, also merges in batch 1)
-        create_task_branch(&repo, "TASK-003", "plan/test").await.unwrap();
+        create_task_branch(&repo, "TASK-003", "plan/test")
+            .await
+            .unwrap();
         checkout_branch(&repo, "task/TASK-003").await.unwrap();
         std::fs::write(repo.join("task3.txt"), "task 3 content\n").unwrap();
         let _ = git(&repo, &["add", "."]).await.unwrap();
         let _ = git(&repo, &["commit", "-m", "Task 3"]).await.unwrap();
 
         // Create TASK-002 branch (depends on TASK-001, will conflict in batch 2)
-        create_task_branch(&repo, "TASK-002", "plan/test").await.unwrap();
+        create_task_branch(&repo, "TASK-002", "plan/test")
+            .await
+            .unwrap();
         checkout_branch(&repo, "task/TASK-002").await.unwrap();
         std::fs::write(repo.join("README.md"), "# Task 2 conflicting content\n").unwrap();
         let _ = git(&repo, &["add", "."]).await.unwrap();
@@ -483,7 +539,11 @@ mod tests {
 
         // Modify README.md on plan branch to create conflict with TASK-002
         checkout_branch(&repo, "plan/test").await.unwrap();
-        std::fs::write(repo.join("README.md"), "# Plan content that will conflict\n").unwrap();
+        std::fs::write(
+            repo.join("README.md"),
+            "# Plan content that will conflict\n",
+        )
+        .unwrap();
         let _ = git(&repo, &["add", "."]).await.unwrap();
         let _ = git(&repo, &["commit", "-m", "Update plan"]).await.unwrap();
 
@@ -541,12 +601,22 @@ mod tests {
         let (_dir, repo) = create_test_repo().await;
 
         // Create plan branch
-        create_plan_branch(&repo, "plan/test", "main", false).await.unwrap();
+        create_plan_branch(&repo, "plan/test", "main", false)
+            .await
+            .unwrap();
 
         // Create 3 independent task branches (no dependencies, all merge in one batch)
-        for (task_id, filename) in [("TASK-001", "task1.txt"), ("TASK-002", "task2.txt"), ("TASK-003", "task3.txt")] {
-            create_task_branch(&repo, task_id, "plan/test").await.unwrap();
-            checkout_branch(&repo, &task_branch_name(task_id)).await.unwrap();
+        for (task_id, filename) in [
+            ("TASK-001", "task1.txt"),
+            ("TASK-002", "task2.txt"),
+            ("TASK-003", "task3.txt"),
+        ] {
+            create_task_branch(&repo, task_id, "plan/test")
+                .await
+                .unwrap();
+            checkout_branch(&repo, &task_branch_name(task_id))
+                .await
+                .unwrap();
             std::fs::write(repo.join(filename), &format!("{} content\n", task_id)).unwrap();
             let _ = git(&repo, &["add", "."]).await.unwrap();
             let _ = git(&repo, &["commit", "-m", task_id]).await.unwrap();
@@ -576,7 +646,10 @@ mod tests {
         assert!(plan.merged_tasks.contains(&"TASK-003".to_string()));
 
         // No tasks should remain in pending_tasks
-        assert!(plan.pending_tasks.is_empty(), "All tasks should be merged, pending should be empty");
+        assert!(
+            plan.pending_tasks.is_empty(),
+            "All tasks should be merged, pending should be empty"
+        );
 
         // Return value should contain all merged task IDs
         assert_eq!(merged.len(), 3);

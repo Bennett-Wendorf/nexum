@@ -11,7 +11,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::errors::{OverlordError, Result};
-use crate::persistence::{specs_dir, plan_dir};
+use crate::persistence::{plan_dir, specs_dir};
 
 static PLAN_ID_DIR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^PLAN-(\d{3})-").unwrap());
 static PLAN_ID_PARSE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^PLAN-(\d{3})$").unwrap());
@@ -41,7 +41,8 @@ impl PlanIdGenerator {
             .filter(|entry| entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
             .filter_map(|entry| entry.file_name().to_str().map(|s| s.to_string()))
             .filter_map(|name| {
-                PLAN_ID_DIR_RE.captures(&name)
+                PLAN_ID_DIR_RE
+                    .captures(&name)
                     .and_then(|caps| caps.get(1))
                     .and_then(|m| m.as_str().parse::<u32>().ok())
             })
@@ -94,7 +95,8 @@ impl TaskIdGenerator {
             .filter(|entry| entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
             .filter_map(|entry| entry.file_name().to_str().map(|s| s.to_string()))
             .filter_map(|name| {
-                TASK_ID_DIR_RE.captures(&name)
+                TASK_ID_DIR_RE
+                    .captures(&name)
                     .and_then(|caps| caps.get(1))
                     .and_then(|m| m.as_str().parse::<u32>().ok())
             })

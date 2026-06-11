@@ -1,12 +1,12 @@
 //! Unit tests for the configuration module.
 
-use std::path::Path;
 use serial_test::serial;
+use std::path::Path;
 use tempfile::TempDir;
 
-use super::schema::{AgentRegistration, Config, GlobalSettings, Preferences};
-use super::loader::{validate, ConfigError, DEFAULT_CONFIG_TEMPLATE};
 use super::accessor::*;
+use super::loader::{validate, ConfigError, DEFAULT_CONFIG_TEMPLATE};
+use super::schema::{AgentRegistration, Config, GlobalSettings, Preferences};
 
 // ─── Helper utilities ───────────────────────────────────────────────
 
@@ -19,8 +19,7 @@ fn create_test_config_dir() -> TempDir {
 fn write_test_config(dir: &Path, content: &str) {
     let config_dir = dir.join("nexum");
     std::fs::create_dir_all(&config_dir).expect("Failed to create config dir");
-    std::fs::write(config_dir.join("config.toml"), content)
-        .expect("Failed to write config file");
+    std::fs::write(config_dir.join("config.toml"), content).expect("Failed to write config file");
 }
 
 // ─── Schema tests ──────────────────────────────────────────────────
@@ -52,14 +51,17 @@ model = "llama3.1"
 tool_permissions = ["read", "write"]
 timeout_seconds = 1800
 "#;
-    let agent: AgentRegistration = toml::from_str(toml_str)
-        .expect("Failed to parse agent registration");
-    
+    let agent: AgentRegistration =
+        toml::from_str(toml_str).expect("Failed to parse agent registration");
+
     assert_eq!(agent.name, "Test Agent");
     assert_eq!(agent.r#type, "opencode");
     assert_eq!(agent.spawn_command, "opencode acp");
     assert_eq!(agent.model, Some("llama3.1".to_string()));
-    assert_eq!(agent.tool_permissions, Some(vec!["read".to_string(), "write".to_string()]));
+    assert_eq!(
+        agent.tool_permissions,
+        Some(vec!["read".to_string(), "write".to_string()])
+    );
     assert_eq!(agent.timeout_seconds, Some(1800));
     assert!(agent.working_dir.is_none());
 }
@@ -73,9 +75,9 @@ max_parallel = 8
 default_timeout_seconds = 7200
 log_level = "debug"
 "#;
-    let settings: GlobalSettings = toml::from_str(toml_str)
-        .expect("Failed to parse global settings");
-    
+    let settings: GlobalSettings =
+        toml::from_str(toml_str).expect("Failed to parse global settings");
+
     assert_eq!(settings.server_host, "0.0.0.0");
     assert_eq!(settings.server_port, 8080);
     assert_eq!(settings.max_parallel, 8);
@@ -104,23 +106,24 @@ name = "Builder"
 type = "opencode"
 spawn_command = "opencode acp"
 "#;
-    let config: Config = toml::from_str(toml_str)
-        .expect("Failed to parse full config");
-    
+    let config: Config = toml::from_str(toml_str).expect("Failed to parse full config");
+
     assert_eq!(config.agents.len(), 1);
     assert_eq!(config.agents[0].name, "Builder");
     assert_eq!(config.global.server_port, 3000);
     assert!(config.preferences.yolo_mode);
-    assert_eq!(config.preferences.default_builder_agent, Some("builder-agent".to_string()));
+    assert_eq!(
+        config.preferences.default_builder_agent,
+        Some("builder-agent".to_string())
+    );
 }
 
 #[test]
 fn test_config_parse_minimal() {
     // Empty config should parse with all defaults
     let toml_str = "";
-    let config: Config = toml::from_str(toml_str)
-        .expect("Failed to parse empty config");
-    
+    let config: Config = toml::from_str(toml_str).expect("Failed to parse empty config");
+
     assert!(config.agents.is_empty());
     assert_eq!(config.global.server_host, "127.0.0.1");
     assert_eq!(config.global.server_port, 3000);
@@ -255,7 +258,7 @@ fn test_validate_valid_config() {
 fn test_default_template_parseable() {
     let config: Config = toml::from_str(DEFAULT_CONFIG_TEMPLATE)
         .expect("Default template should be valid TOML parseable by schema");
-    
+
     assert_eq!(config.agents.len(), 1);
     assert_eq!(config.agents[0].name, "Example Agent");
     assert_eq!(config.agents[0].r#type, "opencode");
@@ -268,7 +271,7 @@ fn test_default_template_parseable() {
 fn test_config_error_display() {
     let err = ConfigError::Validation("test error".to_string());
     assert!(format!("{}", err).contains("test error"));
-    
+
     let err = ConfigError::Parse("bad toml".to_string());
     assert!(format!("{}", err).contains("bad toml"));
 }
@@ -278,7 +281,7 @@ fn test_config_error_display() {
 #[test]
 fn test_write_and_read_config() {
     let dir = create_test_config_dir();
-    
+
     let config_content = r#"
 [global]
 server_port = 9999
@@ -289,10 +292,10 @@ type = "opencode"
 spawn_command = "opencode acp"
 "#;
     write_test_config(dir.path(), config_content);
-    
+
     let path = dir.path().join("nexum").join("config.toml");
     assert!(path.exists());
-    
+
     let content = std::fs::read_to_string(&path).expect("Failed to read config");
     assert!(content.contains("server_port = 9999"));
     assert!(content.contains("Test Agent"));
@@ -356,7 +359,7 @@ fn test_init_success() {
     reset();
     let cfg = make_test_config();
     with_config(cfg.clone());
-    
+
     // Verify config was properly set
     let loaded = get();
     assert!(loaded.is_some());
@@ -372,7 +375,7 @@ fn test_init_already_initialized() {
     let cfg = make_test_config();
     reset();
     with_config(cfg);
-    
+
     // Now init() should fail with AlreadyInitialized
     let result = init();
     assert!(result.is_err());
@@ -393,7 +396,7 @@ fn test_get_after_with_config() {
     let cfg = make_test_config();
     reset();
     with_config(cfg.clone());
-    
+
     let result = get();
     assert!(result.is_some());
     let config = result.unwrap();
@@ -409,7 +412,7 @@ fn test_reset_clears_config() {
     reset();
     with_config(cfg);
     assert!(get().is_some());
-    
+
     reset();
     assert!(get().is_none());
 }
@@ -421,10 +424,10 @@ fn test_reinit_after_reset() {
     reset();
     with_config(cfg.clone());
     assert!(get().is_some());
-    
+
     reset();
     assert!(get().is_none());
-    
+
     // Should be able to set config again after reset
     with_config(cfg);
     assert!(get().is_some());
@@ -438,7 +441,7 @@ fn test_with_config_injection() {
     let cfg = make_test_config();
     reset();
     with_config(cfg.clone());
-    
+
     let loaded = get().unwrap();
     assert_eq!(loaded.global.server_port, cfg.global.server_port);
     assert_eq!(loaded.agents.len(), cfg.agents.len());
@@ -450,11 +453,11 @@ fn test_with_config_overwrite() {
     let cfg1 = make_test_config();
     let mut cfg2 = make_test_config();
     cfg2.global.server_port = 9999;
-    
+
     reset();
     with_config(cfg1);
     assert_eq!(get().unwrap().global.server_port, 3000);
-    
+
     with_config(cfg2);
     assert_eq!(get().unwrap().global.server_port, 9999);
 }
@@ -467,11 +470,11 @@ fn test_singleton_query_agent_by_name() {
     let cfg = make_test_config();
     reset();
     with_config(cfg);
-    
+
     let agent = get_agent_by_name("Builder");
     assert!(agent.is_some());
     assert_eq!(agent.unwrap().r#type, "opencode");
-    
+
     let missing = get_agent_by_name("Nonexistent");
     assert!(missing.is_none());
 }
@@ -482,11 +485,11 @@ fn test_singleton_query_agent_by_type() {
     let cfg = make_test_config();
     reset();
     with_config(cfg);
-    
+
     let agent = get_agent_by_type("kiro");
     assert!(agent.is_some());
     assert_eq!(agent.unwrap().name, "Reviewer");
-    
+
     let missing = get_agent_by_type("claude");
     assert!(missing.is_none());
 }
@@ -497,12 +500,12 @@ fn test_singleton_query_agents_by_role() {
     let cfg = make_test_config();
     reset();
     with_config(cfg);
-    
+
     // "builder" role should find "Builder" via default_builder_agent preference
     let agents = get_agents_by_role("builder");
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0].name, "Builder");
-    
+
     // "reviewer" role should find "Reviewer" via default_reviewer_agent preference
     let agents = get_agents_by_role("reviewer");
     assert_eq!(agents.len(), 1);
@@ -515,7 +518,7 @@ fn test_singleton_server_addr() {
     let cfg = make_test_config();
     reset();
     with_config(cfg);
-    
+
     let addr = get_server_addr();
     assert_eq!(addr, Some("127.0.0.1:3000".to_string()));
 }
@@ -526,7 +529,7 @@ fn test_singleton_max_parallel() {
     let cfg = make_test_config();
     reset();
     with_config(cfg);
-    
+
     assert_eq!(get_max_parallel(), Some(4));
 }
 
@@ -536,7 +539,7 @@ fn test_singleton_default_timeout() {
     let cfg = make_test_config();
     reset();
     with_config(cfg);
-    
+
     assert_eq!(get_default_timeout(), Some(3600));
 }
 
@@ -546,7 +549,7 @@ fn test_singleton_yolo_mode() {
     let cfg = make_test_config();
     reset();
     with_config(cfg);
-    
+
     assert!(!is_yolo_mode());
 }
 
@@ -554,7 +557,7 @@ fn test_singleton_yolo_mode() {
 #[test]
 fn test_singleton_query_returns_none_before_init() {
     reset();
-    
+
     assert!(get_agent_by_name("Builder").is_none());
     assert!(get_agent_by_type("opencode").is_none());
     assert!(get_agents_by_role("builder").is_empty());
@@ -573,7 +576,7 @@ fn test_query_agent_by_name() {
     let agent = config.agents.iter().find(|a| a.name == "Builder");
     assert!(agent.is_some());
     assert_eq!(agent.unwrap().r#type, "opencode");
-    
+
     let missing = config.agents.iter().find(|a| a.name == "Nonexistent");
     assert!(missing.is_none());
 }
@@ -584,7 +587,7 @@ fn test_query_agent_by_type() {
     let agent = config.agents.iter().find(|a| a.r#type == "kiro");
     assert!(agent.is_some());
     assert_eq!(agent.unwrap().name, "Reviewer");
-    
+
     let missing = config.agents.iter().find(|a| a.r#type == "claude");
     assert!(missing.is_none());
 }
@@ -595,7 +598,7 @@ fn test_query_agents_by_role_with_default() {
     // "builder" role should find "Builder" via default_builder_agent preference
     let default_name = config.preferences.default_builder_agent.as_deref();
     assert_eq!(default_name, Some("Builder"));
-    
+
     if let Some(name) = default_name {
         let agent = config.agents.iter().find(|a| a.name == name);
         assert!(agent.is_some());
@@ -609,15 +612,19 @@ fn test_query_agents_by_role_fallback() {
     // "planner" role has no default, should fall back to type matching
     let default_name = config.preferences.default_planner_agent.as_deref();
     assert!(default_name.is_none());
-    
+
     // Fall back to type matching — "planner" type has no match
-    let fallback: Vec<_> = config.agents.iter()
+    let fallback: Vec<_> = config
+        .agents
+        .iter()
         .filter(|a| a.r#type == "planner")
         .collect();
     assert!(fallback.is_empty());
-    
+
     // But "opencode" type has 2 matches
-    let opencode: Vec<_> = config.agents.iter()
+    let opencode: Vec<_> = config
+        .agents
+        .iter()
         .filter(|a| a.r#type == "opencode")
         .collect();
     assert_eq!(opencode.len(), 2);
@@ -626,7 +633,10 @@ fn test_query_agents_by_role_fallback() {
 #[test]
 fn test_server_addr_format() {
     let config = make_test_config();
-    let addr = format!("{}:{}", config.global.server_host, config.global.server_port);
+    let addr = format!(
+        "{}:{}",
+        config.global.server_host, config.global.server_port
+    );
     assert_eq!(addr, "127.0.0.1:3000");
 }
 

@@ -19,13 +19,25 @@ mod status_machine;
 #[cfg(test)]
 mod tests;
 
-pub use concurrency_checker::{ConcurrencyChecker, DispatchInfo};
-pub use concurrency_checker::validate_transition_concurrency;
-pub use dependency_resolver::DependencyResolver;
-pub use errors::{OverlordError, Result};
-pub use heartbeat_monitor::{HeartbeatMonitor, StaleTask};
-pub use id_generator::{PlanIdGenerator, TaskIdGenerator};
-pub use scheduler::OverlordScheduler;
-pub use status_machine::{PlanStateMachine, TaskStateMachine};
-pub use status_machine::plan_status_to_string;
+#[allow(unused_imports)]
 pub use crate::persistence::task_status_to_string;
+#[allow(unused_imports)]
+pub use concurrency_checker::validate_transition_concurrency;
+#[allow(unused_imports)]
+pub use concurrency_checker::{ConcurrencyChecker, DispatchInfo};
+#[allow(unused_imports)]
+pub use dependency_resolver::DependencyResolver;
+#[allow(unused_imports)]
+pub use errors::{OverlordError, Result};
+#[allow(unused_imports)]
+pub use heartbeat_monitor::{HeartbeatMonitor, StaleTask};
+#[allow(unused_imports)]
+pub use id_generator::{PlanIdGenerator, TaskIdGenerator};
+#[allow(unused_imports)]
+pub use scheduler::OverlordScheduler;
+#[allow(unused_imports)]
+pub use scheduler::TransitionTaskStatusParams;
+#[allow(unused_imports)]
+pub use status_machine::plan_status_to_string;
+#[allow(unused_imports)]
+pub use status_machine::{PlanStateMachine, TaskStateMachine};

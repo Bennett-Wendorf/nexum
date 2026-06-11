@@ -7,7 +7,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 
-use super::branch::{branch_exists, checkout_branch, current_branch, delete_branch, task_branch_name};
+use super::branch::{
+    branch_exists, checkout_branch, current_branch, delete_branch, task_branch_name,
+};
 use super::errors::{GitError, Result};
 use super::subprocess::{git, GitCommand, GitOutput};
 use super::worktree::{remove_worktree, remove_worktree_force};
@@ -17,11 +19,7 @@ use super::worktree::{remove_worktree, remove_worktree_force};
 /// Runs `git diff --name-only --diff-filter=U` to identify conflicted files.
 /// Returns `GitError::MergeConflict` if conflicts are found, otherwise
 /// returns `GitError::SubprocessFailure` as a fallback.
-async fn check_merge_conflicts(
-    repo_root: &Path,
-    source: &str,
-    target: &str,
-) -> GitError {
+async fn check_merge_conflicts(repo_root: &Path, source: &str, target: &str) -> GitError {
     let conflict_output = git(repo_root, &["diff", "--name-only", "--diff-filter=U"]).await;
     let conflicted_files: Vec<String> = match conflict_output {
         Ok(out) => parse_conflicted_files(&out.stdout),
@@ -41,14 +39,16 @@ async fn check_merge_conflicts(
             command: "git diff --name-only --diff-filter=U".to_string(),
             exit_code: 1,
             stdout: String::new(),
-            stderr: "Merge failed and conflict detection could not determine conflicted files".to_string(),
+            stderr: "Merge failed and conflict detection could not determine conflicted files"
+                .to_string(),
         }
     }
 }
 
 /// Parse git diff output into a list of conflicted file paths.
 fn parse_conflicted_files(stdout: &str) -> Vec<String> {
-    stdout.lines()
+    stdout
+        .lines()
         .filter(|line| !line.trim().is_empty())
         .map(|line| line.trim().to_string())
         .collect()
@@ -99,12 +99,10 @@ pub async fn merge_branch(
             checkout_branch(repo_root, &original_branch).await?;
             Ok(output)
         }
-        Err(GitError::SubprocessFailure {
-            exit_code: 1,
-            ..
-        }) => {
+        Err(GitError::SubprocessFailure { exit_code: 1, .. }) => {
             // Step 5: Exit code 1 — check for merge conflicts
-            let conflict_error = check_merge_conflicts(repo_root, source_branch, target_branch).await;
+            let conflict_error =
+                check_merge_conflicts(repo_root, source_branch, target_branch).await;
             // Conflicts detected — abort merge and restore original branch
             let _ = abort_merge(repo_root).await;
             let _ = checkout_branch(repo_root, &original_branch).await;
@@ -190,10 +188,12 @@ pub async fn list_conflicted_files(repo_root: &Path) -> Result<Vec<String>> {
 /// `true` if a merge is in progress, `false` otherwise.
 pub async fn is_merging(repo_root: &Path) -> Result<bool> {
     let merge_head = repo_root.join(".git").join("MERGE_HEAD");
-    tokio::fs::try_exists(&merge_head).await.map_err(|e| GitError::Io {
-        path: merge_head,
-        source: e,
-    })
+    tokio::fs::try_exists(&merge_head)
+        .await
+        .map_err(|e| GitError::Io {
+            path: merge_head,
+            source: e,
+        })
 }
 
 /// Merge a task branch into the plan branch.
@@ -211,15 +211,13 @@ pub async fn is_merging(repo_root: &Path) -> Result<bool> {
 ///
 /// Returns `GitError::MergeConflict` if the merge produces conflicts,
 /// or `GitError::BranchNotFound` if the task branch doesn't exist.
-pub async fn merge_task_branch(
-    repo_root: &Path,
-    task_id: &str,
-    plan_branch: &str,
-) -> Result<()> {
+pub async fn merge_task_branch(repo_root: &Path, task_id: &str, plan_branch: &str) -> Result<()> {
     // Step 1: Validate task branch exists
     let branch_name = task_branch_name(task_id);
     if !branch_exists(repo_root, &branch_name).await? {
-        return Err(GitError::BranchNotFound { branch: branch_name });
+        return Err(GitError::BranchNotFound {
+            branch: branch_name,
+        });
     }
 
     // Step 2: Record original branch for restoration
@@ -240,10 +238,7 @@ pub async fn merge_task_branch(
             checkout_branch(repo_root, &original_branch).await?;
             Ok(())
         }
-        Err(GitError::SubprocessFailure {
-            exit_code: 1,
-            ..
-        }) => {
+        Err(GitError::SubprocessFailure { exit_code: 1, .. }) => {
             // Check for conflicts
             let conflict_error = check_merge_conflicts(repo_root, &branch_name, plan_branch).await;
             // Conflicts detected — abort merge and restore original branch
@@ -287,16 +282,16 @@ pub struct MergePlan {
 /// Returns `GitError::CircularDependency` if a circular dependency is detected.
 pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
     let pending: HashSet<&str> = plan.pending_tasks.iter().map(|s| s.as_str()).collect();
-    
+
     // Build in-degree map for pending tasks only
     let mut in_degree: HashMap<String, usize> = HashMap::new();
     let mut adj: HashMap<String, Vec<String>> = HashMap::new();
-    
+
     for task in &plan.pending_tasks {
         in_degree.entry(task.clone()).or_insert(0);
         adj.entry(task.clone()).or_default();
     }
-    
+
     for (task, deps) in &plan.dependencies {
         if !pending.contains(task.as_str()) {
             continue;
@@ -308,7 +303,7 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
             }
         }
     }
-    
+
     // Kahn's algorithm
     let mut queue: VecDeque<String> = VecDeque::new();
     for (task, degree) in &in_degree {
@@ -316,15 +311,18 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
             queue.push_back(task.clone());
         }
     }
-    
+
     let mut result = Vec::new();
     while let Some(task) = queue.pop_front() {
         result.push(task.clone());
         if let Some(neighbors) = adj.get(&task) {
             for neighbor in neighbors {
-                let degree = in_degree.get_mut(neighbor).ok_or_else(|| GitError::CircularDependency {
-                    tasks: vec![neighbor.clone()],
-                })?;
+                let degree =
+                    in_degree
+                        .get_mut(neighbor)
+                        .ok_or_else(|| GitError::CircularDependency {
+                            tasks: vec![neighbor.clone()],
+                        })?;
                 *degree -= 1;
                 if *degree == 0 {
                     queue.push_back(neighbor.clone());
@@ -332,17 +330,18 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
             }
         }
     }
-    
+
     if result.len() != pending.len() {
         // Tasks not in result are part of a circular dependency
-        let unresolved: Vec<String> = plan.pending_tasks
+        let unresolved: Vec<String> = plan
+            .pending_tasks
             .iter()
             .filter(|t| !result.contains(*t))
             .cloned()
             .collect();
         return Err(GitError::CircularDependency { tasks: unresolved });
     }
-    
+
     Ok(result)
 }
 
@@ -353,7 +352,7 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
 /// and that can be merged in the next batch.
 pub fn next_mergeable_tasks(plan: &MergePlan) -> Result<Vec<String>> {
     let merged: HashSet<&str> = plan.merged_tasks.iter().map(|s| s.as_str()).collect();
-    
+
     let mut ready = Vec::new();
     let empty: Vec<String> = Vec::new();
     for task in &plan.pending_tasks {
@@ -363,7 +362,7 @@ pub fn next_mergeable_tasks(plan: &MergePlan) -> Result<Vec<String>> {
             ready.push(task.clone());
         }
     }
-    
+
     Ok(ready)
 }
 
@@ -408,7 +407,11 @@ pub async fn execute_merge_sequence(plan: &mut MergePlan) -> Result<Vec<String>>
     }
 
     if !plan.pending_tasks.is_empty() {
-        tracing::warn!("{} tasks could not be merged: {:?}", plan.pending_tasks.len(), plan.pending_tasks);
+        tracing::warn!(
+            "{} tasks could not be merged: {:?}",
+            plan.pending_tasks.len(),
+            plan.pending_tasks
+        );
     }
 
     Ok(merged)
@@ -421,13 +424,17 @@ pub async fn execute_merge_sequence(plan: &mut MergePlan) -> Result<Vec<String>>
 pub async fn cleanup_merged_task(repo_root: &Path, task_id: &str) -> Result<()> {
     // Delete task branch
     delete_branch(repo_root, &task_branch_name(task_id)).await?;
-    
+
     // Remove worktree
     if let Err(e) = remove_worktree(repo_root, task_id).await {
         // Fallback to force removal
-        tracing::warn!("Worktree removal failed for {}, attempting force removal: {}", task_id, e);
+        tracing::warn!(
+            "Worktree removal failed for {}, attempting force removal: {}",
+            task_id,
+            e
+        );
         remove_worktree_force(repo_root, task_id).await?;
     }
-    
+
     Ok(())
 }

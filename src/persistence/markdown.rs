@@ -14,9 +14,8 @@ use super::errors::Result;
 use super::io::read_file;
 use super::schema::{Plan, PlanStatus, Task, TaskReference};
 
-static TASK_LIST_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\[([ xX])\]\s+\[([^\]]+)\]\s+(.+)$").unwrap()
-});
+static TASK_LIST_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\[([ xX])\]\s+\[([^\]]+)\]\s+(.+)$").unwrap());
 
 // ── Plan parsing ────────────────────────────────────────────────────────────
 
@@ -64,7 +63,13 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
                 ..
             }) => {
                 // Flush previous section
-                flush_section(&mut current_section, &section_buffer, &mut goal, &mut scope, &mut background);
+                flush_section(
+                    &mut current_section,
+                    &section_buffer,
+                    &mut goal,
+                    &mut scope,
+                    &mut background,
+                );
                 section_buffer.clear();
 
                 // Determine which section this heading starts
@@ -154,7 +159,13 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
     }
 
     // Flush last section
-    flush_section(&mut current_section, &section_buffer, &mut goal, &mut scope, &mut background);
+    flush_section(
+        &mut current_section,
+        &section_buffer,
+        &mut goal,
+        &mut scope,
+        &mut background,
+    );
 
     Ok(Plan {
         id,
@@ -222,13 +233,13 @@ pub fn parse_task_markdown(path: &Path) -> Result<Task> {
                 // Section content
                 if current_section == Section::Description {
                     section_buffer.push_str(&text);
-                } else if current_section == Section::AcceptanceCriteria {
+                } else if current_section == Section::AcceptanceCriteria
+                    || current_section == Section::FilesToModify
+                {
                     bullet_buffer.push_str(&text);
-                } else if current_section == Section::FilesToModify {
-                    bullet_buffer.push_str(&text);
-                } else if current_section == Section::Background {
-                    section_buffer.push_str(&text);
-                } else if current_section == Section::Notes {
+                } else if current_section == Section::Background
+                    || current_section == Section::Notes
+                {
                     section_buffer.push_str(&text);
                 }
             }

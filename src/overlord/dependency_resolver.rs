@@ -33,8 +33,10 @@ impl DependencyResolver {
         task_id: &str,
         task_name: &str,
     ) -> Result<bool> {
-        let status = crate::persistence::read_task_status(repo_root, branch, plan_id, plan_name, task_id, task_name)
-            .map_err(|e| OverlordError::PersistenceError(e))?;
+        let status = crate::persistence::read_task_status(
+            repo_root, branch, plan_id, plan_name, task_id, task_name,
+        )
+        .map_err(OverlordError::PersistenceError)?;
 
         if status.dependencies.is_empty() {
             return Ok(true);
@@ -43,13 +45,8 @@ impl DependencyResolver {
         // For each dependency, check if it's completed
         for dep_id in &status.dependencies {
             // Find the dependency task by scanning the plan's tasks directory
-            let dep_status = Self::find_task_status_by_id(
-                repo_root,
-                branch,
-                plan_id,
-                plan_name,
-                dep_id,
-            )?;
+            let dep_status =
+                Self::find_task_status_by_id(repo_root, branch, plan_id, plan_name, dep_id)?;
 
             if let Some(dep_status) = dep_status {
                 if !matches!(dep_status.status, TaskStatusValue::Completed) {
@@ -73,19 +70,15 @@ impl DependencyResolver {
         task_id: &str,
     ) -> Result<Option<crate::persistence::TaskStatus>> {
         let task_slugs = crate::persistence::list_tasks(repo_root, branch, plan_id, plan_name)
-            .map_err(|e| OverlordError::PersistenceError(e))?;
+            .map_err(OverlordError::PersistenceError)?;
 
         for slug in &task_slugs {
             // Extract task name from slug: TASK-NNN-task-name
             if let Some(task_name) = slug.strip_prefix(&format!("{}-", task_id)) {
                 let status = crate::persistence::read_task_status(
-                    repo_root,
-                    branch,
-                    plan_id,
-                    plan_name,
-                    task_id,
-                    task_name,
-                ).map_err(|e| OverlordError::PersistenceError(e))?;
+                    repo_root, branch, plan_id, plan_name, task_id, task_name,
+                )
+                .map_err(OverlordError::PersistenceError)?;
                 return Ok(Some(status));
             }
         }
@@ -103,30 +96,23 @@ impl DependencyResolver {
         plan_name: &str,
     ) -> Result<Vec<(String, String)>> {
         let task_slugs = crate::persistence::list_tasks(repo_root, branch, plan_id, plan_name)
-            .map_err(|e| OverlordError::PersistenceError(e))?;
+            .map_err(OverlordError::PersistenceError)?;
 
         let mut eligible = Vec::new();
 
         for slug in &task_slugs {
-            let (Some(task_id), Some(task_name)) = parse_slug(slug) else { continue };
+            let (Some(task_id), Some(task_name)) = parse_slug(slug) else {
+                continue;
+            };
 
             let status = crate::persistence::read_task_status(
-                repo_root,
-                branch,
-                plan_id,
-                plan_name,
-                task_id,
-                task_name,
-            ).map_err(|e| OverlordError::PersistenceError(e))?;
+                repo_root, branch, plan_id, plan_name, task_id, task_name,
+            )
+            .map_err(OverlordError::PersistenceError)?;
 
             if matches!(status.status, TaskStatusValue::Backlog)
                 && Self::are_all_dependencies_met(
-                    repo_root,
-                    branch,
-                    plan_id,
-                    plan_name,
-                    task_id,
-                    task_name,
+                    repo_root, branch, plan_id, plan_name, task_id, task_name,
                 )?
             {
                 eligible.push((task_id.to_string(), task_name.to_string()));
@@ -153,16 +139,19 @@ impl DependencyResolver {
 
         for (task_id, task_name) in &eligible {
             // Perform the transition
-            crate::persistence::update_task_status(
-                repo_root,
-                branch,
-                plan_id,
-                plan_name,
-                task_id,
-                task_name,
-                TaskStatusValue::Queued,
-                "overlord-auto-queue",
-            ).map_err(|e| OverlordError::PersistenceError(e))?;
+            crate::persistence::update_task_status(&crate::persistence::UpdateTaskStatusParams {
+                path: crate::persistence::TaskPathParams {
+                    repo_root: repo_root.to_path_buf(),
+                    branch: branch.to_string(),
+                    plan_id: plan_id.to_string(),
+                    plan_name: plan_name.to_string(),
+                    task_id: task_id.clone(),
+                    task_name: task_name.clone(),
+                },
+                new_status: TaskStatusValue::Queued,
+                by: "overlord-auto-queue".to_string(),
+            })
+            .map_err(OverlordError::PersistenceError)?;
 
             queued.push(task_id.clone());
         }
@@ -179,36 +168,29 @@ impl DependencyResolver {
         completed_task_id: &str,
     ) -> Result<Vec<String>> {
         let task_slugs = crate::persistence::list_tasks(repo_root, branch, plan_id, plan_name)
-            .map_err(|e| OverlordError::PersistenceError(e))?;
+            .map_err(OverlordError::PersistenceError)?;
 
         let mut newly_eligible = Vec::new();
 
         for slug in &task_slugs {
-            let (Some(task_id), Some(task_name)) = parse_slug(slug) else { continue };
+            let (Some(task_id), Some(task_name)) = parse_slug(slug) else {
+                continue;
+            };
 
             if task_id == completed_task_id {
                 continue;
             }
 
             let status = crate::persistence::read_task_status(
-                repo_root,
-                branch,
-                plan_id,
-                plan_name,
-                task_id,
-                task_name,
-            ).map_err(|e| OverlordError::PersistenceError(e))?;
+                repo_root, branch, plan_id, plan_name, task_id, task_name,
+            )
+            .map_err(OverlordError::PersistenceError)?;
 
             // Check if this task depends on the completed task
             if status.dependencies.contains(&completed_task_id.to_string())
                 && matches!(status.status, TaskStatusValue::Backlog)
                 && Self::are_all_dependencies_met(
-                    repo_root,
-                    branch,
-                    plan_id,
-                    plan_name,
-                    task_id,
-                    task_name,
+                    repo_root, branch, plan_id, plan_name, task_id, task_name,
                 )?
             {
                 newly_eligible.push(task_id.to_string());
@@ -218,7 +200,6 @@ impl DependencyResolver {
         Ok(newly_eligible)
     }
 
-
     /// Build the full dependency graph for a plan.
     pub fn build_dependency_graph(
         repo_root: &Path,
@@ -227,21 +208,19 @@ impl DependencyResolver {
         plan_name: &str,
     ) -> Result<HashMap<String, Vec<String>>> {
         let task_slugs = crate::persistence::list_tasks(repo_root, branch, plan_id, plan_name)
-            .map_err(|e| OverlordError::PersistenceError(e))?;
+            .map_err(OverlordError::PersistenceError)?;
 
         let mut graph: HashMap<String, Vec<String>> = HashMap::new();
 
         for slug in &task_slugs {
-            let (Some(task_id), Some(task_name)) = parse_slug(slug) else { continue };
+            let (Some(task_id), Some(task_name)) = parse_slug(slug) else {
+                continue;
+            };
 
             let status = crate::persistence::read_task_status(
-                repo_root,
-                branch,
-                plan_id,
-                plan_name,
-                task_id,
-                task_name,
-            ).map_err(|e| OverlordError::PersistenceError(e))?;
+                repo_root, branch, plan_id, plan_name, task_id, task_name,
+            )
+            .map_err(OverlordError::PersistenceError)?;
 
             graph.insert(task_id.to_string(), status.dependencies.clone());
         }
@@ -282,10 +261,8 @@ impl DependencyResolver {
         }
 
         for node in graph.keys() {
-            if !visited.contains(node) {
-                if dfs(node, graph, &mut visited, &mut recursion_stack) {
-                    return true;
-                }
+            if !visited.contains(node) && dfs(node, graph, &mut visited, &mut recursion_stack) {
+                return true;
             }
         }
 

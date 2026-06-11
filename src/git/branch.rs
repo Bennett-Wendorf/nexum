@@ -47,7 +47,11 @@ pub async fn create_branch(repo_root: &Path, branch_name: &str, from_branch: &st
 /// # Errors
 ///
 /// Returns an error if the git command fails.
-pub async fn create_task_branch(repo_root: &Path, task_id: &str, from_branch: &str) -> Result<String> {
+pub async fn create_task_branch(
+    repo_root: &Path,
+    task_id: &str,
+    from_branch: &str,
+) -> Result<String> {
     let branch_name = task_branch_name(task_id);
     create_branch(repo_root, &branch_name, from_branch).await?;
     Ok(branch_name)
@@ -116,7 +120,13 @@ pub async fn list_local_branches(repo_root: &Path) -> Result<Vec<String>> {
                 return None;
             }
             // Lines are either "* branch_name" or "  branch_name"
-            Some(trimmed.strip_prefix('*').unwrap_or(trimmed).trim().to_string())
+            Some(
+                trimmed
+                    .strip_prefix('*')
+                    .unwrap_or(trimmed)
+                    .trim()
+                    .to_string(),
+            )
         })
         .collect();
     Ok(branches)
@@ -205,17 +215,19 @@ pub async fn create_plan_branch(
 ) -> Result<()> {
     // Check if branch already exists
     if branch_exists(repo_root, plan_branch).await? {
-        return Err(GitError::BranchExists { branch: plan_branch.to_string() });
+        return Err(GitError::BranchExists {
+            branch: plan_branch.to_string(),
+        });
     }
-    
+
     // Create branch
     create_branch(repo_root, plan_branch, from_branch).await?;
-    
+
     // Optionally push to remote
     if push_to_remote {
         let _output = git(repo_root, &["push", "-u", "origin", plan_branch]).await?;
     }
-    
+
     Ok(())
 }
 
@@ -234,7 +246,7 @@ pub async fn setup_task_workspace(
 ) -> Result<std::path::PathBuf> {
     // Step 1: Create task branch
     let branch_name = create_task_branch(repo_root, task_id, plan_branch).await?;
-    
+
     // Step 2: Spawn worktree
     match super::worktree::spawn_worktree(repo_root, task_id, &branch_name).await {
         Ok(path) => Ok(path),
@@ -253,20 +265,21 @@ pub async fn setup_task_workspace(
 /// 2. Delete task branch
 ///
 /// Handles missing branch gracefully (no-op).
-pub async fn teardown_task_workspace(
-    repo_root: &Path,
-    task_id: &str,
-) -> Result<()> {
+pub async fn teardown_task_workspace(repo_root: &Path, task_id: &str) -> Result<()> {
     // Step 1: Remove worktree
     if let Err(e) = super::worktree::remove_worktree(repo_root, task_id).await {
         // Fallback to force removal
-        tracing::warn!("Worktree removal failed for {}, attempting force: {}", task_id, e);
+        tracing::warn!(
+            "Worktree removal failed for {}, attempting force: {}",
+            task_id,
+            e
+        );
         super::worktree::remove_worktree_force(repo_root, task_id).await?;
     }
-    
+
     // Step 2: Delete task branch (no-op if already gone)
     let branch_name = task_branch_name(task_id);
     delete_branch(repo_root, &branch_name).await?;
-    
+
     Ok(())
 }

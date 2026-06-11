@@ -4,7 +4,7 @@
 //! expressions instead of runtime HashMap lookups. Provides `can_transition()`
 //! and `transition()` static methods for both plan and task status machines.
 
-use crate::persistence::{PlanStatus, TaskStatusValue, task_status_to_string};
+use crate::persistence::{task_status_to_string, PlanStatus, TaskStatusValue};
 
 use super::errors::{OverlordError, Result};
 
@@ -36,14 +36,20 @@ pub struct PlanStateMachine;
 impl PlanStateMachine {
     /// Check if a transition from `from` to `to` is valid.
     pub fn can_transition(from: &PlanStatus, to: &PlanStatus) -> bool {
-        match (from, to) {
-            (PlanStatus::Draft, PlanStatus::Queued) => true,
-            (PlanStatus::Queued, PlanStatus::Planning) => true,
-            (PlanStatus::Planning, PlanStatus::Reviewing) => true,
-            (PlanStatus::Reviewing, PlanStatus::Approved | PlanStatus::Rejected) => true,
-            (PlanStatus::Approved, PlanStatus::Complete | PlanStatus::Rejected) => true,
-            _ => false,
-        }
+        matches!(
+            (from, to),
+            (PlanStatus::Draft, PlanStatus::Queued)
+                | (PlanStatus::Queued, PlanStatus::Planning)
+                | (PlanStatus::Planning, PlanStatus::Reviewing)
+                | (
+                    PlanStatus::Reviewing,
+                    PlanStatus::Approved | PlanStatus::Rejected
+                )
+                | (
+                    PlanStatus::Approved,
+                    PlanStatus::Complete | PlanStatus::Rejected
+                )
+        )
     }
 
     /// Create a transition record, validating the transition first.
@@ -93,15 +99,24 @@ pub struct TaskStateMachine;
 impl TaskStateMachine {
     /// Check if a transition from `from` to `to` is valid.
     pub fn can_transition(from: &TaskStatusValue, to: &TaskStatusValue) -> bool {
-        match (from, to) {
-            (TaskStatusValue::Backlog, TaskStatusValue::Queued) => true,
-            (TaskStatusValue::Queued, TaskStatusValue::Running) => true,
-            (TaskStatusValue::Running, TaskStatusValue::Reviewing | TaskStatusValue::Queued) => true,
-            (TaskStatusValue::Reviewing, TaskStatusValue::WaitingManualReview | TaskStatusValue::MergeQueue) => true,
-            (TaskStatusValue::WaitingManualReview, TaskStatusValue::MergeQueue | TaskStatusValue::Abandoned) => true,
-            (TaskStatusValue::MergeQueue, TaskStatusValue::Completed) => true,
-            _ => false,
-        }
+        matches!(
+            (from, to),
+            (TaskStatusValue::Backlog, TaskStatusValue::Queued)
+                | (TaskStatusValue::Queued, TaskStatusValue::Running)
+                | (
+                    TaskStatusValue::Running,
+                    TaskStatusValue::Reviewing | TaskStatusValue::Queued
+                )
+                | (
+                    TaskStatusValue::Reviewing,
+                    TaskStatusValue::WaitingManualReview | TaskStatusValue::MergeQueue
+                )
+                | (
+                    TaskStatusValue::WaitingManualReview,
+                    TaskStatusValue::MergeQueue | TaskStatusValue::Abandoned
+                )
+                | (TaskStatusValue::MergeQueue, TaskStatusValue::Completed)
+        )
     }
 
     /// Create a transition record, validating the transition first.
@@ -152,10 +167,7 @@ pub fn is_concurrency_sensitive(status: &TaskStatusValue) -> bool {
 /// Per `design/resource-constraints.md`: `planning` and `reviewing` are
 /// concurrency-sensitive at the plan level.
 pub fn is_plan_concurrency_sensitive(status: &PlanStatus) -> bool {
-    matches!(
-        status,
-        PlanStatus::Planning | PlanStatus::Reviewing
-    )
+    matches!(status, PlanStatus::Planning | PlanStatus::Reviewing)
 }
 
 // ── Status-to-String Conversion ─────────────────────────────────────────────

@@ -15,9 +15,15 @@ mod schema;
 #[cfg(test)]
 mod tests;
 
+#[allow(unused_imports)]
 pub use directory::*;
+#[allow(unused_imports)]
 pub use errors::*;
+#[allow(unused_imports)]
 pub use io::*;
+#[allow(unused_imports)]
 pub use markdown::*;
+#[allow(unused_imports)]
 pub use operations::*;
+#[allow(unused_imports)]
 pub use schema::*;

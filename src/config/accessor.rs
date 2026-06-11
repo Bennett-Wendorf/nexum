@@ -26,7 +26,9 @@ pub fn get() -> Option<Config> {
 /// Panics if `init()` has not been called yet or if initialization failed.
 pub fn get_unchecked() -> Config {
     let guard = CONFIG.read().expect("Config RwLock poisoned");
-    guard.clone().expect("Configuration has not been initialized. Call config::init() first.")
+    guard
+        .clone()
+        .expect("Configuration has not been initialized. Call config::init() first.")
 }
 
 /// Explicitly initializes the global configuration.
@@ -38,8 +40,10 @@ pub fn init() -> Result<(), ConfigError> {
     let cfg = load()?;
     validate(&cfg)?;
 
-    tracing::info!("Configuration loaded successfully from {:?}",
-        super::loader::config_path()?);
+    tracing::info!(
+        "Configuration loaded successfully from {:?}",
+        super::loader::config_path()?
+    );
 
     let mut guard = CONFIG.write().expect("Config RwLock poisoned");
     if guard.is_some() {
@@ -52,13 +56,23 @@ pub fn init() -> Result<(), ConfigError> {
 /// Finds an agent registration by its human-readable name.
 pub fn get_agent_by_name(name: &str) -> Option<AgentRegistration> {
     let guard = CONFIG.read().expect("Config RwLock poisoned");
-    guard.as_ref()?.agents.iter().find(|a| a.name == name).cloned()
+    guard
+        .as_ref()?
+        .agents
+        .iter()
+        .find(|a| a.name == name)
+        .cloned()
 }
 
 /// Finds an agent registration by its type identifier (e.g., "opencode", "kiro").
 pub fn get_agent_by_type(agent_type: &str) -> Option<AgentRegistration> {
     let guard = CONFIG.read().expect("Config RwLock poisoned");
-    guard.as_ref()?.agents.iter().find(|a| a.r#type == agent_type).cloned()
+    guard
+        .as_ref()?
+        .agents
+        .iter()
+        .find(|a| a.r#type == agent_type)
+        .cloned()
 }
 
 /// Returns agents suitable for a given role.
@@ -87,7 +101,8 @@ pub fn get_agents_by_role(role: &str) -> Vec<AgentRegistration> {
     }
 
     // Fall back to type matching
-    cfg.agents.iter()
+    cfg.agents
+        .iter()
         .filter(|a| a.r#type == role)
         .cloned()
         .collect()
@@ -98,7 +113,9 @@ pub fn get_agents_by_role(role: &str) -> Vec<AgentRegistration> {
 pub fn get_server_addr() -> Option<String> {
     // Check cache first
     {
-        let cache = SERVER_ADDR_CACHE.read().expect("Server addr cache RwLock poisoned");
+        let cache = SERVER_ADDR_CACHE
+            .read()
+            .expect("Server addr cache RwLock poisoned");
         if let Some(addr) = cache.as_ref() {
             return Some(addr.clone());
         }
@@ -106,12 +123,14 @@ pub fn get_server_addr() -> Option<String> {
 
     // Compute and cache
     let guard = CONFIG.read().expect("Config RwLock poisoned");
-    let addr = guard.as_ref().map(|cfg| {
-        format!("{}:{}", cfg.global.server_host, cfg.global.server_port)
-    });
+    let addr = guard
+        .as_ref()
+        .map(|cfg| format!("{}:{}", cfg.global.server_host, cfg.global.server_port));
 
     if let Some(ref a) = addr {
-        let mut cache = SERVER_ADDR_CACHE.write().expect("Server addr cache RwLock poisoned");
+        let mut cache = SERVER_ADDR_CACHE
+            .write()
+            .expect("Server addr cache RwLock poisoned");
         *cache = Some(a.clone());
     }
 
@@ -134,7 +153,10 @@ pub fn get_default_timeout() -> Option<u64> {
 /// Returns `false` if configuration has not been initialized (safe default).
 pub fn is_yolo_mode() -> bool {
     let guard = CONFIG.read().expect("Config RwLock poisoned");
-    guard.as_ref().map(|cfg| cfg.preferences.yolo_mode).unwrap_or(false)
+    guard
+        .as_ref()
+        .map(|cfg| cfg.preferences.yolo_mode)
+        .unwrap_or(false)
 }
 
 /// Resets the configuration to uninitialized state.
@@ -146,7 +168,9 @@ pub fn reset() {
     let mut guard = CONFIG.write().expect("Config RwLock poisoned");
     *guard = None;
     // Also clear the server address cache
-    let mut cache = SERVER_ADDR_CACHE.write().expect("Server addr cache RwLock poisoned");
+    let mut cache = SERVER_ADDR_CACHE
+        .write()
+        .expect("Server addr cache RwLock poisoned");
     *cache = None;
 }
 
@@ -162,6 +186,8 @@ pub fn with_config(config: Config) {
     let mut guard = CONFIG.write().expect("Config RwLock poisoned");
     *guard = Some(config);
     // Clear the server address cache since config may have changed
-    let mut cache = SERVER_ADDR_CACHE.write().expect("Server addr cache RwLock poisoned");
+    let mut cache = SERVER_ADDR_CACHE
+        .write()
+        .expect("Server addr cache RwLock poisoned");
     *cache = None;
 }

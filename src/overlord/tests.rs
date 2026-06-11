@@ -9,7 +9,7 @@ use crate::overlord::dependency_resolver::DependencyResolver;
 use crate::overlord::errors::OverlordError;
 use crate::overlord::heartbeat_monitor::HeartbeatMonitor;
 use crate::overlord::id_generator::{PlanIdGenerator, TaskIdGenerator};
-use crate::overlord::scheduler::OverlordScheduler;
+use crate::overlord::scheduler::{OverlordScheduler, TransitionTaskStatusParams};
 use crate::overlord::status_machine::{
     is_concurrency_sensitive, is_plan_concurrency_sensitive, PlanStateMachine, TaskStateMachine,
 };
@@ -24,10 +24,18 @@ fn create_test_repo() -> tempfile::TempDir {
 
 fn setup_test_plan(dir: &Path, branch: &str, plan_id: &str, plan_name: &str) {
     let plan_slug = format!("{}-{}", plan_id, plan_name);
-    let plan_dir = dir.join(".agent").join("specs").join(branch).join(&plan_slug);
+    let plan_dir = dir
+        .join(".agent")
+        .join("specs")
+        .join(branch)
+        .join(&plan_slug);
     std::fs::create_dir_all(plan_dir.join("tasks")).expect("Failed to create plan dir");
 
-    let state_dir = dir.join(".agent").join("state").join(branch).join(&plan_slug);
+    let state_dir = dir
+        .join(".agent")
+        .join("state")
+        .join(branch)
+        .join(&plan_slug);
     std::fs::create_dir_all(&state_dir).expect("Failed to create state dir");
 
     let exec_state = serde_json::json!({
@@ -59,8 +67,13 @@ fn create_task_status(
 ) {
     let task_slug = format!("{}-{}", task_id, task_name);
     let plan_slug = format!("{}-{}", plan_id, plan_name);
-    let task_dir = dir.join(".agent").join("specs").join(branch)
-        .join(&plan_slug).join("tasks").join(&task_slug);
+    let task_dir = dir
+        .join(".agent")
+        .join("specs")
+        .join(branch)
+        .join(&plan_slug)
+        .join("tasks")
+        .join(&task_slug);
     std::fs::create_dir_all(&task_dir).expect("Failed to create task dir");
 
     let task_md = format!(
@@ -101,41 +114,110 @@ fn create_task_status(
 
 #[test]
 fn test_plan_valid_transitions() {
-    assert!(PlanStateMachine::can_transition(&PlanStatus::Draft, &PlanStatus::Queued));
-    assert!(PlanStateMachine::can_transition(&PlanStatus::Queued, &PlanStatus::Planning));
-    assert!(PlanStateMachine::can_transition(&PlanStatus::Planning, &PlanStatus::Reviewing));
-    assert!(PlanStateMachine::can_transition(&PlanStatus::Reviewing, &PlanStatus::Approved));
-    assert!(PlanStateMachine::can_transition(&PlanStatus::Reviewing, &PlanStatus::Rejected));
-    assert!(PlanStateMachine::can_transition(&PlanStatus::Approved, &PlanStatus::Complete));
-    assert!(PlanStateMachine::can_transition(&PlanStatus::Approved, &PlanStatus::Rejected));
+    assert!(PlanStateMachine::can_transition(
+        &PlanStatus::Draft,
+        &PlanStatus::Queued
+    ));
+    assert!(PlanStateMachine::can_transition(
+        &PlanStatus::Queued,
+        &PlanStatus::Planning
+    ));
+    assert!(PlanStateMachine::can_transition(
+        &PlanStatus::Planning,
+        &PlanStatus::Reviewing
+    ));
+    assert!(PlanStateMachine::can_transition(
+        &PlanStatus::Reviewing,
+        &PlanStatus::Approved
+    ));
+    assert!(PlanStateMachine::can_transition(
+        &PlanStatus::Reviewing,
+        &PlanStatus::Rejected
+    ));
+    assert!(PlanStateMachine::can_transition(
+        &PlanStatus::Approved,
+        &PlanStatus::Complete
+    ));
+    assert!(PlanStateMachine::can_transition(
+        &PlanStatus::Approved,
+        &PlanStatus::Rejected
+    ));
 }
 
 #[test]
 fn test_plan_invalid_transitions() {
-    assert!(!PlanStateMachine::can_transition(&PlanStatus::Draft, &PlanStatus::Planning));
-    assert!(!PlanStateMachine::can_transition(&PlanStatus::Draft, &PlanStatus::Complete));
-    assert!(!PlanStateMachine::can_transition(&PlanStatus::Complete, &PlanStatus::Queued));
-    assert!(!PlanStateMachine::can_transition(&PlanStatus::Rejected, &PlanStatus::Queued));
+    assert!(!PlanStateMachine::can_transition(
+        &PlanStatus::Draft,
+        &PlanStatus::Planning
+    ));
+    assert!(!PlanStateMachine::can_transition(
+        &PlanStatus::Draft,
+        &PlanStatus::Complete
+    ));
+    assert!(!PlanStateMachine::can_transition(
+        &PlanStatus::Complete,
+        &PlanStatus::Queued
+    ));
+    assert!(!PlanStateMachine::can_transition(
+        &PlanStatus::Rejected,
+        &PlanStatus::Queued
+    ));
 }
 
 #[test]
 fn test_task_valid_transitions() {
-    assert!(TaskStateMachine::can_transition(&TaskStatusValue::Backlog, &TaskStatusValue::Queued));
-    assert!(TaskStateMachine::can_transition(&TaskStatusValue::Queued, &TaskStatusValue::Running));
-    assert!(TaskStateMachine::can_transition(&TaskStatusValue::Running, &TaskStatusValue::Reviewing));
-    assert!(TaskStateMachine::can_transition(&TaskStatusValue::Reviewing, &TaskStatusValue::WaitingManualReview));
-    assert!(TaskStateMachine::can_transition(&TaskStatusValue::Reviewing, &TaskStatusValue::MergeQueue));
-    assert!(TaskStateMachine::can_transition(&TaskStatusValue::WaitingManualReview, &TaskStatusValue::MergeQueue));
-    assert!(TaskStateMachine::can_transition(&TaskStatusValue::WaitingManualReview, &TaskStatusValue::Abandoned));
-    assert!(TaskStateMachine::can_transition(&TaskStatusValue::MergeQueue, &TaskStatusValue::Completed));
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::Backlog,
+        &TaskStatusValue::Queued
+    ));
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::Queued,
+        &TaskStatusValue::Running
+    ));
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::Running,
+        &TaskStatusValue::Reviewing
+    ));
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::Reviewing,
+        &TaskStatusValue::WaitingManualReview
+    ));
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::Reviewing,
+        &TaskStatusValue::MergeQueue
+    ));
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::WaitingManualReview,
+        &TaskStatusValue::MergeQueue
+    ));
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::WaitingManualReview,
+        &TaskStatusValue::Abandoned
+    ));
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::MergeQueue,
+        &TaskStatusValue::Completed
+    ));
 }
 
 #[test]
 fn test_task_invalid_transitions() {
-    assert!(!TaskStateMachine::can_transition(&TaskStatusValue::Backlog, &TaskStatusValue::Running));
-    assert!(!TaskStateMachine::can_transition(&TaskStatusValue::Backlog, &TaskStatusValue::Completed));
-    assert!(!TaskStateMachine::can_transition(&TaskStatusValue::Completed, &TaskStatusValue::Queued));
-    assert!(!TaskStateMachine::can_transition(&TaskStatusValue::Abandoned, &TaskStatusValue::Queued));
+    assert!(!TaskStateMachine::can_transition(
+        &TaskStatusValue::Backlog,
+        &TaskStatusValue::Running
+    ));
+    assert!(!TaskStateMachine::can_transition(
+        &TaskStatusValue::Backlog,
+        &TaskStatusValue::Completed
+    ));
+    assert!(!TaskStateMachine::can_transition(
+        &TaskStatusValue::Completed,
+        &TaskStatusValue::Queued
+    ));
+    assert!(!TaskStateMachine::can_transition(
+        &TaskStatusValue::Abandoned,
+        &TaskStatusValue::Queued
+    ));
 }
 
 #[test]
@@ -156,7 +238,8 @@ fn test_task_terminal_states() {
 
 #[test]
 fn test_transition_record_creation() {
-    let r = PlanStateMachine::transition(&PlanStatus::Draft, &PlanStatus::Queued, "test-actor").expect("ok");
+    let r = PlanStateMachine::transition(&PlanStatus::Draft, &PlanStatus::Queued, "test-actor")
+        .expect("ok");
     assert_eq!(r.from, "draft");
     assert_eq!(r.to, "queued");
     assert_eq!(r.by, "test-actor");
@@ -166,7 +249,10 @@ fn test_transition_record_creation() {
 #[test]
 fn test_invalid_transition_error() {
     let result = PlanStateMachine::transition(&PlanStatus::Complete, &PlanStatus::Queued, "test");
-    assert!(matches!(result, Err(OverlordError::InvalidTransition { .. })));
+    assert!(matches!(
+        result,
+        Err(OverlordError::InvalidTransition { .. })
+    ));
 }
 
 #[test]
@@ -202,7 +288,8 @@ fn test_next_plan_id_incremental() {
 fn test_next_task_id_empty() {
     let dir = create_test_repo();
     setup_test_plan(dir.path(), "main", "PLAN-001", "test-plan");
-    let id = TaskIdGenerator::next_task_id(dir.path(), "main", "PLAN-001", "test-plan").expect("ok");
+    let id =
+        TaskIdGenerator::next_task_id(dir.path(), "main", "PLAN-001", "test-plan").expect("ok");
     assert_eq!(id, "TASK-001");
 }
 
@@ -210,11 +297,14 @@ fn test_next_task_id_empty() {
 fn test_next_task_id_incremental() {
     let dir = create_test_repo();
     setup_test_plan(dir.path(), "main", "PLAN-001", "test-plan");
-    let tasks = dir.path().join(".agent/specs/main/PLAN-001-test-plan/tasks");
+    let tasks = dir
+        .path()
+        .join(".agent/specs/main/PLAN-001-test-plan/tasks");
     std::fs::create_dir_all(tasks.join("TASK-001-a")).expect("ok");
     std::fs::create_dir_all(tasks.join("TASK-002-b")).expect("ok");
     std::fs::create_dir_all(tasks.join("TASK-003-c")).expect("ok");
-    let id = TaskIdGenerator::next_task_id(dir.path(), "main", "PLAN-001", "test-plan").expect("ok");
+    let id =
+        TaskIdGenerator::next_task_id(dir.path(), "main", "PLAN-001", "test-plan").expect("ok");
     assert_eq!(id, "TASK-004");
 }
 
@@ -254,7 +344,8 @@ fn test_format_dir_name() {
 fn test_count_running_zero() {
     let dir = create_test_repo();
     setup_test_plan(dir.path(), "main", "PLAN-001", "test-plan");
-    let count = ConcurrencyChecker::count_running(dir.path(), "main", "PLAN-001", "test-plan").expect("ok");
+    let count =
+        ConcurrencyChecker::count_running(dir.path(), "main", "PLAN-001", "test-plan").expect("ok");
     assert_eq!(count, 0);
 }
 
@@ -272,11 +363,26 @@ fn test_is_concurrency_sensitive() {
 fn test_no_dependencies_met() {
     let dir = create_test_repo();
     setup_test_plan(dir.path(), "main", "PLAN-001", "test-plan");
-    create_task_status(dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
-        TaskStatusValue::Backlog, None, vec![]);
+    create_task_status(
+        dir.path(),
+        "main",
+        "PLAN-001",
+        "test-plan",
+        "TASK-001",
+        "task-one",
+        TaskStatusValue::Backlog,
+        None,
+        vec![],
+    );
     let met = DependencyResolver::are_all_dependencies_met(
-        dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one"
-    ).expect("ok");
+        dir.path(),
+        "main",
+        "PLAN-001",
+        "test-plan",
+        "TASK-001",
+        "task-one",
+    )
+    .expect("ok");
     assert!(met);
 }
 
@@ -284,16 +390,37 @@ fn test_no_dependencies_met() {
 fn test_dependency_graph() {
     let dir = create_test_repo();
     setup_test_plan(dir.path(), "main", "PLAN-001", "test-plan");
-    create_task_status(dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
-        TaskStatusValue::Backlog, None, vec![]);
-    create_task_status(dir.path(), "main", "PLAN-001", "test-plan", "TASK-002", "task-two",
-        TaskStatusValue::Backlog, None, vec!["TASK-001".to_string()]);
-    let graph = DependencyResolver::build_dependency_graph(
-        dir.path(), "main", "PLAN-001", "test-plan"
-    ).expect("ok");
+    create_task_status(
+        dir.path(),
+        "main",
+        "PLAN-001",
+        "test-plan",
+        "TASK-001",
+        "task-one",
+        TaskStatusValue::Backlog,
+        None,
+        vec![],
+    );
+    create_task_status(
+        dir.path(),
+        "main",
+        "PLAN-001",
+        "test-plan",
+        "TASK-002",
+        "task-two",
+        TaskStatusValue::Backlog,
+        None,
+        vec!["TASK-001".to_string()],
+    );
+    let graph =
+        DependencyResolver::build_dependency_graph(dir.path(), "main", "PLAN-001", "test-plan")
+            .expect("ok");
     assert_eq!(graph.len(), 2);
     assert!(graph.get("TASK-001").unwrap().is_empty());
-    assert_eq!(graph.get("TASK-002").unwrap(), &vec!["TASK-001".to_string()]);
+    assert_eq!(
+        graph.get("TASK-002").unwrap(),
+        &vec!["TASK-001".to_string()]
+    );
 }
 
 #[test]
@@ -351,8 +478,16 @@ fn test_detect_stale_tasks_empty() {
 
 #[test]
 fn test_recovery_transition_running_to_queued() {
-    assert!(TaskStateMachine::can_transition(&TaskStatusValue::Running, &TaskStatusValue::Queued));
-    let record = TaskStateMachine::transition(&TaskStatusValue::Running, &TaskStatusValue::Queued, "overlord-heartbeat-recovery").expect("ok");
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::Running,
+        &TaskStatusValue::Queued
+    ));
+    let record = TaskStateMachine::transition(
+        &TaskStatusValue::Running,
+        &TaskStatusValue::Queued,
+        "overlord-heartbeat-recovery",
+    )
+    .expect("ok");
     assert_eq!(record.from, "running");
     assert_eq!(record.to, "queued");
     assert_eq!(record.by, "overlord-heartbeat-recovery");
@@ -362,14 +497,32 @@ fn test_recovery_transition_running_to_queued() {
 fn test_recover_task_status_clears_fields() {
     let dir = create_test_repo();
     setup_test_plan(dir.path(), "main", "PLAN-001", "test-plan");
-    create_task_status(dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
-        TaskStatusValue::Running, Some(chrono::Utc::now().to_rfc3339()), vec![]);
+    create_task_status(
+        dir.path(),
+        "main",
+        "PLAN-001",
+        "test-plan",
+        "TASK-001",
+        "task-one",
+        TaskStatusValue::Running,
+        Some(chrono::Utc::now().to_rfc3339()),
+        vec![],
+    );
 
-    let status = crate::persistence::recover_task_status(
-        dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
-        TaskStatusValue::Queued,
-        "overlord-heartbeat-recovery",
-    ).expect("ok");
+    let status =
+        crate::persistence::recover_task_status(&crate::persistence::RecoverTaskStatusParams {
+            path: crate::persistence::TaskPathParams {
+                repo_root: dir.path().to_path_buf(),
+                branch: "main".to_string(),
+                plan_id: "PLAN-001".to_string(),
+                plan_name: "test-plan".to_string(),
+                task_id: "TASK-001".to_string(),
+                task_name: "task-one".to_string(),
+            },
+            target_status: TaskStatusValue::Queued,
+            by: "overlord-heartbeat-recovery".to_string(),
+        })
+        .expect("ok");
 
     assert_eq!(status.status, TaskStatusValue::Queued);
     assert!(status.agent.is_none());
@@ -381,21 +534,45 @@ fn test_recover_task_status_clears_fields() {
 fn test_recovery_increments_attempts() {
     let dir = create_test_repo();
     setup_test_plan(dir.path(), "main", "PLAN-001", "test-plan");
-    create_task_status(dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
-        TaskStatusValue::Running, Some(chrono::Utc::now().to_rfc3339()), vec![]);
+    create_task_status(
+        dir.path(),
+        "main",
+        "PLAN-001",
+        "test-plan",
+        "TASK-001",
+        "task-one",
+        TaskStatusValue::Running,
+        Some(chrono::Utc::now().to_rfc3339()),
+        vec![],
+    );
 
     // Initial attempts is 0
     let initial = crate::persistence::read_task_status(
-        dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
-    ).expect("ok");
+        dir.path(),
+        "main",
+        "PLAN-001",
+        "test-plan",
+        "TASK-001",
+        "task-one",
+    )
+    .expect("ok");
     assert_eq!(initial.attempts, 0);
 
     // Recover and verify attempts incremented
-    let status = crate::persistence::recover_task_status(
-        dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
-        TaskStatusValue::Queued,
-        "overlord-heartbeat-recovery",
-    ).expect("ok");
+    let status =
+        crate::persistence::recover_task_status(&crate::persistence::RecoverTaskStatusParams {
+            path: crate::persistence::TaskPathParams {
+                repo_root: dir.path().to_path_buf(),
+                branch: "main".to_string(),
+                plan_id: "PLAN-001".to_string(),
+                plan_name: "test-plan".to_string(),
+                task_id: "TASK-001".to_string(),
+                task_name: "task-one".to_string(),
+            },
+            target_status: TaskStatusValue::Queued,
+            by: "overlord-heartbeat-recovery".to_string(),
+        })
+        .expect("ok");
 
     assert_eq!(status.attempts, 1);
 }
@@ -411,7 +588,9 @@ async fn test_scheduler_start_stop() {
 
     let handle = tokio::spawn({
         let s = scheduler.clone();
-        async move { let _ = s.start().await; }
+        async move {
+            let _ = s.start().await;
+        }
     });
 
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -437,7 +616,10 @@ async fn test_scheduler_generate_task_id() {
     let dir = create_test_repo();
     setup_test_plan(dir.path(), "main", "PLAN-001", "test-plan");
     let scheduler = OverlordScheduler::new(dir.path().to_path_buf());
-    let id = scheduler.generate_task_id("main", "PLAN-001", "test-plan").await.expect("ok");
+    let id = scheduler
+        .generate_task_id("main", "PLAN-001", "test-plan")
+        .await
+        .expect("ok");
     assert_eq!(id, "TASK-001");
 }
 
@@ -445,12 +627,31 @@ async fn test_scheduler_generate_task_id() {
 async fn test_transition_task_status_invalid() {
     let dir = create_test_repo();
     setup_test_plan(dir.path(), "main", "PLAN-001", "test-plan");
-    create_task_status(dir.path(), "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
-        TaskStatusValue::Backlog, None, vec![]);
+    create_task_status(
+        dir.path(),
+        "main",
+        "PLAN-001",
+        "test-plan",
+        "TASK-001",
+        "task-one",
+        TaskStatusValue::Backlog,
+        None,
+        vec![],
+    );
     let scheduler = OverlordScheduler::new(dir.path().to_path_buf());
-    let result = scheduler.transition_task_status(
-        "main", "PLAN-001", "test-plan", "TASK-001", "task-one",
-        TaskStatusValue::Running, "test-agent"
-    ).await;
-    assert!(matches!(result, Err(OverlordError::InvalidTransition { .. })));
+    let result = scheduler
+        .transition_task_status(&TransitionTaskStatusParams {
+            branch: "main".to_string(),
+            plan_id: "PLAN-001".to_string(),
+            plan_name: "test-plan".to_string(),
+            task_id: "TASK-001".to_string(),
+            task_name: "task-one".to_string(),
+            new_status: TaskStatusValue::Running,
+            by: "test-agent".to_string(),
+        })
+        .await;
+    assert!(matches!(
+        result,
+        Err(OverlordError::InvalidTransition { .. })
+    ));
 }

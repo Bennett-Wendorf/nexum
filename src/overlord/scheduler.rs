@@ -8,18 +8,34 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use super::concurrency_checker::{ConcurrencyChecker, DispatchInfo, validate_transition_concurrency};
+use super::concurrency_checker::{
+    validate_transition_concurrency, ConcurrencyChecker, DispatchInfo,
+};
 use super::dependency_resolver::DependencyResolver;
 use super::errors::{OverlordError, Result};
 use super::heartbeat_monitor::{HeartbeatMonitor, StaleTask};
 use super::id_generator::{PlanIdGenerator, TaskIdGenerator};
-use super::status_machine::{PlanStateMachine, TaskStateMachine};
 use super::status_machine::plan_status_to_string;
+use super::status_machine::{PlanStateMachine, TaskStateMachine};
 use crate::persistence::task_status_to_string;
 
 use crate::persistence::{list_branches, list_plans, list_tasks, parse_slug};
-use crate::persistence::{read_plan, read_task_status, update_task_status, update_plan};
-use crate::persistence::{Plan, PlanStatus, TaskStatusValue};
+use crate::persistence::{read_plan, read_task_status, update_plan, update_task_status};
+use crate::persistence::{
+    Plan, PlanStatus, TaskPathParams, TaskStatusValue, UpdateTaskStatusParams,
+};
+
+/// Parameters for transitioning a task status.
+#[derive(Debug, Clone)]
+pub struct TransitionTaskStatusParams {
+    pub branch: String,
+    pub plan_id: String,
+    pub plan_name: String,
+    pub task_id: String,
+    pub task_name: String,
+    pub new_status: TaskStatusValue,
+    pub by: String,
+}
 
 /// The main scheduler that ties all deterministic checks together.
 pub struct OverlordScheduler {
@@ -110,27 +126,31 @@ impl OverlordScheduler {
         let repo_root = self.repo_root.as_path();
 
         // Compute branches once and reuse
-        let branches = list_branches(repo_root)
-            .map_err(|e| OverlordError::PersistenceError(e))?;
+        let branches = list_branches(repo_root).map_err(OverlordError::PersistenceError)?;
 
         // 1. Heartbeat recovery
         for branch in &branches {
-            if let Err(e) = self.heartbeat_monitor.recover_stale_tasks(repo_root, branch) {
+            if let Err(e) = self
+                .heartbeat_monitor
+                .recover_stale_tasks(repo_root, branch)
+            {
                 tracing::warn!("Heartbeat recovery error in branch {}: {}", branch, e);
             }
         }
 
         // 2. Dependency auto-queue
         for branch in &branches {
-            let plans = list_plans(repo_root, branch)
-                .map_err(|e| OverlordError::PersistenceError(e))?;
+            let plans = list_plans(repo_root, branch).map_err(OverlordError::PersistenceError)?;
 
             for plan_slug in &plans {
-                let (Some(plan_id), Some(plan_name)) = parse_slug(plan_slug) else { continue };
+                let (Some(plan_id), Some(plan_name)) = parse_slug(plan_slug) else {
+                    continue;
+                };
 
-                if let Err(e) = self.dependency_resolver.auto_queue_tasks(
-                    repo_root, branch, plan_id, plan_name,
-                ) {
+                if let Err(e) = self
+                    .dependency_resolver
+                    .auto_queue_tasks(repo_root, branch, plan_id, plan_name)
+                {
                     tracing::warn!("Auto-queue error in plan {}: {}", plan_id, e);
                 }
             }
@@ -147,53 +167,53 @@ impl OverlordScheduler {
         let repo_root = self.repo_root.as_path();
 
         for branch in branches {
-            let plans = list_plans(repo_root, branch)
-                .map_err(|e| OverlordError::PersistenceError(e))?;
+            let plans = list_plans(repo_root, branch).map_err(OverlordError::PersistenceError)?;
 
             for plan_slug in &plans {
-                let (Some(plan_id), Some(plan_name)) = parse_slug(plan_slug) else { continue };
+                let (Some(plan_id), Some(plan_name)) = parse_slug(plan_slug) else {
+                    continue;
+                };
 
                 // Find queued tasks
                 let tasks = list_tasks(repo_root, branch, plan_id, plan_name)
-                    .map_err(|e| OverlordError::PersistenceError(e))?;
+                    .map_err(OverlordError::PersistenceError)?;
 
                 for task_slug in &tasks {
                     // Re-check concurrency before each dispatch
-                    match ConcurrencyChecker::can_dispatch(
-                        repo_root, branch, plan_id, plan_name,
-                    ) {
+                    match ConcurrencyChecker::can_dispatch(repo_root, branch, plan_id, plan_name) {
                         Ok(can) => {
                             if !can {
                                 break;
                             }
                         }
                         Err(e) => {
-                            tracing::warn!(
-                                "Concurrency check failed for plan {}: {}",
-                                plan_id, e
-                            );
+                            tracing::warn!("Concurrency check failed for plan {}: {}", plan_id, e);
                             break;
                         }
                     }
 
-                    let (Some(task_id), Some(task_name)) = parse_slug(task_slug) else { continue };
+                    let (Some(task_id), Some(task_name)) = parse_slug(task_slug) else {
+                        continue;
+                    };
 
-                    let status = read_task_status(
-                        repo_root, branch, plan_id, plan_name,
-                        task_id, task_name,
-                    ).map_err(|e| OverlordError::PersistenceError(e))?;
+                    let status =
+                        read_task_status(repo_root, branch, plan_id, plan_name, task_id, task_name)
+                            .map_err(OverlordError::PersistenceError)?;
 
                     if matches!(status.status, TaskStatusValue::Queued) {
-                        if let Err(e) = update_task_status(
-                            repo_root, branch, plan_id, plan_name,
-                            task_id, task_name,
-                            TaskStatusValue::Running,
-                            "overlord-dispatch",
-                        ) {
-                            tracing::warn!(
-                                "Dispatch error for task {}: {}",
-                                task_id, e
-                            );
+                        if let Err(e) = update_task_status(&UpdateTaskStatusParams {
+                            path: TaskPathParams {
+                                repo_root: repo_root.to_path_buf(),
+                                branch: branch.to_string(),
+                                plan_id: plan_id.to_string(),
+                                plan_name: plan_name.to_string(),
+                                task_id: task_id.to_string(),
+                                task_name: task_name.to_string(),
+                            },
+                            new_status: TaskStatusValue::Running,
+                            by: "overlord-dispatch".to_string(),
+                        }) {
+                            tracing::warn!("Dispatch error for task {}: {}", task_id, e);
                         }
                     }
                 }
@@ -206,44 +226,57 @@ impl OverlordScheduler {
     // ── Public API ────────────────────────────────────────────────────────
 
     /// Transition a task status with validation and concurrency check.
-    pub async fn transition_task_status(
-        &self,
-        branch: &str,
-        plan_id: &str,
-        plan_name: &str,
-        task_id: &str,
-        task_name: &str,
-        new_status: TaskStatusValue,
-        by: &str,
-    ) -> Result<()> {
+    pub async fn transition_task_status(&self, params: &TransitionTaskStatusParams) -> Result<()> {
         let repo_root = self.repo_root.as_path();
 
         // Read current status
         let status = read_task_status(
-            repo_root, branch, plan_id, plan_name, task_id, task_name,
-        ).map_err(|e| OverlordError::PersistenceError(e))?;
+            repo_root,
+            &params.branch,
+            &params.plan_id,
+            &params.plan_name,
+            &params.task_id,
+            &params.task_name,
+        )
+        .map_err(OverlordError::PersistenceError)?;
 
         // Validate transition
-        if !TaskStateMachine::can_transition(&status.status, &new_status) {
+        if !TaskStateMachine::can_transition(&status.status, &params.new_status) {
             return Err(OverlordError::InvalidTransition {
                 from: task_status_to_string(&status.status).to_string(),
-                to: task_status_to_string(&new_status).to_string(),
+                to: task_status_to_string(&params.new_status).to_string(),
                 entity: "task".to_string(),
             });
         }
 
         // Check concurrency if target is running or reviewing
-        if matches!(new_status, TaskStatusValue::Running | TaskStatusValue::Reviewing) {
+        if matches!(
+            params.new_status,
+            TaskStatusValue::Running | TaskStatusValue::Reviewing
+        ) {
             validate_transition_concurrency(
-                repo_root, branch, plan_id, plan_name, &new_status,
+                repo_root,
+                &params.branch,
+                &params.plan_id,
+                &params.plan_name,
+                &params.new_status,
             )?;
         }
 
         // Perform transition
-        update_task_status(
-            repo_root, branch, plan_id, plan_name, task_id, task_name,
-            new_status, by,
-        ).map_err(|e| OverlordError::PersistenceError(e))?;
+        update_task_status(&UpdateTaskStatusParams {
+            path: TaskPathParams {
+                repo_root: repo_root.to_path_buf(),
+                branch: params.branch.clone(),
+                plan_id: params.plan_id.clone(),
+                plan_name: params.plan_name.clone(),
+                task_id: params.task_id.clone(),
+                task_name: params.task_name.clone(),
+            },
+            new_status: params.new_status.clone(),
+            by: params.by.clone(),
+        })
+        .map_err(OverlordError::PersistenceError)?;
 
         Ok(())
     }
@@ -261,7 +294,7 @@ impl OverlordScheduler {
 
         // Read current plan
         let plan = read_plan(repo_root, branch, plan_id, plan_name)
-            .map_err(|e| OverlordError::PersistenceError(e))?;
+            .map_err(OverlordError::PersistenceError)?;
 
         // Validate transition
         if !PlanStateMachine::can_transition(&plan.status, &new_status) {
@@ -283,24 +316,31 @@ impl OverlordScheduler {
             ..plan
         };
 
-        update_plan(
-            repo_root, branch, plan_id, plan_name, &updated_plan,
-        ).map_err(|e| OverlordError::PersistenceError(e))?;
+        update_plan(repo_root, branch, plan_id, plan_name, &updated_plan)
+            .map_err(OverlordError::PersistenceError)?;
 
         // If transitioning to approved, move all tasks to backlog
         if matches!(new_status, PlanStatus::Approved) {
             let tasks = list_tasks(repo_root, branch, plan_id, plan_name)
-                .map_err(|e| OverlordError::PersistenceError(e))?;
+                .map_err(OverlordError::PersistenceError)?;
 
             for task_slug in &tasks {
-                let (Some(task_id), Some(task_name)) = parse_slug(task_slug) else { continue };
+                let (Some(task_id), Some(task_name)) = parse_slug(task_slug) else {
+                    continue;
+                };
 
-                let _ = update_task_status(
-                    repo_root, branch, plan_id, plan_name,
-                    task_id, task_name,
-                    TaskStatusValue::Backlog,
-                    "overlord-plan-approved",
-                );
+                let _ = update_task_status(&UpdateTaskStatusParams {
+                    path: TaskPathParams {
+                        repo_root: repo_root.to_path_buf(),
+                        branch: branch.to_string(),
+                        plan_id: plan_id.to_string(),
+                        plan_name: plan_name.to_string(),
+                        task_id: task_id.to_string(),
+                        task_name: task_name.to_string(),
+                    },
+                    new_status: TaskStatusValue::Backlog,
+                    by: "overlord-plan-approved".to_string(),
+                });
             }
         }
 
@@ -319,12 +359,7 @@ impl OverlordScheduler {
         plan_id: &str,
         plan_name: &str,
     ) -> Result<String> {
-        TaskIdGenerator::next_task_id(
-            self.repo_root.as_path(),
-            branch,
-            plan_id,
-            plan_name,
-        )
+        TaskIdGenerator::next_task_id(self.repo_root.as_path(), branch, plan_id, plan_name)
     }
 
     /// Get concurrency dispatch info for a plan.
@@ -334,12 +369,7 @@ impl OverlordScheduler {
         plan_id: &str,
         plan_name: &str,
     ) -> Result<DispatchInfo> {
-        ConcurrencyChecker::dispatch_info(
-            self.repo_root.as_path(),
-            branch,
-            plan_id,
-            plan_name,
-        )
+        ConcurrencyChecker::dispatch_info(self.repo_root.as_path(), branch, plan_id, plan_name)
     }
 
     /// Get stale task list for a branch.

@@ -81,8 +81,7 @@ impl GitCommand {
     ///
     /// Arguments are appended to any previously added arguments.
     pub fn args(mut self, args: &[&str]) -> Self {
-        self.args
-            .extend(args.iter().map(|s| s.to_string()));
+        self.args.extend(args.iter().map(|s| s.to_string()));
         self
     }
 
@@ -135,10 +134,7 @@ impl GitCommand {
             cmd.env(key, val);
         }
 
-        let command_desc = format!(
-            "git {}",
-            self.args.join(" ")
-        );
+        let command_desc = format!("git {}", self.args.join(" "));
 
         let child = cmd.spawn().map_err(GitError::SpawnFailed)?;
 
@@ -171,7 +167,10 @@ impl GitCommand {
                 }
             }
         } else {
-            child.wait_with_output().await.map_err(GitError::SpawnFailed)?
+            child
+                .wait_with_output()
+                .await
+                .map_err(GitError::SpawnFailed)?
         };
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();

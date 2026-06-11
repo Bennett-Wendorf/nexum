@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 
@@ -15,6 +15,35 @@ use super::errors::{PersistenceError, Result};
 use super::io::*;
 use super::markdown::*;
 use super::schema::*;
+
+// ── Params Structs ──────────────────────────────────────────────────────────
+
+/// Path parameters for locating a task within a plan.
+#[derive(Debug, Clone)]
+pub struct TaskPathParams {
+    pub repo_root: PathBuf,
+    pub branch: String,
+    pub plan_id: String,
+    pub plan_name: String,
+    pub task_id: String,
+    pub task_name: String,
+}
+
+/// Parameters for updating a task status.
+#[derive(Debug, Clone)]
+pub struct UpdateTaskStatusParams {
+    pub path: TaskPathParams,
+    pub new_status: TaskStatusValue,
+    pub by: String,
+}
+
+/// Parameters for recovering a task status.
+#[derive(Debug, Clone)]
+pub struct RecoverTaskStatusParams {
+    pub path: TaskPathParams,
+    pub target_status: TaskStatusValue,
+    pub by: String,
+}
 
 // ── Plan Operations ─────────────────────────────────────────────────────────
 
@@ -45,12 +74,7 @@ pub fn create_plan(repo_root: &Path, plan: &Plan) -> Result<()> {
 }
 
 /// Read a plan from disk by parsing its markdown file.
-pub fn read_plan(
-    repo_root: &Path,
-    branch: &str,
-    plan_id: &str,
-    plan_name: &str,
-) -> Result<Plan> {
+pub fn read_plan(repo_root: &Path, branch: &str, plan_id: &str, plan_name: &str) -> Result<Plan> {
     let plan_path = plan_markdown_path(repo_root, branch, plan_id, plan_name);
     parse_plan_markdown(&plan_path)
 }
@@ -130,8 +154,7 @@ pub fn read_task_status(
     task_id: &str,
     task_name: &str,
 ) -> Result<TaskStatus> {
-    let status_path =
-        task_status_path(repo_root, branch, plan_id, plan_name, task_id, task_name);
+    let status_path = task_status_path(repo_root, branch, plan_id, plan_name, task_id, task_name);
     read_json(&status_path)
 }
 
@@ -145,18 +168,15 @@ pub fn read_task_status(
 /// 5. Increments `attempts` on EVERY transition to `Running`.
 /// 6. Verifies file hasn't changed before writing (TOCTOU mitigation).
 /// 7. Writes the updated status atomically.
-pub fn update_task_status(
-    repo_root: &Path,
-    branch: &str,
-    plan_id: &str,
-    plan_name: &str,
-    task_id: &str,
-    task_name: &str,
-    new_status: TaskStatusValue,
-    by: &str,
-) -> Result<TaskStatus> {
-    let status_path =
-        task_status_path(repo_root, branch, plan_id, plan_name, task_id, task_name);
+pub fn update_task_status(params: &UpdateTaskStatusParams) -> Result<TaskStatus> {
+    let status_path = task_status_path(
+        &params.path.repo_root,
+        &params.path.branch,
+        &params.path.plan_id,
+        &params.path.plan_name,
+        &params.path.task_id,
+        &params.path.task_name,
+    );
 
     // Read current status
     let content = read_file(&status_path)?;
@@ -169,28 +189,27 @@ pub fn update_task_status(
     // Record transition (from/to are strings now)
     status.transitions.push(StatusTransition {
         from: task_status_to_string(&old_status).to_string(),
-        to: task_status_to_string(&new_status).to_string(),
+        to: task_status_to_string(&params.new_status).to_string(),
         at: now.clone(),
-        by: by.to_string(),
+        by: params.by.clone(),
     });
 
     // Set started_at and increment attempts on EVERY transition to Running
-    if matches!(new_status, TaskStatusValue::Running) {
+    if matches!(params.new_status, TaskStatusValue::Running) {
         status.attempts += 1;
         status.started_at = Some(now.clone());
     }
 
     // Set completed_at when transitioning to Completed
-    if matches!(new_status, TaskStatusValue::Completed) {
+    if matches!(params.new_status, TaskStatusValue::Completed) {
         status.completed_at = Some(now.clone());
     }
 
-    status.status = new_status;
+    status.status = params.new_status.clone();
 
     // Re-check before writing: verify file hasn't changed
-    let new_content = fs::read_to_string(&status_path).map_err(|e| {
-        PersistenceError::Io(status_path.clone(), e)
-    })?;
+    let new_content = fs::read_to_string(&status_path)
+        .map_err(|e| PersistenceError::Io(status_path.clone(), e))?;
     if new_content != content {
         return Err(PersistenceError::ConcurrencyConflict(status_path));
     }
@@ -211,18 +230,15 @@ pub fn update_task_status(
 /// 5. Sets the new status to `target_status`.
 /// 6. Verifies file hasn't changed before writing (TOCTOU mitigation).
 /// 7. Writes the updated status atomically.
-pub fn recover_task_status(
-    repo_root: &Path,
-    branch: &str,
-    plan_id: &str,
-    plan_name: &str,
-    task_id: &str,
-    task_name: &str,
-    target_status: TaskStatusValue,
-    by: &str,
-) -> Result<TaskStatus> {
-    let status_path =
-        task_status_path(repo_root, branch, plan_id, plan_name, task_id, task_name);
+pub fn recover_task_status(params: &RecoverTaskStatusParams) -> Result<TaskStatus> {
+    let status_path = task_status_path(
+        &params.path.repo_root,
+        &params.path.branch,
+        &params.path.plan_id,
+        &params.path.plan_name,
+        &params.path.task_id,
+        &params.path.task_name,
+    );
 
     // Read current status (single read — validation happens here)
     let content = read_file(&status_path)?;
@@ -235,9 +251,9 @@ pub fn recover_task_status(
     // Record transition with correct kebab-case strings
     status.transitions.push(StatusTransition {
         from: task_status_to_string(&old_status).to_string(),
-        to: task_status_to_string(&target_status).to_string(),
+        to: task_status_to_string(&params.target_status).to_string(),
         at: now.clone(),
-        by: by.to_string(),
+        by: params.by.clone(),
     });
 
     // Clear recovery fields
@@ -249,12 +265,11 @@ pub fn recover_task_status(
     status.attempts += 1;
 
     // Set new status
-    status.status = target_status;
+    status.status = params.target_status.clone();
 
     // Re-check before writing: verify file hasn't changed
-    let new_content = fs::read_to_string(&status_path).map_err(|e| {
-        PersistenceError::Io(status_path.clone(), e)
-    })?;
+    let new_content = fs::read_to_string(&status_path)
+        .map_err(|e| PersistenceError::Io(status_path.clone(), e))?;
     if new_content != content {
         return Err(PersistenceError::ConcurrencyConflict(status_path));
     }
@@ -264,7 +279,6 @@ pub fn recover_task_status(
 
     Ok(status)
 }
-
 
 // ── Execution State Operations ──────────────────────────────────────────────
 
@@ -313,9 +327,8 @@ pub fn add_task_to_execution(
     state.task_status_map.insert(task_id.to_string(), status);
 
     // Re-check before writing: verify file hasn't changed
-    let new_content = fs::read_to_string(&exec_path).map_err(|e| {
-        PersistenceError::Io(exec_path.clone(), e)
-    })?;
+    let new_content =
+        fs::read_to_string(&exec_path).map_err(|e| PersistenceError::Io(exec_path.clone(), e))?;
     if new_content != content {
         return Err(PersistenceError::ConcurrencyConflict(exec_path));
     }

@@ -53,12 +53,22 @@ fn test_state_dir() {
 #[test]
 fn test_plan_dir() {
     let path = plan_dir(&PathBuf::from("/repo"), "main", "PLAN-001", "oauth2-flow");
-    assert_eq!(path, PathBuf::from("/repo/.agent/specs/main/PLAN-001-oauth2-flow"));
+    assert_eq!(
+        path,
+        PathBuf::from("/repo/.agent/specs/main/PLAN-001-oauth2-flow")
+    );
 }
 
 #[test]
 fn test_task_dir() {
-    let path = task_dir(&PathBuf::from("/repo"), "main", "PLAN-001", "oauth2-flow", "TASK-001", "implement-auth");
+    let path = task_dir(
+        &PathBuf::from("/repo"),
+        "main",
+        "PLAN-001",
+        "oauth2-flow",
+        "TASK-001",
+        "implement-auth",
+    );
     assert_eq!(
         path,
         PathBuf::from("/repo/.agent/specs/main/PLAN-001-oauth2-flow/tasks/TASK-001-implement-auth")
@@ -220,12 +230,26 @@ fn test_create_and_read_task() -> Result<()> {
     create_task(&repo, "main", "PLAN-001", "test-plan", &task)?;
 
     // Read task back
-    let read_task = read_task(&repo, "main", "PLAN-001", "test-plan", "TASK-001", "test-task")?;
+    let read_task = read_task(
+        &repo,
+        "main",
+        "PLAN-001",
+        "test-plan",
+        "TASK-001",
+        "test-task",
+    )?;
     assert_eq!(read_task.id, "TASK-001");
     assert_eq!(read_task.name, "test-task");
 
     // Read task status
-    let status = read_task_status(&repo, "main", "PLAN-001", "test-plan", "TASK-001", "test-task")?;
+    let status = read_task_status(
+        &repo,
+        "main",
+        "PLAN-001",
+        "test-plan",
+        "TASK-001",
+        "test-task",
+    )?;
     assert!(matches!(status.status, TaskStatusValue::Backlog));
     Ok(())
 }
@@ -261,32 +285,36 @@ fn test_update_task_status() -> Result<()> {
     create_task(&repo, "main", "PLAN-001", "test-plan", &task)?;
 
     // Transition to Running
-    let status = update_task_status(
-        &repo,
-        "main",
-        "PLAN-001",
-        "test-plan",
-        "TASK-001",
-        "test-task",
-        TaskStatusValue::Running,
-        "builder",
-    )?;
+    let status = update_task_status(&UpdateTaskStatusParams {
+        path: TaskPathParams {
+            repo_root: repo.clone(),
+            branch: "main".to_string(),
+            plan_id: "PLAN-001".to_string(),
+            plan_name: "test-plan".to_string(),
+            task_id: "TASK-001".to_string(),
+            task_name: "test-task".to_string(),
+        },
+        new_status: TaskStatusValue::Running,
+        by: "builder".to_string(),
+    })?;
     assert!(matches!(status.status, TaskStatusValue::Running));
     assert!(status.started_at.is_some());
     assert_eq!(status.attempts, 1);
     assert_eq!(status.transitions.len(), 1);
 
     // Transition to Completed
-    let status = update_task_status(
-        &repo,
-        "main",
-        "PLAN-001",
-        "test-plan",
-        "TASK-001",
-        "test-task",
-        TaskStatusValue::Completed,
-        "reviewer",
-    )?;
+    let status = update_task_status(&UpdateTaskStatusParams {
+        path: TaskPathParams {
+            repo_root: repo.clone(),
+            branch: "main".to_string(),
+            plan_id: "PLAN-001".to_string(),
+            plan_name: "test-plan".to_string(),
+            task_id: "TASK-001".to_string(),
+            task_name: "test-task".to_string(),
+        },
+        new_status: TaskStatusValue::Completed,
+        by: "reviewer".to_string(),
+    })?;
     assert!(matches!(status.status, TaskStatusValue::Completed));
     assert!(status.completed_at.is_some());
     assert_eq!(status.transitions.len(), 2);

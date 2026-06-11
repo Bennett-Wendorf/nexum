@@ -63,7 +63,10 @@ impl HeartbeatMonitor {
         let elapsed = Utc::now().signed_duration_since(dt);
         let elapsed_minutes = elapsed.num_minutes() as f64;
 
-        Ok((elapsed_minutes > self.stale_threshold_minutes as f64, elapsed_minutes))
+        Ok((
+            elapsed_minutes > self.stale_threshold_minutes as f64,
+            elapsed_minutes,
+        ))
     }
 
     /// Scan all plans and tasks for stale heartbeats across a branch.
@@ -72,10 +75,12 @@ impl HeartbeatMonitor {
 
         // List all plans in this branch
         let plan_slugs = crate::persistence::list_plans(repo_root, branch)
-            .map_err(|e| OverlordError::PersistenceError(e))?;
+            .map_err(OverlordError::PersistenceError)?;
 
         for plan_slug in &plan_slugs {
-            let (Some(plan_id), Some(plan_name)) = parse_slug(plan_slug) else { continue };
+            let (Some(plan_id), Some(plan_name)) = parse_slug(plan_slug) else {
+                continue;
+            };
             let stale = self.detect_stale_in_plan(repo_root, branch, plan_id, plan_name)?;
             stale_tasks.extend(stale);
         }
@@ -94,19 +99,17 @@ impl HeartbeatMonitor {
         let mut stale_tasks = Vec::new();
 
         let task_slugs = crate::persistence::list_tasks(repo_root, branch, plan_id, plan_name)
-            .map_err(|e| OverlordError::PersistenceError(e))?;
+            .map_err(OverlordError::PersistenceError)?;
 
         for slug in &task_slugs {
-            let (Some(task_id), Some(task_name)) = parse_slug(slug) else { continue };
+            let (Some(task_id), Some(task_name)) = parse_slug(slug) else {
+                continue;
+            };
 
             let status = crate::persistence::read_task_status(
-                repo_root,
-                branch,
-                plan_id,
-                plan_name,
-                task_id,
-                task_name,
-            ).map_err(|e| OverlordError::PersistenceError(e))?;
+                repo_root, branch, plan_id, plan_name, task_id, task_name,
+            )
+            .map_err(OverlordError::PersistenceError)?;
 
             // Only check running tasks
             if !matches!(status.status, TaskStatusValue::Running) {
@@ -200,13 +203,9 @@ impl HeartbeatMonitor {
     ) -> Result<()> {
         // Read current status for state machine validation
         let status = crate::persistence::read_task_status(
-            repo_root,
-            branch,
-            plan_id,
-            plan_name,
-            task_id,
-            task_name,
-        ).map_err(|e| OverlordError::PersistenceError(e))?;
+            repo_root, branch, plan_id, plan_name, task_id, task_name,
+        )
+        .map_err(OverlordError::PersistenceError)?;
 
         // Validate transition via state machine
         TaskStateMachine::transition(
@@ -216,16 +215,19 @@ impl HeartbeatMonitor {
         )?;
 
         // Delegate recovery to persistence layer
-        crate::persistence::recover_task_status(
-            repo_root,
-            branch,
-            plan_id,
-            plan_name,
-            task_id,
-            task_name,
-            TaskStatusValue::Queued,
-            "overlord-heartbeat-recovery",
-        ).map_err(|e| OverlordError::PersistenceError(e))?;
+        crate::persistence::recover_task_status(&crate::persistence::RecoverTaskStatusParams {
+            path: crate::persistence::TaskPathParams {
+                repo_root: repo_root.to_path_buf(),
+                branch: branch.to_string(),
+                plan_id: plan_id.to_string(),
+                plan_name: plan_name.to_string(),
+                task_id: task_id.to_string(),
+                task_name: task_name.to_string(),
+            },
+            target_status: TaskStatusValue::Queued,
+            by: "overlord-heartbeat-recovery".to_string(),
+        })
+        .map_err(OverlordError::PersistenceError)?;
 
         Ok(())
     }

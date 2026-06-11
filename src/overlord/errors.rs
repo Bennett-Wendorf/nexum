@@ -15,7 +15,11 @@ use crate::persistence::PersistenceError;
 pub enum OverlordError {
     /// Attempted an invalid status transition.
     #[error("Invalid transition for {entity}: {from} -> {to}")]
-    InvalidTransition { from: String, to: String, entity: String },
+    InvalidTransition {
+        from: String,
+        to: String,
+        entity: String,
+    },
 
     /// Cannot dispatch — at concurrency limit.
     #[error("Concurrency limit exceeded: {current} running, max {max}")]

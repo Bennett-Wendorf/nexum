@@ -25,3 +25,9 @@ regex = "1"
 serial_test = "3.5"
 tempfile = "3"
 toml = "0.8"
+
+[lints.rust]
+# TODO(002-mvp): Remove dead_code = "allow" after MVP is complete.
+# This is only allowed during MVP development since many functions
+# are written ahead of usage and not yet wired into the application.
+dead_code = "allow"

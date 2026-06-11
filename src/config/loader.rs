@@ -69,9 +69,8 @@ pub fn config_path() -> Result<PathBuf, ConfigError> {
             PathBuf::from(xdg)
         }
     } else {
-        let home = std::env::var("HOME").map_err(|_| {
-            ConfigError::Env("HOME environment variable is not set".to_string())
-        })?;
+        let home = std::env::var("HOME")
+            .map_err(|_| ConfigError::Env("HOME environment variable is not set".to_string()))?;
         PathBuf::from(home).join(".config")
     };
     Ok(config_home.join("nexum").join("config.toml"))
@@ -82,9 +81,8 @@ pub fn config_path() -> Result<PathBuf, ConfigError> {
 /// Only handles `~` for the current user (via the `HOME` environment variable).
 /// Does not support `~username` expansion for other users.
 fn expand_tilde(path: &str) -> Result<PathBuf, ConfigError> {
-    let home = std::env::var("HOME").map_err(|_| {
-        ConfigError::Env("HOME environment variable is not set".to_string())
-    })?;
+    let home = std::env::var("HOME")
+        .map_err(|_| ConfigError::Env("HOME environment variable is not set".to_string()))?;
     if path == "~" {
         Ok(PathBuf::from(home))
     } else if path.starts_with("~/") {
@@ -110,9 +108,7 @@ pub fn load() -> Result<Config, ConfigError> {
             create_default_config()?;
         }
         Err(e) => {
-            return Err(ConfigError::Parse(format!(
-                "Failed to read config: {}", e
-            )));
+            return Err(ConfigError::Parse(format!("Failed to read config: {}", e)));
         }
     }
 
@@ -145,8 +141,7 @@ pub fn create_default_config() -> Result<(), ConfigError> {
 
     fs::create_dir_all(parent).map_err(|e| ConfigError::Create(path.clone(), e))?;
 
-    fs::write(&path, DEFAULT_CONFIG_TEMPLATE)
-        .map_err(|e| ConfigError::Create(path, e))?;
+    fs::write(&path, DEFAULT_CONFIG_TEMPLATE).map_err(|e| ConfigError::Create(path, e))?;
 
     Ok(())
 }

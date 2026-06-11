@@ -50,7 +50,9 @@ pub fn task_dir(
     task_name: &str,
 ) -> PathBuf {
     let slug = task_slug(task_id, task_name);
-    plan_dir(repo_root, branch, plan_id, plan_name).join("tasks").join(&slug)
+    plan_dir(repo_root, branch, plan_id, plan_name)
+        .join("tasks")
+        .join(&slug)
 }
 
 /// Return the path to a plan's markdown file (`plan.md`).
@@ -95,7 +97,9 @@ pub fn execution_state_path(
     plan_name: &str,
 ) -> PathBuf {
     let slug = plan_slug(plan_id, plan_name);
-    state_dir(repo_root, branch).join(&slug).join("execution.json")
+    state_dir(repo_root, branch)
+        .join(&slug)
+        .join("execution.json")
 }
 
 /// Return the path to a task's log directory.
@@ -147,7 +151,9 @@ pub fn ensure_task_dir(
     task_id: &str,
     task_name: &str,
 ) -> Result<()> {
-    create_dir_all(&task_dir(repo_root, branch, plan_id, plan_name, task_id, task_name))
+    create_dir_all(&task_dir(
+        repo_root, branch, plan_id, plan_name, task_id, task_name,
+    ))
 }
 
 // ── Directory Traversal ─────────────────────────────────────────────────────
@@ -159,7 +165,8 @@ fn list_subdirs(path: &Path) -> Result<Vec<String>> {
     }
     let entries = super::io::list_dir(path)?;
     let mut names = entries
-        .into_iter().filter_map(|e| {
+        .into_iter()
+        .filter_map(|e| {
             if e.file_type().ok()?.is_dir() {
                 Some(e.file_name().into_string().ok()?)
             } else {
@@ -243,11 +250,10 @@ pub fn slugify(text: &str) -> String {
         if c.is_alphanumeric() || c == '_' {
             result.push(c);
             prev_was_hyphen = false;
-        } else if c.is_whitespace() || c == '-' {
-            if !prev_was_hyphen {
-                result.push('-');
-                prev_was_hyphen = true;
-            }
+        } else if (c.is_whitespace() || c == '-') && !prev_was_hyphen {
+            // Collapse consecutive whitespace/hyphens/underscores into a single hyphen
+            result.push('-');
+            prev_was_hyphen = true;
         }
         // else: skip the character
     }
@@ -263,7 +269,6 @@ fn plan_slug(plan_id: &str, plan_name: &str) -> String {
 fn task_slug(task_id: &str, task_name: &str) -> String {
     format!("{}-{}", task_id, slugify(task_name))
 }
-
 
 /// Parse an ID and name from a slug like "PLAN-001-my-plan" or "TASK-001-my-task".
 ///

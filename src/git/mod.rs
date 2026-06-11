@@ -30,61 +30,50 @@ mod subprocess;
 mod worktree;
 
 // ── Re-exported types ────────────────────────────────────────────────────────
-
+#[allow(unused_imports)]
 pub use errors::{GitError, Result};
+#[allow(unused_imports)]
 pub use subprocess::{GitCommand, GitOutput};
+#[allow(unused_imports)]
 pub use worktree::WorktreeInfo;
 
 // ── Re-exported functions: Branch operations ─────────────────────────────────
-
-pub use branch::create_branch;
-pub use branch::create_plan_branch;
-pub use branch::create_task_branch;
-pub use branch::delete_branch;
-pub use branch::checkout_branch;
-pub use branch::list_local_branches;
-pub use branch::branch_exists;
-pub use branch::current_branch;
-pub use branch::task_branch_name;
-pub use branch::is_task_branch;
+#[allow(unused_imports)]
+pub use branch::{
+    branch_exists, checkout_branch, create_branch, create_plan_branch, create_task_branch,
+    current_branch, delete_branch, is_task_branch, list_local_branches, task_branch_name,
+};
 
 // ── Re-exported functions: Worktree operations ───────────────────────────────
-
-pub use worktree::spawn_worktree;
-pub use worktree::remove_worktree;
-pub use worktree::remove_worktree_force;
-pub use worktree::list_worktrees;
-pub use worktree::worktree_exists;
-pub use worktree::worktree_path;
-pub use worktree::worktrees_dir;
+#[allow(unused_imports)]
+pub use worktree::{
+    list_worktrees, remove_worktree, remove_worktree_force, spawn_worktree, worktree_exists,
+    worktree_path, worktrees_dir,
+};
 
 // ── Re-exported functions: Merge operations ──────────────────────────────────
-
-pub use merge::merge_branch;
-pub use merge::merge_task_branch;
-pub use merge::abort_merge;
-pub use merge::has_merge_conflicts;
-pub use merge::list_conflicted_files;
-pub use merge::is_merging;
+#[allow(unused_imports)]
+pub use merge::{
+    abort_merge, has_merge_conflicts, is_merging, list_conflicted_files, merge_branch,
+    merge_task_branch,
+};
 
 // ── Re-exported functions: Coordination ──────────────────────────────────────
-
-pub use merge::determine_merge_order;
-pub use merge::next_mergeable_tasks;
-pub use merge::execute_merge_sequence;
-pub use merge::cleanup_merged_task;
+#[allow(unused_imports)]
+pub use merge::{
+    cleanup_merged_task, determine_merge_order, execute_merge_sequence, next_mergeable_tasks,
+};
 
 // ── Re-exported functions: Workspace ─────────────────────────────────────────
-
-pub use branch::setup_task_workspace;
-pub use branch::teardown_task_workspace;
+#[allow(unused_imports)]
+pub use branch::{setup_task_workspace, teardown_task_workspace};
 
 // ── Re-exported functions: Subprocess ────────────────────────────────────────
-
+#[allow(unused_imports)]
 pub use subprocess::git;
 
 // ── Re-exported types: Merge ─────────────────────────────────────────────────
-
+#[allow(unused_imports)]
 pub use merge::MergePlan;
 
 #[cfg(test)]
