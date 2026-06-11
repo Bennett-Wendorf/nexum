@@ -129,8 +129,8 @@ pub async fn merge_branch(
 ///
 /// # Errors
 ///
-/// Returns an error only if the abort operation itself fails for a
-/// reason unrelated to "no merge in progress".
+/// Returns an error if the abort operation fails, or if checking merge
+/// state fails (e.g., IO error reading MERGE_HEAD).
 pub async fn abort_merge(repo_root: &Path) -> Result<()> {
     // If no merge is in progress, skip the abort (no-op)
     if !is_merging(repo_root).await? {
@@ -237,7 +237,7 @@ pub async fn merge_task_branch(
     match merge_result {
         Ok(_) => {
             // Merge succeeded — restore to original branch
-            let _ = checkout_branch(repo_root, &original_branch).await;
+            checkout_branch(repo_root, &original_branch).await?;
             Ok(())
         }
         Err(GitError::SubprocessFailure {
@@ -349,7 +349,8 @@ pub fn determine_merge_order(plan: &MergePlan) -> Result<Vec<String>> {
 /// Determine which pending tasks can be merged next.
 ///
 /// A task is mergeable when ALL of its dependencies are in the
-/// `merged_tasks` list. Returns tasks that can be merged in parallel.
+/// `merged_tasks` list. Returns tasks whose dependencies are satisfied
+/// and that can be merged in the next batch.
 pub fn next_mergeable_tasks(plan: &MergePlan) -> Result<Vec<String>> {
     let merged: HashSet<&str> = plan.merged_tasks.iter().map(|s| s.as_str()).collect();
     
@@ -372,20 +373,34 @@ pub fn next_mergeable_tasks(plan: &MergePlan) -> Result<Vec<String>> {
 /// them into the plan branch, and updates the merged_tasks list.
 /// Continues until no more tasks are mergeable or all are merged.
 ///
+/// Merges are applied atomically per batch — plan state is only updated
+/// after all merges in a batch succeed. On partial failure, the plan
+/// remains unmodified so the caller can retry.
+///
 /// Returns the list of successfully merged task IDs.
 pub async fn execute_merge_sequence(plan: &mut MergePlan) -> Result<Vec<String>> {
     let mut merged = Vec::new();
-    
+
     loop {
         let ready = next_mergeable_tasks(plan)?;
         if ready.is_empty() {
             break;
         }
-        
+
+        let mut batch_merged = Vec::new();
         for task_id in &ready {
-            merge_task_branch(&plan.repo_root, task_id, &plan.plan_branch).await?;
-            
-            // Move task from pending to merged
+            match merge_task_branch(&plan.repo_root, task_id, &plan.plan_branch).await {
+                Ok(()) => batch_merged.push(task_id.clone()),
+                Err(e) => {
+                    // Attempt cleanup on failure
+                    let _ = abort_merge(&plan.repo_root).await;
+                    return Err(e);
+                }
+            }
+        }
+
+        // Batch succeeded — update plan state atomically
+        for task_id in &batch_merged {
             plan.pending_tasks.retain(|t| t != task_id);
             plan.merged_tasks.push(task_id.clone());
             merged.push(task_id.clone());

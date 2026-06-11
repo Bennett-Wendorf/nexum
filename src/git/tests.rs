@@ -27,6 +27,7 @@ mod tests {
         let _ = git(&path, &["init"]).await.unwrap();
         let _ = git(&path, &["config", "user.email", "test@nexum.local"]).await.unwrap();
         let _ = git(&path, &["config", "user.name", "Test User"]).await.unwrap();
+        let _ = git(&path, &["config", "commit.gpgSign", "false"]).await.unwrap();
         std::fs::write(path.join("README.md"), "# Test Repo").unwrap();
         let _ = git(&path, &["add", "."]).await.unwrap();
         let _ = git(&path, &["commit", "-m", "Initial commit"]).await.unwrap();
@@ -447,6 +448,146 @@ mod tests {
             err_msg.contains("circular dependency"),
             "Expected circular dependency error, got: {}",
             err_msg
+        );
+    }
+
+    // --- FIX #18: test_execute_merge_sequence_partial_failure_preserves_state ---
+
+    #[tokio::test]
+    async fn test_execute_merge_sequence_partial_failure_preserves_state() {
+        let (_dir, repo) = create_test_repo().await;
+
+        // Create plan branch
+        create_plan_branch(&repo, "plan/test", "main", false).await.unwrap();
+
+        // Create TASK-001 branch (no deps, merges in batch 1)
+        create_task_branch(&repo, "TASK-001", "plan/test").await.unwrap();
+        checkout_branch(&repo, "task/TASK-001").await.unwrap();
+        std::fs::write(repo.join("task1.txt"), "task 1 content\n").unwrap();
+        let _ = git(&repo, &["add", "."]).await.unwrap();
+        let _ = git(&repo, &["commit", "-m", "Task 1"]).await.unwrap();
+
+        // Create TASK-003 branch (no deps, also merges in batch 1)
+        create_task_branch(&repo, "TASK-003", "plan/test").await.unwrap();
+        checkout_branch(&repo, "task/TASK-003").await.unwrap();
+        std::fs::write(repo.join("task3.txt"), "task 3 content\n").unwrap();
+        let _ = git(&repo, &["add", "."]).await.unwrap();
+        let _ = git(&repo, &["commit", "-m", "Task 3"]).await.unwrap();
+
+        // Create TASK-002 branch (depends on TASK-001, will conflict in batch 2)
+        create_task_branch(&repo, "TASK-002", "plan/test").await.unwrap();
+        checkout_branch(&repo, "task/TASK-002").await.unwrap();
+        std::fs::write(repo.join("README.md"), "# Task 2 conflicting content\n").unwrap();
+        let _ = git(&repo, &["add", "."]).await.unwrap();
+        let _ = git(&repo, &["commit", "-m", "Task 2"]).await.unwrap();
+
+        // Modify README.md on plan branch to create conflict with TASK-002
+        checkout_branch(&repo, "plan/test").await.unwrap();
+        std::fs::write(repo.join("README.md"), "# Plan content that will conflict\n").unwrap();
+        let _ = git(&repo, &["add", "."]).await.unwrap();
+        let _ = git(&repo, &["commit", "-m", "Update plan"]).await.unwrap();
+
+        // Dependencies: TASK-002 depends on TASK-001
+        let mut deps = std::collections::HashMap::new();
+        deps.insert("TASK-002".to_string(), vec!["TASK-001".to_string()]);
+
+        let mut plan = MergePlan {
+            repo_root: repo.clone(),
+            plan_branch: "plan/test".to_string(),
+            pending_tasks: vec![
+                "TASK-001".to_string(),
+                "TASK-002".to_string(),
+                "TASK-003".to_string(),
+            ],
+            merged_tasks: vec![],
+            dependencies: deps,
+        };
+
+        // Execute — batch 1 (TASK-001, TASK-003) succeeds, batch 2 (TASK-002) fails
+        let result = execute_merge_sequence(&mut plan).await;
+
+        // Expect error from the conflicting TASK-002 merge
+        assert!(result.is_err(), "Expected merge to fail due to conflict");
+
+        // Batch 1 succeeded: TASK-001 and TASK-003 should be in merged_tasks
+        assert!(
+            plan.merged_tasks.contains(&"TASK-001".to_string()),
+            "TASK-001 should be in merged_tasks (batch 1 succeeded)"
+        );
+        assert!(
+            plan.merged_tasks.contains(&"TASK-003".to_string()),
+            "TASK-003 should be in merged_tasks (batch 1 succeeded)"
+        );
+
+        // Batch 2 failed: TASK-002 should NOT be in merged_tasks, still in pending
+        assert!(
+            !plan.merged_tasks.contains(&"TASK-002".to_string()),
+            "TASK-002 should NOT be in merged_tasks (batch 2 failed)"
+        );
+        assert!(
+            plan.pending_tasks.contains(&"TASK-002".to_string()),
+            "TASK-002 should still be in pending_tasks (batch 2 failed, atomic rollback)"
+        );
+
+        // Verify repository is clean after failure
+        assert!(
+            !is_merging(&repo).await.unwrap(),
+            "Repository should NOT be in a merging state after batch failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_merge_sequence_successful_batch() {
+        let (_dir, repo) = create_test_repo().await;
+
+        // Create plan branch
+        create_plan_branch(&repo, "plan/test", "main", false).await.unwrap();
+
+        // Create 3 independent task branches (no dependencies, all merge in one batch)
+        for (task_id, filename) in [("TASK-001", "task1.txt"), ("TASK-002", "task2.txt"), ("TASK-003", "task3.txt")] {
+            create_task_branch(&repo, task_id, "plan/test").await.unwrap();
+            checkout_branch(&repo, &task_branch_name(task_id)).await.unwrap();
+            std::fs::write(repo.join(filename), &format!("{} content\n", task_id)).unwrap();
+            let _ = git(&repo, &["add", "."]).await.unwrap();
+            let _ = git(&repo, &["commit", "-m", task_id]).await.unwrap();
+        }
+
+        let mut plan = MergePlan {
+            repo_root: repo.clone(),
+            plan_branch: "plan/test".to_string(),
+            pending_tasks: vec![
+                "TASK-001".to_string(),
+                "TASK-002".to_string(),
+                "TASK-003".to_string(),
+            ],
+            merged_tasks: vec![],
+            dependencies: std::collections::HashMap::new(),
+        };
+
+        // Execute — all tasks should merge successfully in one batch
+        let result = execute_merge_sequence(&mut plan).await;
+        assert!(result.is_ok(), "Expected all merges to succeed");
+
+        let merged = result.unwrap();
+
+        // All tasks should be in merged_tasks
+        assert!(plan.merged_tasks.contains(&"TASK-001".to_string()));
+        assert!(plan.merged_tasks.contains(&"TASK-002".to_string()));
+        assert!(plan.merged_tasks.contains(&"TASK-003".to_string()));
+
+        // No tasks should remain in pending_tasks
+        assert!(plan.pending_tasks.is_empty(), "All tasks should be merged, pending should be empty");
+
+        // Return value should contain all merged task IDs
+        assert_eq!(merged.len(), 3);
+        assert!(merged.contains(&"TASK-001".to_string()));
+        assert!(merged.contains(&"TASK-002".to_string()));
+        assert!(merged.contains(&"TASK-003".to_string()));
+
+        // Verify repository is clean after execution
+        assert!(
+            !is_merging(&repo).await.unwrap(),
+            "Repository should NOT be in a merging state after successful batch"
         );
     }
 }
