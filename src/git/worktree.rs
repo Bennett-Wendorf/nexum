@@ -45,6 +45,28 @@ pub fn worktrees_dir(repo_root: &Path) -> PathBuf {
     repo_root.join(".worktrees")
 }
 
+// Check whether a worktree directory exists on disk.
+// Unlike the public `worktree_exists`, this only checks for the directory itself,
+// not for the `.git` pointer file. This is useful for cleanup operations
+// where a worktree may be corrupted (missing `.git` file).
+async fn worktree_dir_exists(wt_path: &Path) -> bool {
+    fs::try_exists(wt_path).await.unwrap_or_else(|e| {
+        tracing::debug!("worktree_dir_exists check failed for {}: {}", wt_path.display(), e);
+        false
+    })
+}
+
+// Prune stale worktree metadata from git's internal database.
+// After a manual `fs::remove_dir_all` fallback, the directory is gone but
+// git's `.git/worktrees/` metadata still references it. Running `git worktree
+// prune` cleans up those stale entries. Errors are logged but not propagated,
+// since the directory removal (the critical cleanup) already succeeded.
+async fn prune_stale_worktree_metadata(repo_root: &Path) {
+    if let Err(e) = git(repo_root, &["worktree", "prune"]).await {
+        tracing::debug!("Failed to prune stale worktree metadata: {}", e);
+    }
+}
+
 /// Spawn a new git worktree for the given task.
 ///
 /// Creates a new worktree at `<repo_root>/.worktrees/<task_id>/` checked
@@ -118,8 +140,8 @@ pub async fn spawn_worktree(repo_root: &Path, task_id: &str, branch_name: &str) 
 pub async fn remove_worktree(repo_root: &Path, task_id: &str) -> Result<()> {
     let wt_path = worktree_path(repo_root, task_id);
 
-    // Check if the worktree exists
-    if !worktree_exists(repo_root, task_id).await? {
+    // Check directory existence (handles corrupted worktrees without .git pointer).
+    if !worktree_dir_exists(&wt_path).await {
         return Err(GitError::WorktreeNotFound {
             path: wt_path.clone(),
         });
@@ -161,6 +183,7 @@ pub async fn remove_worktree(repo_root: &Path, task_id: &str) -> Result<()> {
                             path: wt_path.clone(),
                             source: e,
                         })?;
+                    prune_stale_worktree_metadata(repo_root).await;
                     Ok(())
                 }
             }
@@ -184,8 +207,8 @@ pub async fn remove_worktree(repo_root: &Path, task_id: &str) -> Result<()> {
 pub async fn remove_worktree_force(repo_root: &Path, task_id: &str) -> Result<()> {
     let wt_path = worktree_path(repo_root, task_id);
 
-    // Check if the worktree exists
-    if !worktree_exists(repo_root, task_id).await? {
+    // Check directory existence (handles corrupted worktrees without .git pointer).
+    if !worktree_dir_exists(&wt_path).await {
         return Err(GitError::WorktreeNotFound {
             path: wt_path.clone(),
         });
@@ -212,6 +235,7 @@ pub async fn remove_worktree_force(repo_root: &Path, task_id: &str) -> Result<()
                     path: wt_path.clone(),
                     source: e,
                 })?;
+            prune_stale_worktree_metadata(repo_root).await;
             Ok(())
         }
     }

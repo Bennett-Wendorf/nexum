@@ -13,7 +13,7 @@ mod tests {
         merge_task_branch, next_mergeable_tasks, MergePlan,
     };
     use crate::git::subprocess::{git, GitCommand};
-    use crate::git::worktree::{remove_worktree, spawn_worktree, worktree_exists, worktree_path};
+    use crate::git::worktree::{remove_worktree, remove_worktree_force, spawn_worktree, worktree_exists, worktree_path};
 
     // --- Test Infrastructure ---
 
@@ -167,6 +167,58 @@ mod tests {
     async fn test_worktree_exists() {
         let (_dir, repo) = create_test_repo().await;
         assert!(!worktree_exists(&repo, "NONEXISTENT").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_remove_worktree_fallback_prunes_metadata() {
+        let (_dir, repo) = create_test_repo().await;
+        create_task_branch(&repo, "TASK-PRUNE", "main").await.unwrap();
+        spawn_worktree(&repo, "TASK-PRUNE", "task/TASK-PRUNE").await.unwrap();
+
+        // Corrupt the worktree by removing its .git pointer file.
+        // This forces the fallback to fs::remove_dir_all.
+        let wt_path = worktree_path(&repo, "TASK-PRUNE");
+        std::fs::remove_file(wt_path.join(".git")).unwrap();
+
+        // Removal should still succeed via fallback
+        remove_worktree(&repo, "TASK-PRUNE").await.unwrap();
+
+        // Verify the worktree directory is gone
+        assert!(!worktree_exists(&repo, "TASK-PRUNE").await.unwrap());
+
+        // Verify git worktree list no longer shows the stale entry
+        let output = git(&repo, &["worktree", "list"]).await.unwrap();
+        assert!(
+            !output.stdout.contains("TASK-PRUNE"),
+            "Stale worktree metadata should be pruned after manual removal. Got: {}",
+            output.stdout
+        );
+    }
+
+    #[tokio::test]
+    async fn test_remove_worktree_force_fallback_prunes_metadata() {
+        let (_dir, repo) = create_test_repo().await;
+        create_task_branch(&repo, "TASK-PRUNE-F", "main").await.unwrap();
+        spawn_worktree(&repo, "TASK-PRUNE-F", "task/TASK-PRUNE-F").await.unwrap();
+
+        // Corrupt the worktree by removing its .git pointer file.
+        // This forces the fallback to fs::remove_dir_all.
+        let wt_path = worktree_path(&repo, "TASK-PRUNE-F");
+        std::fs::remove_file(wt_path.join(".git")).unwrap();
+
+        // Force removal should still succeed via fallback
+        remove_worktree_force(&repo, "TASK-PRUNE-F").await.unwrap();
+
+        // Verify the worktree directory is gone
+        assert!(!worktree_exists(&repo, "TASK-PRUNE-F").await.unwrap());
+
+        // Verify git worktree list no longer shows the stale entry
+        let output = git(&repo, &["worktree", "list"]).await.unwrap();
+        assert!(
+            !output.stdout.contains("TASK-PRUNE-F"),
+            "Stale worktree metadata should be pruned after manual force removal. Got: {}",
+            output.stdout
+        );
     }
 
     // --- Merge Tests ---
