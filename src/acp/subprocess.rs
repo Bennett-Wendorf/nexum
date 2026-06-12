@@ -115,12 +115,12 @@ pub fn spawn_agent(
 }
 
 impl AgentProcess {
-    /// Gracefully shut down the agent subprocess.
+    /// Shut down the agent subprocess.
     ///
-    /// Sends a termination signal (`kill()` which sends SIGKILL on Unix)
-    /// and waits up to 5 seconds for the process to exit. If the process
-    /// does not exit within the timeout, it is considered terminated
-    /// regardless.
+    /// Sends SIGKILL via `kill()` (on Unix, tokio's `Child::kill()` sends
+    /// SIGKILL, not SIGTERM) and waits up to 5 seconds for the process
+    /// to exit. The process is forcefully terminated; this is not a
+    /// graceful shutdown.
     ///
     /// # Errors
     ///

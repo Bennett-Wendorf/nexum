@@ -171,6 +171,14 @@ pub enum ACPError {
     #[error("I/O error at '{0}': {1}")]
     Io(std::path::PathBuf, std::io::Error),
 
+    /// File system I/O error without an associated path.
+    ///
+    /// Occurs when a raw `std::io::Error` is converted via the `From`
+    /// implementation. Prefer `ACPError::Io(path, error)` when the
+    /// affected path is known.
+    #[error("I/O error: {0}")]
+    IoBare(std::io::Error),
+
     /// Configuration error.
     ///
     /// Occurs when a required configuration field is missing, malformed,
@@ -200,11 +208,11 @@ pub enum ACPError {
 
 /// Ergonomic conversion from `std::io::Error` for use with the `?` operator.
 ///
-/// Converts a raw I/O error into an `ACPError::Io` with an empty path.
-/// Callers can replace the empty path with a more specific one if needed.
+/// Converts a raw I/O error into an `ACPError::IoBare`. Prefer using
+/// `ACPError::Io(path, error)` directly when the affected path is known.
 impl From<std::io::Error> for ACPError {
     fn from(e: std::io::Error) -> Self {
-        ACPError::Io(std::path::PathBuf::from(""), e)
+        ACPError::IoBare(e)
     }
 }
 
