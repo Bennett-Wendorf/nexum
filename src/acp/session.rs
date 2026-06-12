@@ -5,6 +5,7 @@
 //! loop, handling interactions, and cleaning up resources on destruction.
 
 use std::path::Path;
+use std::pin::Pin;
 use std::time::{Duration, Instant};
 
 use super::client::{ACPClient, MessageType, SessionCreateParams};
@@ -12,10 +13,6 @@ use super::errors::{ACPError, Result};
 use super::events::{ACPEvent, EventStream, is_terminal_event, log_event, requires_response};
 use super::subprocess::{AgentConfig, AgentProcess, spawn_agent};
 
-/// Role assigned to an agent within a session.
-///
-/// Determines the default tool permissions and behavioral constraints.
-/// This enum will be moved to `config.rs` in a later task.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AgentRole {
     Builder,
@@ -24,18 +21,12 @@ pub enum AgentRole {
     SecurityConsultant,
 }
 
-/// Lifecycle state of an ACP session.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SessionState {
-    /// Session created, agent is working on the task.
     Created,
-    /// Nexum sent a follow-up or responded to a permission request.
     Interacting,
-    /// Agent signaled completion.
     Completing,
-    /// Session destroyed, resources cleaned up.
     Destroyed,
-    /// Error state (crash, timeout, etc.).
     Error,
 }
 
@@ -55,7 +46,7 @@ pub struct ACPSession {
     pub role: AgentRole,
     /// Timestamp when the session was created.
     pub created_at: chrono::DateTime<chrono::Utc>,
-    /// Maximum duration before the session times out.
+    /// Maximum idle duration before the session times out.
     pub timeout: Duration,
     /// Last time an event was received from the agent.
     pub heartbeat: Instant,
@@ -66,6 +57,9 @@ pub struct ACPSession {
 impl ACPSession {
     /// Create a new ACP session by spawning an agent subprocess, initializing
     /// the protocol handshake, and creating a session via `sessions/create`.
+    ///
+    /// Events emitted during initialization are buffered in the mpsc channel
+    /// and will be consumed by `run_event_loop()`.
     pub async fn create(
         task_id: &str,
         role: AgentRole,
@@ -79,10 +73,9 @@ impl ACPSession {
         let agent_id = &agent_config.name;
         let mut agent_process = spawn_agent(agent_id, agent_config, worktree_path)?;
 
-        // 2. Create event broadcast channel and client
-        let (event_sender, _) = tokio::sync::broadcast::channel(1024);
+        // 2. Create client (mpsc channel created internally)
         let stdin = agent_process.stdin.take().expect("stdin should be available");
-        let client = ACPClient::new(agent_id.to_string(), stdin, event_sender);
+        let client = ACPClient::new(agent_id.to_string(), stdin);
 
         // 3. Take stdout and spawn reader task
         let stdout = agent_process.stdout.take().expect("stdout should be available");
@@ -101,6 +94,7 @@ impl ACPSession {
         let create_result = client.sessions_create(params).await?;
 
         // 6. Return the session
+        // Events during initialize/sessions_create are buffered in the mpsc channel
         Ok(Self {
             session_id: create_result.session_id,
             agent_process,
@@ -116,8 +110,6 @@ impl ACPSession {
     }
 
     /// Send a follow-up message to the session.
-    ///
-    /// Only allowed while the session is in `Created` or `Interacting` state.
     pub async fn send_message(&self, content: &str, message_type: MessageType) -> Result<()> {
         match self.state {
             SessionState::Created | SessionState::Interacting => {}
@@ -130,7 +122,6 @@ impl ACPSession {
         self.client
             .sessions_message(&self.session_id, content, Some(message_type))
             .await?;
-        // Note: heartbeat is updated in the event loop when events are received
         Ok(())
     }
 
@@ -167,37 +158,37 @@ impl ACPSession {
 
     /// Destroy the session: send destroy request, shutdown subprocess, cancel reader.
     pub async fn destroy(&mut self) -> Result<()> {
-        // 1. Call sessions/destroy via JSON-RPC
         let _ = self.client.sessions_destroy(&self.session_id).await;
-
-        // 2. Transition state
         self.state = SessionState::Destroyed;
-
-        // 3. Shutdown subprocess
         self.agent_process.shutdown().await?;
-
-        // 4. Cancel reader handle
         if let Some(handle) = self.reader_handle.take() {
             handle.abort();
         }
-
         tracing::info!(session_id = %self.session_id, "Session destroyed");
         Ok(())
     }
 
     /// Run the event loop, processing events from the agent subprocess.
     ///
+    /// Uses a resettable idle timeout that resets on each received event.
     /// Returns when a terminal event is received, a response-requiring event
     /// is received, or an error occurs (subprocess crash, timeout).
     pub async fn run_event_loop(&mut self, event_stream: &EventStream) -> Result<Option<ACPEvent>> {
-        // Subscribe to client events
-        let mut rx = self.client.event_sender().subscribe();
+        // Take ownership of the mpsc receiver from the client
+        let mut rx = self
+            .client
+            .take_event_receiver()
+            .expect("event receiver should be available");
+
+        // Create a pinned, resettable idle timeout
+        let mut timeout_sleep: Pin<Box<tokio::time::Sleep>> =
+            Box::pin(tokio::time::sleep(self.timeout));
 
         loop {
             tokio::select! {
                 result = rx.recv() => {
                     match result {
-                        Ok(event) => {
+                        Some(event) => {
                             // Publish to central event stream
                             event_stream.publish(event.clone())?;
 
@@ -207,6 +198,10 @@ impl ACPSession {
                             // Log the event
                             log_event(&event);
 
+                            // Reset the idle timeout on each event
+                            let wake_at = tokio::time::Instant::now() + self.timeout;
+                            timeout_sleep.as_mut().reset(wake_at);
+
                             // Check if terminal or requires response
                             if is_terminal_event(&event) {
                                 return Ok(Some(event));
@@ -215,10 +210,8 @@ impl ACPSession {
                                 return Ok(Some(event));
                             }
                         }
-                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                            tracing::warn!(session_id = %self.session_id, lagged = n, "Event stream lagged");
-                        }
-                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        None => {
+                            // mpsc channel closed — subprocess crashed
                             return Err(ACPError::SubprocessCrash {
                                 agent_id: self.agent_process.agent_id.clone(),
                                 exit_code: None,
@@ -226,8 +219,8 @@ impl ACPSession {
                         }
                     }
                 }
-                // Check for timeout
-                _ = tokio::time::sleep(self.timeout) => {
+                // Check for idle timeout
+                _ = &mut timeout_sleep => {
                     self.state = SessionState::Error;
                     return Err(ACPError::SessionTimeout {
                         session_id: self.session_id.clone(),
@@ -237,5 +230,4 @@ impl ACPSession {
             }
         }
     }
-
- }
+}
