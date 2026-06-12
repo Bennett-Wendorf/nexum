@@ -4,7 +4,6 @@
 //! error types, and session state logic. Subprocess and JSON-RPC integration
 //! tests require real ACP agents and are covered in integration tests.
 
-#[cfg(test)]
 mod tests {
     use std::collections::HashSet;
 
