@@ -25,7 +25,7 @@ use super::subprocess::git;
 /// Returns an error if the git command fails (e.g., `from_branch` doesn't
 /// exist, or `branch_name` already exists).
 pub async fn create_branch(repo_root: &Path, branch_name: &str, from_branch: &str) -> Result<()> {
-    let _output = git(repo_root, &["branch", branch_name, from_branch]).await?;
+    git(repo_root, &["branch", branch_name, from_branch]).await?;
     Ok(())
 }
 
@@ -62,20 +62,30 @@ pub async fn create_task_branch(
 /// Runs `git branch -D <branch_name>` to force-delete the branch regardless
 /// of its merge status. If the branch does not exist, this is a no-op.
 ///
+/// Other errors (git crash, permissions issues, repo corruption) are
+/// propagated to the caller.
+///
 /// # Arguments
 ///
 /// * `repo_root` - The root directory of the git repository.
 /// * `branch_name` - The name of the branch to delete.
 pub async fn delete_branch(repo_root: &Path, branch_name: &str) -> Result<()> {
-    let output = git(repo_root, &["branch", "-D", branch_name]).await;
-    match output {
+    // Run deletion directly (single subprocess, no TOCTOU race).
+    // On failure, discriminate: "branch not found" is a no-op;
+    // all other errors (permissions, corruption, etc.) propagate.
+    match git(repo_root, &["branch", "-D", branch_name]).await {
         Ok(_) => Ok(()),
-        Err(_) => {
-            // If the branch doesn't exist, treat it as a no-op.
-            // `git branch -D` returns exit code 1 for non-existent branches,
-            // so a failure here is acceptable when the branch is absent.
+        Err(GitError::SubprocessFailure {
+            command: _,
+            exit_code: _,
+            stdout: _,
+            stderr,
+        }) if stderr.contains("not found") => {
+            // `git branch -D` exits 1 with "not found" on stderr
+            // when the branch doesn't exist. Treat as no-op.
             Ok(())
         }
+        Err(e) => Err(e),
     }
 }
 
@@ -92,7 +102,7 @@ pub async fn delete_branch(repo_root: &Path, branch_name: &str) -> Result<()> {
 ///
 /// Returns an error if the branch doesn't exist or checkout fails.
 pub async fn checkout_branch(repo_root: &Path, branch_name: &str) -> Result<()> {
-    let _output = git(repo_root, &["checkout", branch_name]).await?;
+    git(repo_root, &["checkout", branch_name]).await?;
     Ok(())
 }
 
@@ -225,7 +235,7 @@ pub async fn create_plan_branch(
 
     // Optionally push to remote
     if push_to_remote {
-        let _output = git(repo_root, &["push", "-u", "origin", plan_branch]).await?;
+        git(repo_root, &["push", "-u", "origin", plan_branch]).await?;
     }
 
     Ok(())
