@@ -52,3 +52,6 @@ pub use permissions::{
 
 // ── Configuration ──
 pub use config::{default_role_config, merge_with_task_config, to_session_params, RoleConfig, TaskConfigOverrides};
+
+#[cfg(test)]
+mod tests;
