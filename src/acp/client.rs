@@ -10,6 +10,12 @@ use tokio::sync::broadcast;
 use super::errors::{ACPError, Result};
 use super::events::ACPEvent;
 
+/// JSON-RPC protocol version used for all requests.
+const JSON_RPC_VERSION: &str = "2.0";
+
+/// ACP protocol version advertised during initialization.
+const ACP_PROTOCOL_VERSION: &str = "1.0";
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ACPCapabilities {
     pub sessions: bool,
@@ -76,7 +82,7 @@ impl ACPClient {
     ) -> Self {
         Self {
             agent_id,
-            protocol_version: "1.0".to_string(),
+            protocol_version: ACP_PROTOCOL_VERSION.to_string(),
             capabilities: ACPCapabilities {
                 sessions: true,
                 streaming: true,
@@ -102,7 +108,7 @@ impl ACPClient {
     ) -> std::io::Result<u64> {
         let id = self.next_id();
         let request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
+            jsonrpc: JSON_RPC_VERSION.to_string(),
             method: method.to_string(),
             params,
             id,
@@ -121,7 +127,7 @@ impl ACPClient {
             .send_request(
                 "initialize",
                 serde_json::json!({
-                    "protocolVersion": "1.0",
+                    "protocolVersion": ACP_PROTOCOL_VERSION,
                     "clientName": "nexum",
                 }),
             )
@@ -222,19 +228,22 @@ impl ACPClient {
                 if line.is_empty() {
                     continue;
                 }
-                // Try to parse as an ACP event notification
-                if let Ok(event) = serde_json::from_str::<ACPEvent>(&line) {
-                    let _ = sender.send(event);
-                }
-                // If it's a response (has "id" field), we'd handle it differently
-                // For now, just log unrecognized lines
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) {
-                    if let Some(obj) = value.as_object() {
-                        if !obj.contains_key("id") {
-                            // It's a notification we couldn't parse as ACPEvent
-                            tracing::debug!(raw_notification = %line, "unrecognized notification");
-                        }
+                // Parse once as Value, then branch
+                let value = match serde_json::from_str::<serde_json::Value>(&line) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                // If it has an "id" field, it's a response — skip for now
+                if let Some(obj) = value.as_object() {
+                    if obj.contains_key("id") {
+                        continue;
                     }
+                }
+                // Try to parse as an ACP event notification
+                if let Ok(event) = serde_json::from_value::<ACPEvent>(value) {
+                    let _ = sender.send(event);
+                } else {
+                    tracing::debug!(raw_notification = %line, "unrecognized notification");
                 }
             }
         })
