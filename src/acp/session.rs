@@ -141,11 +141,13 @@ impl ACPSession {
 
     /// Respond to a question from the agent.
     pub async fn respond_to_question(&self, question_id: &str, answer: &str) -> Result<()> {
-        // Send question response via sessions/message
-        let content = format!(
-            r#"{{"questionId": "{}", "answer": "{}"}}"#,
-            question_id, answer
-        );
+        let payload = serde_json::json!({
+            "questionId": question_id,
+            "answer": answer,
+        });
+        let content = serde_json::to_string(&payload).map_err(|e| ACPError::JsonRpcTransport {
+            source: Box::new(e),
+        })?;
         self.client
             .sessions_message(&self.session_id, &content, Some(MessageType::FollowUp))
             .await
@@ -232,39 +234,8 @@ impl ACPSession {
                         duration: self.timeout,
                     });
                 }
-                // Check if process is still alive
-                _ = tokio::time::sleep(Duration::from_secs(5)) => {
-                    // Note: is_alive requires &mut self, which conflicts with the event loop
-                    // For now, skip periodic alive check — crash detection happens via broadcast channel close
-                }
             }
         }
     }
 
-    /// Generate default `SessionCreateParams` based on the agent role.
-    ///
-    /// This helper will be moved to `config.rs` in a later task.
-    pub fn apply_role_config(&self, role: AgentRole) -> SessionCreateParams {
-        // Default tool permissions per role
-        let tool_permissions = match role {
-            AgentRole::Builder => {
-                vec![
-                    "file-read".to_string(),
-                    "file-write".to_string(),
-                    "command-execution".to_string(),
-                ]
-            }
-            AgentRole::Reviewer => vec!["file-read".to_string()],
-            AgentRole::Planner => {
-                vec!["file-read".to_string(), "file-write".to_string()]
-            }
-            AgentRole::SecurityConsultant => vec!["file-read".to_string()],
-        };
-        SessionCreateParams {
-            prompt: String::new(),
-            working_directory: None,
-            tool_permissions: Some(tool_permissions),
-            timeout_seconds: None,
-        }
-    }
-}
+ }
