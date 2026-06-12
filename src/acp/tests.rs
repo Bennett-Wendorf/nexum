@@ -6,6 +6,8 @@
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use crate::acp::events::{ACPEvent, CompletionStatus, EventStream};
     use crate::acp::permissions::{
         default_policy_for_role, PermissionAction, PermissionDecision,
@@ -249,9 +251,9 @@ mod tests {
     #[test]
     fn test_auto_approve() {
         let policy = PermissionPolicy {
-            auto_approve: vec!["file-read".to_string()],
-            auto_deny: vec![],
-            require_approval: vec![],
+            auto_approve: HashSet::from(["file-read".to_string()]),
+            auto_deny: HashSet::new(),
+            require_approval: HashSet::new(),
         };
         let handler = PermissionHandler::new(policy);
         let request = PermissionRequest {
@@ -266,9 +268,9 @@ mod tests {
     #[test]
     fn test_auto_deny() {
         let policy = PermissionPolicy {
-            auto_approve: vec![],
-            auto_deny: vec!["network-request".to_string()],
-            require_approval: vec![],
+            auto_approve: HashSet::new(),
+            auto_deny: HashSet::from(["network-request".to_string()]),
+            require_approval: HashSet::new(),
         };
         let handler = PermissionHandler::new(policy);
         let request = PermissionRequest {
@@ -283,9 +285,9 @@ mod tests {
     #[test]
     fn test_pending() {
         let policy = PermissionPolicy {
-            auto_approve: vec!["file-read".to_string()],
-            auto_deny: vec![],
-            require_approval: vec!["command-execution".to_string()],
+            auto_approve: HashSet::from(["file-read".to_string()]),
+            auto_deny: HashSet::new(),
+            require_approval: HashSet::from(["command-execution".to_string()]),
         };
         let handler = PermissionHandler::new(policy);
         let request = PermissionRequest {
@@ -300,32 +302,32 @@ mod tests {
     #[test]
     fn test_default_policy_builder() {
         let policy = default_policy_for_role(AgentRole::Builder);
-        assert!(policy.auto_approve.contains(&"file-read".to_string()));
-        assert!(policy.auto_approve.contains(&"file-write".to_string()));
-        assert!(policy.require_approval.contains(&"command-execution".to_string()));
+        assert!(policy.auto_approve.contains("file-read"));
+        assert!(policy.auto_approve.contains("file-write"));
+        assert!(policy.require_approval.contains("command-execution"));
     }
 
     #[test]
     fn test_default_policy_reviewer() {
         let policy = default_policy_for_role(AgentRole::Reviewer);
-        assert!(policy.auto_approve.contains(&"file-read".to_string()));
-        assert!(policy.auto_deny.contains(&"file-write".to_string()));
-        assert!(policy.auto_deny.contains(&"command-execution".to_string()));
+        assert!(policy.auto_approve.contains("file-read"));
+        assert!(policy.auto_deny.contains("file-write"));
+        assert!(policy.auto_deny.contains("command-execution"));
     }
 
     #[test]
     fn test_default_policy_planner() {
         let policy = default_policy_for_role(AgentRole::Planner);
-        assert!(policy.auto_approve.contains(&"file-read".to_string()));
-        assert!(policy.require_approval.contains(&"file-write".to_string()));
+        assert!(policy.auto_approve.contains("file-read"));
+        assert!(policy.require_approval.contains("file-write"));
     }
 
     #[test]
     fn test_default_policy_security_consultant() {
         let policy = default_policy_for_role(AgentRole::SecurityConsultant);
-        assert!(policy.auto_approve.contains(&"file-read".to_string()));
-        assert!(policy.auto_deny.contains(&"file-write".to_string()));
-        assert!(policy.auto_deny.contains(&"network-request".to_string()));
+        assert!(policy.auto_approve.contains("file-read"));
+        assert!(policy.auto_deny.contains("file-write"));
+        assert!(policy.auto_deny.contains("network-request"));
     }
 
     // ── Configuration Tests ──
@@ -589,9 +591,9 @@ mod tests {
     #[test]
     fn test_permission_handler_other_action() {
         let policy = PermissionPolicy {
-            auto_approve: vec!["custom-action".to_string()],
-            auto_deny: vec![],
-            require_approval: vec![],
+            auto_approve: HashSet::from(["custom-action".to_string()]),
+            auto_deny: HashSet::new(),
+            require_approval: HashSet::new(),
         };
         let handler = PermissionHandler::new(policy);
         let request = PermissionRequest {

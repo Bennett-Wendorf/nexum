@@ -3,11 +3,13 @@
 //! This module defines the types and logic for evaluating and responding
 //! to permission requests made by ACP agents during session execution.
 
+use std::collections::HashSet;
+
 use super::errors::Result;
 use super::session::{ACPSession, AgentRole};
 
 /// Actions that an agent may request permission to perform.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PermissionAction {
     FileRead,
@@ -30,9 +32,9 @@ pub struct PermissionRequest {
 /// or require explicit approval.
 #[derive(Debug, Clone)]
 pub struct PermissionPolicy {
-    pub auto_approve: Vec<String>,
-    pub auto_deny: Vec<String>,
-    pub require_approval: Vec<String>,
+    pub auto_approve: HashSet<String>,
+    pub auto_deny: HashSet<String>,
+    pub require_approval: HashSet<String>,
 }
 
 /// The decision outcome for a permission request.
@@ -64,9 +66,9 @@ impl PermissionHandler {
             PermissionAction::Other { action, .. } => action.as_str(),
         };
 
-        if self.policy.auto_approve.iter().any(|a| a == action_key) {
+        if self.policy.auto_approve.contains(action_key) {
             PermissionDecision::Approved
-        } else if self.policy.auto_deny.iter().any(|a| a == action_key) {
+        } else if self.policy.auto_deny.contains(action_key) {
             PermissionDecision::Denied
         } else {
             PermissionDecision::Pending
@@ -98,24 +100,24 @@ pub async fn handle_permission(
 pub fn default_policy_for_role(role: AgentRole) -> PermissionPolicy {
     match role {
         AgentRole::Builder => PermissionPolicy {
-            auto_approve: vec!["file-read".to_string(), "file-write".to_string()],
-            auto_deny: vec![],
-            require_approval: vec!["command-execution".to_string(), "network-request".to_string()],
+            auto_approve: HashSet::from(["file-read".to_string(), "file-write".to_string()]),
+            auto_deny: HashSet::new(),
+            require_approval: HashSet::from(["command-execution".to_string(), "network-request".to_string()]),
         },
         AgentRole::Reviewer => PermissionPolicy {
-            auto_approve: vec!["file-read".to_string()],
-            auto_deny: vec!["file-write".to_string(), "command-execution".to_string(), "network-request".to_string()],
-            require_approval: vec![],
+            auto_approve: HashSet::from(["file-read".to_string()]),
+            auto_deny: HashSet::from(["file-write".to_string(), "command-execution".to_string(), "network-request".to_string()]),
+            require_approval: HashSet::new(),
         },
         AgentRole::Planner => PermissionPolicy {
-            auto_approve: vec!["file-read".to_string()],
-            auto_deny: vec![],
-            require_approval: vec!["file-write".to_string(), "command-execution".to_string(), "network-request".to_string()],
+            auto_approve: HashSet::from(["file-read".to_string()]),
+            auto_deny: HashSet::new(),
+            require_approval: HashSet::from(["file-write".to_string(), "command-execution".to_string(), "network-request".to_string()]),
         },
         AgentRole::SecurityConsultant => PermissionPolicy {
-            auto_approve: vec!["file-read".to_string()],
-            auto_deny: vec!["file-write".to_string(), "command-execution".to_string(), "network-request".to_string()],
-            require_approval: vec![],
+            auto_approve: HashSet::from(["file-read".to_string()]),
+            auto_deny: HashSet::from(["file-write".to_string(), "command-execution".to_string(), "network-request".to_string()]),
+            require_approval: HashSet::new(),
         },
     }
 }
