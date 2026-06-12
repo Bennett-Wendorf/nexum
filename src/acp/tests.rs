@@ -412,10 +412,10 @@ mod tests {
         let io_err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
         let acp_err: ACPError = io_err.into();
         match acp_err {
-            ACPError::Io(_, ref source) => {
+            ACPError::IoBare(ref source) => {
                 assert_eq!(source.kind(), std::io::ErrorKind::PermissionDenied);
             }
-            _ => panic!("Expected Io variant"),
+            _ => panic!("Expected IoBare variant"),
         }
     }
 
