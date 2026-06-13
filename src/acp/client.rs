@@ -64,14 +64,6 @@ pub enum MessageType {
     Feedback,
 }
 
-#[derive(Debug, Serialize)]
-struct JsonRpcRequest {
-    jsonrpc: String,
-    method: String,
-    params: serde_json::Value,
-    id: u64,
-}
-
 /// ACP JSON-RPC client.
 ///
 /// Sends JSON-RPC requests to the agent subprocess via stdin.
@@ -134,21 +126,23 @@ impl ACPClient {
     ) -> std::io::Result<tokio::sync::oneshot::Receiver<serde_json::Value>> {
         let id = self.next_id();
         let (tx, rx) = tokio::sync::oneshot::channel();
+        let json = serde_json::json!({
+            "jsonrpc": JSON_RPC_VERSION,
+            "method": method,
+            "params": params,
+            "id": id,
+        });
+        let json_string = serde_json::to_string(&json)?;
         {
             let mut pending = self.pending_responses.lock().await;
             pending.insert(id, tx);
         }
-        let request = JsonRpcRequest {
-            jsonrpc: JSON_RPC_VERSION.to_string(),
-            method: method.to_string(),
-            params,
-            id,
-        };
-        let json = serde_json::to_string(&request)?;
-        let mut writer = self.writer.lock().await;
-        writer.write_all(json.as_bytes()).await?;
-        writer.write_all(b"\n").await?;
-        writer.flush().await?;
+        {
+            let mut writer = self.writer.lock().await;
+            writer.write_all(json_string.as_bytes()).await?;
+            writer.write_all(b"\n").await?;
+            writer.flush().await?;
+        }
         Ok(rx)
     }
 
@@ -162,17 +156,19 @@ impl ACPClient {
         params: serde_json::Value,
     ) -> std::io::Result<()> {
         let id = self.next_id();
-        let request = JsonRpcRequest {
-            jsonrpc: JSON_RPC_VERSION.to_string(),
-            method: method.to_string(),
-            params,
-            id,
-        };
-        let json = serde_json::to_string(&request)?;
-        let mut writer = self.writer.lock().await;
-        writer.write_all(json.as_bytes()).await?;
-        writer.write_all(b"\n").await?;
-        writer.flush().await?;
+        let json = serde_json::json!({
+            "jsonrpc": JSON_RPC_VERSION,
+            "method": method,
+            "params": params,
+            "id": id,
+        });
+        let json_string = serde_json::to_string(&json)?;
+        {
+            let mut writer = self.writer.lock().await;
+            writer.write_all(json_string.as_bytes()).await?;
+            writer.write_all(b"\n").await?;
+            writer.flush().await?;
+        }
         Ok(())
     }
 
