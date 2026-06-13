@@ -22,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize Overlord scheduler
     let repo_root = std::env::current_dir()?;
-    let scheduler = overlord::OverlordScheduler::new(repo_root);
+    let scheduler = overlord::OverlordScheduler::new(repo_root.clone());
     let scheduler = std::sync::Arc::new(scheduler);
     tracing::info!("Overlord scheduler initialized");
 
@@ -33,6 +33,25 @@ async fn main() -> anyhow::Result<()> {
         }
     });
     tracing::info!("Overlord scheduler spawned as background task");
+
+    // Start the REST API server
+    let cfg = config::get().expect("Config should be loaded");
+    let state = api::AppState {
+        repo_root: repo_root.clone(),
+        config: cfg.clone(),
+    };
+    let app = api::create_router(state);
+
+    let bind_addr = format!("{}:{}", cfg.global.server_host, cfg.global.server_port);
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    tracing::info!("REST API server listening on {}", bind_addr);
+
+    let server_handle = tokio::spawn(async move {
+        if let Err(e) = axum::serve(listener, app).await {
+            tracing::error!("REST API server error: {}", e);
+        }
+    });
+    tracing::info!("REST API server spawned as background task");
 
     tokio::select! {
         _ = sigint.recv() => tracing::info!("Received SIGINT, shutting down..."),
@@ -48,6 +67,18 @@ async fn main() -> anyhow::Result<()> {
         }
         Err(_) => {
             tracing::warn!("Scheduler did not stop in time, forcing exit");
+        }
+    }
+
+    // Wait for the API server to shut down
+    match tokio::time::timeout(std::time::Duration::from_secs(5), server_handle).await {
+        Ok(result) => {
+            if let Err(e) = result {
+                tracing::error!("API server task panicked: {}", e);
+            }
+        }
+        Err(_) => {
+            tracing::warn!("API server did not stop in time, forcing exit");
         }
     }
     tracing::info!("Shutdown complete");
