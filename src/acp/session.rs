@@ -175,10 +175,15 @@ impl ACPSession {
     /// is received, or an error occurs (subprocess crash, timeout).
     pub async fn run_event_loop(&mut self, event_stream: &EventStream) -> Result<Option<ACPEvent>> {
         // Take ownership of the mpsc receiver from the client
-        let mut rx = self
-            .client
-            .take_event_receiver()
-            .expect("event receiver should be available");
+        let mut rx = match self.client.take_event_receiver() {
+            Some(rx) => rx,
+            None => {
+                return Err(ACPError::SubprocessCrash {
+                    agent_id: self.agent_process.agent_id.clone(),
+                    exit_code: None,
+                });
+            }
+        };
 
         // Create a pinned, resettable idle timeout
         let mut timeout_sleep: Pin<Box<tokio::time::Sleep>> =

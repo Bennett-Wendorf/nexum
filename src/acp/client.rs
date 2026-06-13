@@ -21,7 +21,7 @@ const JSON_RPC_VERSION: &str = "2.0";
 /// ACP protocol version advertised during initialization.
 const ACP_PROTOCOL_VERSION: &str = "1.0";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ACPCapabilities {
     pub sessions: bool,
     pub streaming: bool,
@@ -267,7 +267,10 @@ impl ACPClient {
                 .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
                 .unwrap_or_default();
 
-            let mut caps_lock = self.capabilities.write().unwrap();
+            let mut caps_lock = match self.capabilities.write() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
             *caps_lock = ACPCapabilities {
                 sessions,
                 streaming,
@@ -277,7 +280,10 @@ impl ACPClient {
         }
 
         // Store protocol version
-        let mut version_lock = self.protocol_version.write().unwrap();
+        let mut version_lock = match self.protocol_version.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         *version_lock = agent_version.to_string();
 
         Ok(())
@@ -408,7 +414,10 @@ impl ACPClient {
     ///
     /// Returns `None` if the receiver has already been taken.
     pub fn take_event_receiver(&self) -> Option<tokio::sync::mpsc::Receiver<ACPEvent>> {
-        self.event_receiver.lock().unwrap().take()
+        self.event_receiver
+            .lock()
+            .map(|mut guard| guard.take())
+            .unwrap_or(None)
     }
 
     /// Spawn a background task to read JSON-RPC output from stdout.
@@ -465,11 +474,17 @@ impl ACPClient {
 
     /// Get the protocol version (populated by `initialize()`).
     pub fn protocol_version(&self) -> String {
-        self.protocol_version.read().unwrap().clone()
+        self.protocol_version
+            .read()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
     }
 
     /// Get the agent capabilities (populated by `initialize()`).
     pub fn capabilities(&self) -> ACPCapabilities {
-        self.capabilities.read().unwrap().clone()
+        self.capabilities
+            .read()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
     }
 }
