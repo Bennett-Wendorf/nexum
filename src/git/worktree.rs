@@ -51,7 +51,11 @@ pub fn worktrees_dir(repo_root: &Path) -> PathBuf {
 // where a worktree may be corrupted (missing `.git` file).
 async fn worktree_dir_exists(wt_path: &Path) -> bool {
     fs::try_exists(wt_path).await.unwrap_or_else(|e| {
-        tracing::debug!("worktree_dir_exists check failed for {}: {}", wt_path.display(), e);
+        tracing::debug!(
+            "worktree_dir_exists check failed for {}: {}",
+            wt_path.display(),
+            e
+        );
         false
     })
 }

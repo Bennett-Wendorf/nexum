@@ -7,15 +7,17 @@
 mod tests {
     use std::collections::HashSet;
 
+    use crate::acp::config::{
+        default_role_config, merge_with_task_config, to_session_params, TaskConfigOverrides,
+    };
+    use crate::acp::errors::{ACPError, Result as ACPResult};
+    use crate::acp::events::{is_terminal_event, log_event, requires_response, session_id};
     use crate::acp::events::{ACPEvent, CompletionStatus, EventStream};
     use crate::acp::permissions::{
-        default_policy_for_role, PermissionAction, PermissionDecision,
-        PermissionHandler, PermissionPolicy, PermissionRequest,
+        default_policy_for_role, PermissionAction, PermissionDecision, PermissionHandler,
+        PermissionPolicy, PermissionRequest,
     };
-    use crate::acp::config::{default_role_config, merge_with_task_config, to_session_params, TaskConfigOverrides};
     use crate::acp::session::AgentRole;
-    use crate::acp::errors::{ACPError, Result as ACPResult};
-    use crate::acp::events::{is_terminal_event, requires_response, session_id, log_event};
 
     // ── Event Deserialization Tests ──
 
@@ -30,7 +32,12 @@ mod tests {
         }"#;
         let event: ACPEvent = serde_json::from_str(json).expect("should deserialize");
         match event {
-            ACPEvent::Progress { session_id, message, percentage, .. } => {
+            ACPEvent::Progress {
+                session_id,
+                message,
+                percentage,
+                ..
+            } => {
                 assert_eq!(session_id, "sess-1");
                 assert_eq!(message, "Working on task");
                 assert_eq!(percentage, Some(50.0));
@@ -51,7 +58,12 @@ mod tests {
         }"#;
         let event: ACPEvent = serde_json::from_str(json).expect("should deserialize");
         match event {
-            ACPEvent::ToolCall { session_id, tool_name, call_id, .. } => {
+            ACPEvent::ToolCall {
+                session_id,
+                tool_name,
+                call_id,
+                ..
+            } => {
                 assert_eq!(session_id, "sess-1");
                 assert_eq!(tool_name, "file-read");
                 assert_eq!(call_id, "call-1");
@@ -72,7 +84,13 @@ mod tests {
         }"#;
         let event: ACPEvent = serde_json::from_str(json).expect("should deserialize");
         match event {
-            ACPEvent::Completion { session_id, status, summary, artifacts, .. } => {
+            ACPEvent::Completion {
+                session_id,
+                status,
+                summary,
+                artifacts,
+                ..
+            } => {
                 assert_eq!(session_id, "sess-1");
                 assert_eq!(status, CompletionStatus::Success);
                 assert_eq!(summary, Some("Task completed".to_string()));
@@ -94,7 +112,12 @@ mod tests {
         }"#;
         let event: ACPEvent = serde_json::from_str(json).expect("should deserialize");
         match event {
-            ACPEvent::PermissionRequest { session_id, request_id, action, .. } => {
+            ACPEvent::PermissionRequest {
+                session_id,
+                request_id,
+                action,
+                ..
+            } => {
                 assert_eq!(session_id, "sess-1");
                 assert_eq!(request_id, "req-1");
                 assert_eq!(action, "file-write");
@@ -114,7 +137,12 @@ mod tests {
         }"#;
         let event: ACPEvent = serde_json::from_str(json).expect("should deserialize");
         match event {
-            ACPEvent::Error { session_id, error_code, message, .. } => {
+            ACPEvent::Error {
+                session_id,
+                error_code,
+                message,
+                ..
+            } => {
                 assert_eq!(session_id, "sess-1");
                 assert_eq!(error_code, "E001");
                 assert_eq!(message, "Something went wrong");
@@ -183,13 +211,54 @@ mod tests {
     #[test]
     fn test_session_id_extraction() {
         let events: Vec<ACPEvent> = vec![
-            ACPEvent::Progress { session_id: "test-session".into(), message: "m".into(), percentage: None, timestamp: "t".into() },
-            ACPEvent::ToolCall { session_id: "test-session".into(), tool_name: "t".into(), arguments: serde_json::json!({}), call_id: "c".into(), timestamp: "t".into() },
-            ACPEvent::ToolResult { session_id: "test-session".into(), call_id: "c".into(), success: true, output: None, error: None, timestamp: "t".into() },
-            ACPEvent::Question { session_id: "test-session".into(), question_id: "q".into(), content: "c".into(), options: None, timestamp: "t".into() },
-            ACPEvent::PermissionRequest { session_id: "test-session".into(), request_id: "r".into(), action: "a".into(), details: serde_json::json!({}), timestamp: "t".into() },
-            ACPEvent::Completion { session_id: "test-session".into(), status: CompletionStatus::Success, summary: None, artifacts: None, timestamp: "t".into() },
-            ACPEvent::Error { session_id: "test-session".into(), error_code: "e".into(), message: "m".into(), timestamp: "t".into() },
+            ACPEvent::Progress {
+                session_id: "test-session".into(),
+                message: "m".into(),
+                percentage: None,
+                timestamp: "t".into(),
+            },
+            ACPEvent::ToolCall {
+                session_id: "test-session".into(),
+                tool_name: "t".into(),
+                arguments: serde_json::json!({}),
+                call_id: "c".into(),
+                timestamp: "t".into(),
+            },
+            ACPEvent::ToolResult {
+                session_id: "test-session".into(),
+                call_id: "c".into(),
+                success: true,
+                output: None,
+                error: None,
+                timestamp: "t".into(),
+            },
+            ACPEvent::Question {
+                session_id: "test-session".into(),
+                question_id: "q".into(),
+                content: "c".into(),
+                options: None,
+                timestamp: "t".into(),
+            },
+            ACPEvent::PermissionRequest {
+                session_id: "test-session".into(),
+                request_id: "r".into(),
+                action: "a".into(),
+                details: serde_json::json!({}),
+                timestamp: "t".into(),
+            },
+            ACPEvent::Completion {
+                session_id: "test-session".into(),
+                status: CompletionStatus::Success,
+                summary: None,
+                artifacts: None,
+                timestamp: "t".into(),
+            },
+            ACPEvent::Error {
+                session_id: "test-session".into(),
+                error_code: "e".into(),
+                message: "m".into(),
+                timestamp: "t".into(),
+            },
         ];
         for event in events {
             assert_eq!(session_id(&event), "test-session");
@@ -275,7 +344,10 @@ mod tests {
         let request = PermissionRequest {
             request_id: "r1".into(),
             session_id: "s1".into(),
-            action: PermissionAction::NetworkRequest { url: "http://example.com".into(), method: "GET".into() },
+            action: PermissionAction::NetworkRequest {
+                url: "http://example.com".into(),
+                method: "GET".into(),
+            },
             timestamp: chrono::Utc::now(),
         };
         assert_eq!(handler.evaluate(&request), PermissionDecision::Denied);
@@ -292,7 +364,9 @@ mod tests {
         let request = PermissionRequest {
             request_id: "r1".into(),
             session_id: "s1".into(),
-            action: PermissionAction::CommandExecution { command: "ls".into() },
+            action: PermissionAction::CommandExecution {
+                command: "ls".into(),
+            },
             timestamp: chrono::Utc::now(),
         };
         assert_eq!(handler.evaluate(&request), PermissionDecision::Pending);
@@ -375,7 +449,11 @@ mod tests {
     #[test]
     fn test_to_session_params() {
         let config = default_role_config(AgentRole::Builder);
-        let params = to_session_params(&config, "Build this feature", std::path::Path::new("/tmp/worktree"));
+        let params = to_session_params(
+            &config,
+            "Build this feature",
+            std::path::Path::new("/tmp/worktree"),
+        );
         assert_eq!(params.prompt, "Build this feature");
         assert_eq!(params.working_directory, Some("/tmp/worktree".to_string()));
         assert!(params.tool_permissions.is_some());
@@ -468,7 +546,13 @@ mod tests {
         }"#;
         let event: ACPEvent = serde_json::from_str(json).expect("should deserialize");
         match event {
-            ACPEvent::ToolResult { session_id, call_id, success, output, .. } => {
+            ACPEvent::ToolResult {
+                session_id,
+                call_id,
+                success,
+                output,
+                ..
+            } => {
                 assert_eq!(session_id, "sess-1");
                 assert_eq!(call_id, "call-1");
                 assert!(success);
@@ -490,11 +574,20 @@ mod tests {
         }"#;
         let event: ACPEvent = serde_json::from_str(json).expect("should deserialize");
         match event {
-            ACPEvent::Question { session_id, question_id, content, options, .. } => {
+            ACPEvent::Question {
+                session_id,
+                question_id,
+                content,
+                options,
+                ..
+            } => {
                 assert_eq!(session_id, "sess-1");
                 assert_eq!(question_id, "q1");
                 assert_eq!(content, "What should I do?");
-                assert_eq!(options, Some(vec!["option-a".to_string(), "option-b".to_string()]));
+                assert_eq!(
+                    options,
+                    Some(vec!["option-a".to_string(), "option-b".to_string()])
+                );
             }
             _ => panic!("Expected Question event"),
         }
@@ -578,7 +671,12 @@ mod tests {
         }"#;
         let event: ACPEvent = serde_json::from_str(json).expect("should deserialize");
         match event {
-            ACPEvent::Completion { status, summary, artifacts, .. } => {
+            ACPEvent::Completion {
+                status,
+                summary,
+                artifacts,
+                ..
+            } => {
                 assert_eq!(status, CompletionStatus::Failed);
                 assert_eq!(summary, None);
                 assert_eq!(artifacts, None);

@@ -13,10 +13,20 @@ use super::session::{ACPSession, AgentRole};
 #[serde(rename_all = "kebab-case")]
 pub enum PermissionAction {
     FileRead,
-    FileWrite { path: String },
-    CommandExecution { command: String },
-    NetworkRequest { url: String, method: String },
-    Other { action: String, details: serde_json::Value },
+    FileWrite {
+        path: String,
+    },
+    CommandExecution {
+        command: String,
+    },
+    NetworkRequest {
+        url: String,
+        method: String,
+    },
+    Other {
+        action: String,
+        details: serde_json::Value,
+    },
 }
 
 /// A permission request issued by an agent during session execution.
@@ -84,10 +94,14 @@ pub async fn handle_permission(
 ) -> Result<()> {
     match decision {
         PermissionDecision::Approved => {
-            session.respond_to_permission(&request.request_id, true).await
+            session
+                .respond_to_permission(&request.request_id, true)
+                .await
         }
         PermissionDecision::Denied => {
-            session.respond_to_permission(&request.request_id, false).await
+            session
+                .respond_to_permission(&request.request_id, false)
+                .await
         }
         PermissionDecision::Pending => {
             // Pending requires external decision, don't respond yet
@@ -102,21 +116,36 @@ pub fn default_policy_for_role(role: AgentRole) -> PermissionPolicy {
         AgentRole::Builder => PermissionPolicy {
             auto_approve: HashSet::from(["file-read".to_string(), "file-write".to_string()]),
             auto_deny: HashSet::new(),
-            require_approval: HashSet::from(["command-execution".to_string(), "network-request".to_string()]),
+            require_approval: HashSet::from([
+                "command-execution".to_string(),
+                "network-request".to_string(),
+            ]),
         },
         AgentRole::Reviewer => PermissionPolicy {
             auto_approve: HashSet::from(["file-read".to_string()]),
-            auto_deny: HashSet::from(["file-write".to_string(), "command-execution".to_string(), "network-request".to_string()]),
+            auto_deny: HashSet::from([
+                "file-write".to_string(),
+                "command-execution".to_string(),
+                "network-request".to_string(),
+            ]),
             require_approval: HashSet::new(),
         },
         AgentRole::Planner => PermissionPolicy {
             auto_approve: HashSet::from(["file-read".to_string()]),
             auto_deny: HashSet::new(),
-            require_approval: HashSet::from(["file-write".to_string(), "command-execution".to_string(), "network-request".to_string()]),
+            require_approval: HashSet::from([
+                "file-write".to_string(),
+                "command-execution".to_string(),
+                "network-request".to_string(),
+            ]),
         },
         AgentRole::SecurityConsultant => PermissionPolicy {
             auto_approve: HashSet::from(["file-read".to_string()]),
-            auto_deny: HashSet::from(["file-write".to_string(), "command-execution".to_string(), "network-request".to_string()]),
+            auto_deny: HashSet::from([
+                "file-write".to_string(),
+                "command-execution".to_string(),
+                "network-request".to_string(),
+            ]),
             require_approval: HashSet::new(),
         },
     }

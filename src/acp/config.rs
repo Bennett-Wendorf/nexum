@@ -33,7 +33,12 @@ pub fn default_role_config(role: super::session::AgentRole) -> RoleConfig {
         super::session::AgentRole::Builder => RoleConfig {
             role: super::session::AgentRole::Builder,
             default_timeout: std::time::Duration::from_secs(1800), // 30 minutes
-            tool_permissions: vec!["file-read".into(), "file-write".into(), "command-execution".into(), "network-request".into()],
+            tool_permissions: vec![
+                "file-read".into(),
+                "file-write".into(),
+                "command-execution".into(),
+                "network-request".into(),
+            ],
             permission_policy,
             max_tokens: None,
             model_preference: None,

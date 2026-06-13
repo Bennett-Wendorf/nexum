@@ -28,30 +28,31 @@ pub mod permissions;
 pub mod session;
 pub mod subprocess;
 
-// ── Error types ──
+// ── Re-exported public API (unused within crate, but exposed for external consumers) ──
+#[allow(unused_imports)]
 pub use errors::{ACPError, Result};
-
-// ── Subprocess ──
-pub use subprocess::{AgentConfig, AgentProcess, spawn_agent};
-
-// ── Client ──
+#[allow(unused_imports)]
+pub use subprocess::{spawn_agent, AgentConfig, AgentProcess};
+#[allow(unused_imports)]
 pub use client::{
-    ACPClient, ACPCapabilities, MessageType, SessionCreateParams, SessionCreateResult,
+    ACPCapabilities, ACPClient, MessageType, SessionCreateParams, SessionCreateResult,
 };
-
-// ── Events ──
-pub use events::{ACPEvent, CompletionStatus, EventStream, is_terminal_event, log_event, requires_response, session_id};
-
-// ── Session ──
+#[allow(unused_imports)]
+pub use events::{
+    is_terminal_event, log_event, requires_response, session_id, ACPEvent, CompletionStatus,
+    EventStream,
+};
+#[allow(unused_imports)]
 pub use session::{ACPSession, AgentRole, SessionState};
-
-// ── Permissions ──
+#[allow(unused_imports)]
 pub use permissions::{
-    handle_permission, default_policy_for_role, PermissionAction, PermissionDecision, PermissionHandler, PermissionPolicy, PermissionRequest,
+    default_policy_for_role, handle_permission, PermissionAction, PermissionDecision,
+    PermissionHandler, PermissionPolicy, PermissionRequest,
 };
-
-// ── Configuration ──
-pub use config::{default_role_config, merge_with_task_config, to_session_params, RoleConfig, TaskConfigOverrides};
+#[allow(unused_imports)]
+pub use config::{
+    default_role_config, merge_with_task_config, to_session_params, RoleConfig, TaskConfigOverrides,
+};
 
 #[cfg(test)]
 mod tests;

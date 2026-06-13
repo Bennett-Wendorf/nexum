@@ -120,11 +120,12 @@ impl EventStream {
     ///
     /// Returns an error if all subscribers have dropped (no active listeners).
     pub fn publish(&self, event: ACPEvent) -> Result<()> {
-        self.sender.send(event).map(|_| ()).map_err(|e| {
-            super::errors::ACPError::EventStreamError {
+        self.sender
+            .send(event)
+            .map(|_| ())
+            .map_err(|e| super::errors::ACPError::EventStreamError {
                 source: Box::new(e),
-            }
-        })
+            })
     }
 }
 

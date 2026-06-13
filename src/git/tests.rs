@@ -13,7 +13,9 @@ mod tests {
         merge_task_branch, next_mergeable_tasks, MergePlan,
     };
     use crate::git::subprocess::{git, GitCommand};
-    use crate::git::worktree::{remove_worktree, remove_worktree_force, spawn_worktree, worktree_exists, worktree_path};
+    use crate::git::worktree::{
+        remove_worktree, remove_worktree_force, spawn_worktree, worktree_exists, worktree_path,
+    };
 
     // --- Test Infrastructure ---
 
@@ -172,8 +174,12 @@ mod tests {
     #[tokio::test]
     async fn test_remove_worktree_fallback_prunes_metadata() {
         let (_dir, repo) = create_test_repo().await;
-        create_task_branch(&repo, "TASK-PRUNE", "main").await.unwrap();
-        spawn_worktree(&repo, "TASK-PRUNE", "task/TASK-PRUNE").await.unwrap();
+        create_task_branch(&repo, "TASK-PRUNE", "main")
+            .await
+            .unwrap();
+        spawn_worktree(&repo, "TASK-PRUNE", "task/TASK-PRUNE")
+            .await
+            .unwrap();
 
         // Corrupt the worktree by removing its .git pointer file.
         // This forces the fallback to fs::remove_dir_all.
@@ -198,8 +204,12 @@ mod tests {
     #[tokio::test]
     async fn test_remove_worktree_force_fallback_prunes_metadata() {
         let (_dir, repo) = create_test_repo().await;
-        create_task_branch(&repo, "TASK-PRUNE-F", "main").await.unwrap();
-        spawn_worktree(&repo, "TASK-PRUNE-F", "task/TASK-PRUNE-F").await.unwrap();
+        create_task_branch(&repo, "TASK-PRUNE-F", "main")
+            .await
+            .unwrap();
+        spawn_worktree(&repo, "TASK-PRUNE-F", "task/TASK-PRUNE-F")
+            .await
+            .unwrap();
 
         // Corrupt the worktree by removing its .git pointer file.
         // This forces the fallback to fs::remove_dir_all.
@@ -290,10 +300,7 @@ mod tests {
         let plan = MergePlan {
             repo_root: PathBuf::from("/tmp"),
             plan_branch: "feature/test".to_string(),
-            pending_tasks: vec![
-                "TASK-001".to_string(),
-                "TASK-002".to_string(),
-            ],
+            pending_tasks: vec!["TASK-001".to_string(), "TASK-002".to_string()],
             merged_tasks: vec![],
             dependencies: deps,
         };

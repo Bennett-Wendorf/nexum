@@ -67,11 +67,7 @@ pub fn spawn_agent(
     config: &AgentConfig,
     worktree_path: &Path,
 ) -> Result<AgentProcess> {
-    let command_str = format!(
-        "{} {}",
-        config.binary.display(),
-        config.args.join(" ")
-    );
+    let command_str = format!("{} {}", config.binary.display(), config.args.join(" "));
 
     let mut cmd = Command::new(&config.binary);
     cmd.args(&config.args)
@@ -180,7 +176,10 @@ impl AgentProcess {
     /// state in the tokio `Child` handle.
     pub fn is_alive(&mut self) -> bool {
         match self.child.as_mut() {
-            Some(child) => child.try_wait().map(|status| status.is_none()).unwrap_or(true),
+            Some(child) => child
+                .try_wait()
+                .map(|status| status.is_none())
+                .unwrap_or(true),
             None => false,
         }
     }
@@ -192,7 +191,9 @@ impl AgentProcess {
     /// Note: requires `&mut self` because `try_wait()` mutates internal
     /// state in the tokio `Child` handle.
     pub fn exit_status(&mut self) -> Option<std::process::ExitStatus> {
-        self.child.as_mut().and_then(|child| child.try_wait().ok().flatten())
+        self.child
+            .as_mut()
+            .and_then(|child| child.try_wait().ok().flatten())
     }
 }
 
