@@ -4,6 +4,9 @@
 //! handling for the Nexum REST API.
 
 pub mod errors;
+pub mod types;
 
 #[allow(unused_imports)]
 pub use errors::{ApiError, ApiErrorResponse};
+#[allow(unused_imports)]
+pub use types::*;
