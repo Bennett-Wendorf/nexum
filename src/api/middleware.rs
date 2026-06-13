@@ -26,7 +26,7 @@ use std::time::SystemTime;
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Response header name carrying the unique request identifier.
-pub const REQUEST_ID_HEADER: &str = "X-Request-ID";
+pub const REQUEST_ID_HEADER: &str = "x-request-id";
 
 /// Axum middleware handler that generates a unique request ID for each
 /// incoming request and appends it to the outgoing response headers.

@@ -956,6 +956,7 @@ dependencies = [
  "chrono",
  "config",
  "fastrand",
+ "http-body-util",
  "jsonrpsee",
  "notify",
  "pulldown-cmark",
