@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncWriteExt, BufWriter};
@@ -20,6 +21,10 @@ const JSON_RPC_VERSION: &str = "2.0";
 
 /// ACP protocol version advertised during initialization.
 const ACP_PROTOCOL_VERSION: &str = "1.0";
+
+/// Default capabilities used when `initialize()` hasn't been called yet.
+static DEFAULT_CAPABILITIES: std::sync::LazyLock<ACPCapabilities> =
+    std::sync::LazyLock::new(ACPCapabilities::default);
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ACPCapabilities {
@@ -69,10 +74,10 @@ struct JsonRpcRequest {
 /// that the session takes ownership of via `take_event_receiver()`.
 pub struct ACPClient {
     agent_id: String,
-    /// Protocol version, populated by `initialize()` using interior mutability.
-    protocol_version: std::sync::RwLock<String>,
-    /// Agent capabilities, populated by `initialize()` using interior mutability.
-    capabilities: std::sync::RwLock<ACPCapabilities>,
+    /// Protocol version, populated by `initialize()`.
+    protocol_version: OnceLock<String>,
+    /// Agent capabilities, populated by `initialize()`.
+    capabilities: OnceLock<ACPCapabilities>,
     writer: tokio::sync::Mutex<BufWriter<ChildStdin>>,
     id_counter: AtomicU64,
     /// Pending response tracking: maps request ID to oneshot sender.
@@ -96,13 +101,8 @@ impl ACPClient {
         let (event_sender, event_receiver) = tokio::sync::mpsc::channel(1024);
         Self {
             agent_id,
-            protocol_version: std::sync::RwLock::new(String::new()),
-            capabilities: std::sync::RwLock::new(ACPCapabilities {
-                sessions: false,
-                streaming: false,
-                permissions: false,
-                tools: vec![],
-            }),
+            protocol_version: OnceLock::new(),
+            capabilities: OnceLock::new(),
             writer: tokio::sync::Mutex::new(BufWriter::new(stdin)),
             id_counter: AtomicU64::new(0),
             pending_responses: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
@@ -267,24 +267,16 @@ impl ACPClient {
                 .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
                 .unwrap_or_default();
 
-            let mut caps_lock = match self.capabilities.write() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            *caps_lock = ACPCapabilities {
+            let _ = self.capabilities.set(ACPCapabilities {
                 sessions,
                 streaming,
                 permissions,
                 tools,
-            };
+            });
         }
 
         // Store protocol version
-        let mut version_lock = match self.protocol_version.write() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        *version_lock = agent_version.to_string();
+        let _ = self.protocol_version.set(agent_version.to_string());
 
         Ok(())
     }
@@ -473,18 +465,12 @@ impl ACPClient {
     }
 
     /// Get the protocol version (populated by `initialize()`).
-    pub fn protocol_version(&self) -> String {
-        self.protocol_version
-            .read()
-            .map(|guard| guard.clone())
-            .unwrap_or_default()
+    pub fn protocol_version(&self) -> &str {
+        self.protocol_version.get().map(|s| s.as_str()).unwrap_or("")
     }
 
     /// Get the agent capabilities (populated by `initialize()`).
-    pub fn capabilities(&self) -> ACPCapabilities {
-        self.capabilities
-            .read()
-            .map(|guard| guard.clone())
-            .unwrap_or_default()
+    pub fn capabilities(&self) -> &ACPCapabilities {
+        self.capabilities.get().unwrap_or(&DEFAULT_CAPABILITIES)
     }
 }
