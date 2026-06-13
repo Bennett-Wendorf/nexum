@@ -146,6 +146,30 @@ impl ACPClient {
         Ok(rx)
     }
 
+    /// Send a fire-and-forget JSON-RPC notification (no response expected).
+    ///
+    /// Unlike [`send_request`], this does not register a pending response
+    /// entry, avoiding memory leaks from accumulated oneshot senders.
+    async fn send_notification(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> std::io::Result<()> {
+        let id = self.next_id();
+        let request = JsonRpcRequest {
+            jsonrpc: JSON_RPC_VERSION.to_string(),
+            method: method.to_string(),
+            params,
+            id,
+        };
+        let json = serde_json::to_string(&request)?;
+        let mut writer = self.writer.lock().await;
+        writer.write_all(json.as_bytes()).await?;
+        writer.write_all(b"\n").await?;
+        writer.flush().await?;
+        Ok(())
+    }
+
     /// Negotiate protocol version and capabilities via the initialize method.
     ///
     /// Sends the handshake request, awaits the response with a 10-second
@@ -185,6 +209,24 @@ impl ACPClient {
                 });
             }
         };
+
+        // Check for JSON-RPC error response
+        if let Some(code) = response
+            .get("error")
+            .and_then(|e| e.get("code"))
+            .and_then(|c| c.as_i64())
+        {
+            let message = response
+                .get("error")
+                .and_then(|e| e.get("message"))
+                .and_then(|m| m.as_str())
+                .unwrap_or("unknown error")
+                .to_string();
+            return Err(ACPError::InitializeFailed {
+                agent_id: self.agent_id.clone(),
+                reason: format!("agent error (code {}): {}", code, message),
+            });
+        }
 
         // Parse the result field
         let result = response.get("result").ok_or_else(|| ACPError::InitializeFailed {
@@ -328,21 +370,19 @@ impl ACPClient {
             "content": content,
             "type": message_type,
         });
-        let _id = self
-            .send_request("sessions/message", params)
+        self.send_notification("sessions/message", params)
             .await
             .map_err(|e| ACPError::JsonRpcTransport {
                 source: Box::new(e),
             })?;
-        // Fire-and-forget: drop the receiver, response will be cleaned up by reader task
+        // Fire-and-forget: no pending response registered, no memory leak
         Ok(())
     }
 
     /// Destroy a session (fire-and-forget).
     pub async fn sessions_destroy(&self, session_id: &str) -> Result<()> {
         let params = serde_json::json!({ "sessionId": session_id });
-        let _id = self
-            .send_request("sessions/destroy", params)
+        self.send_notification("sessions/destroy", params)
             .await
             .map_err(|e| ACPError::JsonRpcTransport {
                 source: Box::new(e),
@@ -356,8 +396,7 @@ impl ACPClient {
             "requestId": request_id,
             "approved": approved,
         });
-        let _id = self
-            .send_request("permissions/respond", params)
+        self.send_notification("permissions/respond", params)
             .await
             .map_err(|e| ACPError::JsonRpcTransport {
                 source: Box::new(e),
