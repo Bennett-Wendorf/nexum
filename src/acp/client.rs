@@ -81,7 +81,7 @@ pub struct ACPClient {
     /// Pending response tracking: maps request ID to oneshot sender.
     /// Wrapped in Arc so it can be cloned for the reader task.
     pending_responses:
-        Arc<tokio::sync::Mutex<HashMap<u64, tokio::sync::oneshot::Sender<serde_json::Value>>>>,
+        Arc<tokio::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<serde_json::Value>>>>,
     /// mpsc sender for event notifications (client-to-session delivery).
     event_sender: tokio::sync::mpsc::Sender<ACPEvent>,
     /// mpsc receiver for event notifications. Can be taken once by the session.
@@ -135,7 +135,7 @@ impl ACPClient {
         let json_string = serde_json::to_string(&json)?;
         {
             let mut pending = self.pending_responses.lock().await;
-            pending.insert(id, tx);
+            pending.insert(id.to_string(), tx);
         }
         {
             let mut writer = self.writer.lock().await;
@@ -452,10 +452,13 @@ impl ACPClient {
                     if let Some(obj) = value.as_object() {
                         if let Some(id_value) = obj.get("id") {
                             // This is a response — dispatch to pending request
-                            if let Some(id) = id_value.as_u64() {
+                            // JSON-RPC 2.0 allows id to be Number or String
+                            let id_key = id_value.as_u64().map(|n| n.to_string())
+                                .or_else(|| id_value.as_str().map(String::from));
+                            if let Some(id_key) = id_key {
                                 let tx = {
                                     let mut pending = pending_responses.lock().await;
-                                    pending.remove(&id)
+                                    pending.remove(&id_key)
                                 };
                                 if let Some(tx) = tx {
                                     let _ = tx.send(value);
