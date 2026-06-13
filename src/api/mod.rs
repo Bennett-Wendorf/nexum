@@ -3,6 +3,7 @@
 //! This module defines the HTTP routes, request/response types, and error
 //! handling for the Nexum REST API.
 
+pub mod config;
 pub mod errors;
 pub mod execution;
 pub mod middleware;
