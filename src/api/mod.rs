@@ -6,6 +6,7 @@
 pub mod errors;
 pub mod middleware;
 pub mod plans;
+pub mod tasks;
 pub mod types;
 
 #[allow(unused_imports)]
