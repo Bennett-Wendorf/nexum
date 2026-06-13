@@ -202,7 +202,7 @@ pub async fn list_running_tasks(
             // Read execution state
             let exec_state = match read_execution_state(
                 &state.repo_root,
-                &branch,
+                branch,
                 &plan_id,
                 &plan_name,
             ) {
@@ -219,7 +219,7 @@ pub async fn list_running_tasks(
                 // Find the task directory and read status.json
                 let (_task_dir, resolved_task_id, task_name) = match resolve_task_path(
                     &state.repo_root,
-                    &branch,
+                    branch,
                     &plan_id,
                     &plan_name,
                     task_id,
@@ -231,7 +231,7 @@ pub async fn list_running_tasks(
                 // Read task status to get agent lease info
                 let task_status_data = read_task_status(
                     &state.repo_root,
-                    &branch,
+                    branch,
                     &plan_id,
                     &plan_name,
                     &resolved_task_id,

@@ -185,7 +185,7 @@ pub async fn list_plans(
                 _ => continue, // Skip directories that don't match the slug format
             };
 
-            let plan = read_plan(&state.repo_root, &branch, &plan_id, &plan_name)
+            let plan = read_plan(&state.repo_root, branch, &plan_id, &plan_name)
                 .map_err(ApiError::from)?;
 
             // Filter by status if specified
