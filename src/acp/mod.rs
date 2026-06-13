@@ -32,26 +32,32 @@ pub mod subprocess;
 pub use errors::{ACPError, Result};
 
 // ── Subprocess ──
-pub use subprocess::{AgentConfig, AgentProcess, spawn_agent};
+pub use subprocess::{spawn_agent, AgentConfig, AgentProcess};
 
 // ── Client ──
 pub use client::{
-    ACPClient, ACPCapabilities, MessageType, SessionCreateParams, SessionCreateResult,
+    ACPCapabilities, ACPClient, MessageType, SessionCreateParams, SessionCreateResult,
 };
 
 // ── Events ──
-pub use events::{ACPEvent, CompletionStatus, EventStream, is_terminal_event, log_event, requires_response, session_id};
+pub use events::{
+    is_terminal_event, log_event, requires_response, session_id, ACPEvent, CompletionStatus,
+    EventStream,
+};
 
 // ── Session ──
 pub use session::{ACPSession, AgentRole, SessionState};
 
 // ── Permissions ──
 pub use permissions::{
-    handle_permission, default_policy_for_role, PermissionAction, PermissionDecision, PermissionHandler, PermissionPolicy, PermissionRequest,
+    default_policy_for_role, handle_permission, PermissionAction, PermissionDecision,
+    PermissionHandler, PermissionPolicy, PermissionRequest,
 };
 
 // ── Configuration ──
-pub use config::{default_role_config, merge_with_task_config, to_session_params, RoleConfig, TaskConfigOverrides};
+pub use config::{
+    default_role_config, merge_with_task_config, to_session_params, RoleConfig, TaskConfigOverrides,
+};
 
 #[cfg(test)]
 mod tests;

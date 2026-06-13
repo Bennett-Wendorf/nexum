@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 
 use super::client::{ACPClient, MessageType, SessionCreateParams};
 use super::errors::{ACPError, Result};
-use super::events::{ACPEvent, EventStream, is_terminal_event, log_event, requires_response};
-use super::subprocess::{AgentConfig, AgentProcess, spawn_agent};
+use super::events::{is_terminal_event, log_event, requires_response, ACPEvent, EventStream};
+use super::subprocess::{spawn_agent, AgentConfig, AgentProcess};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AgentRole {
@@ -74,11 +74,17 @@ impl ACPSession {
         let mut agent_process = spawn_agent(agent_id, agent_config, worktree_path)?;
 
         // 2. Create client (mpsc channel created internally)
-        let stdin = agent_process.stdin.take().expect("stdin should be available");
+        let stdin = agent_process
+            .stdin
+            .take()
+            .expect("stdin should be available");
         let client = ACPClient::new(agent_id.to_string(), stdin);
 
         // 3. Take stdout and spawn reader task
-        let stdout = agent_process.stdout.take().expect("stdout should be available");
+        let stdout = agent_process
+            .stdout
+            .take()
+            .expect("stdout should be available");
         let reader_handle = client.spawn_reader(stdout);
 
         // 4. Initialize the client (protocol handshake)

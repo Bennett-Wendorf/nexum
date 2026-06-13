@@ -22,6 +22,12 @@ const JSON_RPC_VERSION: &str = "2.0";
 /// ACP protocol version advertised during initialization.
 const ACP_PROTOCOL_VERSION: &str = "1.0";
 
+/// Timeout for the ACP initialize handshake.
+const INIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Timeout for the sessions/create request.
+const SESSION_CREATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Default capabilities used when `initialize()` hasn't been called yet.
 static DEFAULT_CAPABILITIES: std::sync::LazyLock<ACPCapabilities> =
     std::sync::LazyLock::new(ACPCapabilities::default);
@@ -113,7 +119,7 @@ impl ACPClient {
 
     /// Generate the next request ID.
     fn next_id(&self) -> u64 {
-        self.id_counter.fetch_add(1, Ordering::SeqCst) + 1
+        self.id_counter.fetch_add(1, Ordering::Relaxed) + 1
     }
 
     /// Send a JSON-RPC request and return a oneshot receiver for the response.
@@ -189,12 +195,7 @@ impl ACPClient {
             })?;
 
         // Await the response with timeout
-        let response = match tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            rx,
-        )
-        .await
-        {
+        let response = match tokio::time::timeout(INIT_TIMEOUT, rx).await {
             Ok(Ok(value)) => value,
             Ok(Err(_)) => {
                 return Err(ACPError::InitializeFailed {
@@ -205,7 +206,7 @@ impl ACPClient {
             Err(_) => {
                 return Err(ACPError::Timeout {
                     operation: "initialize".to_string(),
-                    duration: std::time::Duration::from_secs(10),
+                    duration: INIT_TIMEOUT,
                 });
             }
         };
@@ -229,10 +230,12 @@ impl ACPClient {
         }
 
         // Parse the result field
-        let result = response.get("result").ok_or_else(|| ACPError::InitializeFailed {
-            agent_id: self.agent_id.clone(),
-            reason: "response missing 'result' field".to_string(),
-        })?;
+        let result = response
+            .get("result")
+            .ok_or_else(|| ACPError::InitializeFailed {
+                agent_id: self.agent_id.clone(),
+                reason: "response missing 'result' field".to_string(),
+            })?;
 
         // Validate protocol version
         let agent_version = result
@@ -258,13 +261,26 @@ impl ACPClient {
 
         // Parse capabilities from the response object
         if let Some(caps) = caps_obj {
-            let sessions = caps.get("sessions").and_then(|v| v.as_bool()).unwrap_or(false);
-            let streaming = caps.get("streaming").and_then(|v| v.as_bool()).unwrap_or(false);
-            let permissions = caps.get("permissions").and_then(|v| v.as_bool()).unwrap_or(false);
+            let sessions = caps
+                .get("sessions")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let streaming = caps
+                .get("streaming")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let permissions = caps
+                .get("permissions")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let tools = caps
                 .get("tools")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
 
             let _ = self.capabilities.set(ACPCapabilities {
@@ -273,6 +289,12 @@ impl ACPClient {
                 permissions,
                 tools,
             });
+        }
+        if caps_obj.is_none() {
+            tracing::warn!(
+                agent_id = %self.agent_id,
+                "agent initialize response missing 'capabilities' field, using defaults"
+            );
         }
 
         // Store protocol version
@@ -285,10 +307,14 @@ impl ACPClient {
     ///
     /// Returns the actual `SessionCreateResult` parsed from the agent's response,
     /// including the real session ID assigned by the agent.
-    pub async fn sessions_create(&self, params: SessionCreateParams) -> Result<SessionCreateResult> {
-        let params_value = serde_json::to_value(params).map_err(|e| ACPError::JsonRpcTransport {
-            source: Box::new(e),
-        })?;
+    pub async fn sessions_create(
+        &self,
+        params: SessionCreateParams,
+    ) -> Result<SessionCreateResult> {
+        let params_value =
+            serde_json::to_value(params).map_err(|e| ACPError::JsonRpcTransport {
+                source: Box::new(e),
+            })?;
 
         let rx = self
             .send_request("sessions/create", params_value)
@@ -298,12 +324,7 @@ impl ACPClient {
             })?;
 
         // Await the response with timeout
-        let response = match tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            rx,
-        )
-        .await
-        {
+        let response = match tokio::time::timeout(SESSION_CREATE_TIMEOUT, rx).await {
             Ok(Ok(value)) => value,
             Ok(Err(_)) => {
                 return Err(ACPError::JsonRpcError {
@@ -315,7 +336,7 @@ impl ACPClient {
             Err(_) => {
                 return Err(ACPError::Timeout {
                     operation: "sessions/create".to_string(),
-                    duration: std::time::Duration::from_secs(30),
+                    duration: SESSION_CREATE_TIMEOUT,
                 });
             }
         };
@@ -340,14 +361,16 @@ impl ACPClient {
         }
 
         // Parse the result
-        let result = response.get("result").ok_or_else(|| ACPError::JsonRpcError {
-            method: "sessions/create".to_string(),
-            code: -32603,
-            message: "response missing 'result' field".to_string(),
-        })?;
+        let result = response
+            .get("result")
+            .ok_or_else(|| ACPError::JsonRpcError {
+                method: "sessions/create".to_string(),
+                code: -32603,
+                message: "response missing 'result' field".to_string(),
+            })?;
 
-        let session_create_result: SessionCreateResult =
-            serde_json::from_value(result.clone()).map_err(|e| ACPError::JsonRpcError {
+        let session_create_result: SessionCreateResult = serde_json::from_value(result.clone())
+            .map_err(|e| ACPError::JsonRpcError {
                 method: "sessions/create".to_string(),
                 code: -32603,
                 message: format!("failed to parse session create result: {}", e),
@@ -418,10 +441,7 @@ impl ACPClient {
     /// (notifications without an `"id"` field). Responses are dispatched
     /// to the matching oneshot sender in the pending-responses map.
     /// Events are sent to the mpsc channel.
-    pub fn spawn_reader(
-        &self,
-        stdout: tokio::process::ChildStdout,
-    ) -> tokio::task::JoinHandle<()> {
+    pub fn spawn_reader(&self, stdout: tokio::process::ChildStdout) -> tokio::task::JoinHandle<()> {
         let sender = self.event_sender.clone();
         let pending_responses = self.pending_responses.clone();
         tokio::spawn(async move {
@@ -466,7 +486,10 @@ impl ACPClient {
 
     /// Get the protocol version (populated by `initialize()`).
     pub fn protocol_version(&self) -> &str {
-        self.protocol_version.get().map(|s| s.as_str()).unwrap_or("")
+        self.protocol_version
+            .get()
+            .map(|s| s.as_str())
+            .unwrap_or("")
     }
 
     /// Get the agent capabilities (populated by `initialize()`).

@@ -117,10 +117,7 @@ pub enum ACPError {
     /// **Handling**: Verify the agent supports the required ACP protocol
     /// version and capabilities. Update the agent or client as needed.
     #[error("ACP initialize failed for agent '{agent_id}': {reason}")]
-    InitializeFailed {
-        agent_id: String,
-        reason: String,
-    },
+    InitializeFailed { agent_id: String, reason: String },
 
     /// Permission request was explicitly denied.
     ///
@@ -131,10 +128,7 @@ pub enum ACPError {
     /// caller and consider alternative approaches that don't require the
     /// denied permission.
     #[error("permission denied for session '{session_id}': {action}")]
-    PermissionDenied {
-        session_id: String,
-        action: String,
-    },
+    PermissionDenied { session_id: String, action: String },
 
     /// Permission request timed out with no response.
     ///
@@ -187,10 +181,7 @@ pub enum ACPError {
     /// **Handling**: Fix the configuration file or environment variable
     /// and restart the application.
     #[error("configuration error for field '{field}': {reason}")]
-    ConfigError {
-        field: String,
-        reason: String,
-    },
+    ConfigError { field: String, reason: String },
 
     /// Generic operation timeout.
     ///
