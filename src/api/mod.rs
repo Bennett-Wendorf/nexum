@@ -4,6 +4,7 @@
 //! handling for the Nexum REST API.
 
 pub mod errors;
+pub mod execution;
 pub mod middleware;
 pub mod plans;
 pub mod tasks;
