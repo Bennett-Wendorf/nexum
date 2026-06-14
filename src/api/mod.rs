@@ -3,6 +3,7 @@
 //! This module defines the HTTP routes, request/response types, and error
 //! handling for the Nexum REST API.
 
+pub mod auth;
 pub mod config;
 pub mod errors;
 pub mod execution;
@@ -57,6 +58,9 @@ pub fn create_router(state: AppState) -> Router {
         // Config endpoints
         .route("/api/v1/config", get(config::get_config))
         .route("/api/v1/agents", get(config::list_agents))
+
+        // Auth endpoints
+        .route("/api/v1/auth/status", get(auth::get_auth_status))
 
         // Middleware
         .layer(axum::middleware::from_fn(middleware::request_id_middleware))
