@@ -75,6 +75,12 @@ pub enum ApiError {
     Validation(String),
 }
 
+/// Convenience type alias for `Result<T, ApiError>`.
+///
+/// Used throughout the API module to avoid spelling out
+/// `std::result::Result<T, ApiError>` in every function signature.
+pub type Result<T> = std::result::Result<T, ApiError>;
+
 /// JSON error body returned to the client.
 ///
 /// Serialized as:
