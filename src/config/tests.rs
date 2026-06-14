@@ -6,7 +6,7 @@ use tempfile::TempDir;
 
 use super::accessor::*;
 use super::loader::{validate, ConfigError, DEFAULT_CONFIG_TEMPLATE};
-use super::schema::{AgentRegistration, Config, GlobalSettings, Preferences};
+use super::schema::{AgentRegistration, AuthenticationSettings, Config, GlobalSettings, Preferences};
 
 // ─── Helper utilities ───────────────────────────────────────────────
 
@@ -341,6 +341,7 @@ fn make_test_config() -> Config {
             default_timeout_seconds: 3600,
             log_level: "info".to_string(),
             nexum_config_dir: None,
+            authentication: AuthenticationSettings::default(),
         },
         preferences: Preferences {
             yolo_mode: false,
