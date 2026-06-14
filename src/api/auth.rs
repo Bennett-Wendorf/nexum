@@ -12,28 +12,23 @@
 //! - **Selective guarding**: Configurable whether GET endpoints require auth
 //! - **Non-intrusive**: When disabled, middleware is a no-op (zero overhead)
 //! - **Constant-time comparison**: Prevents timing attacks on key validation
+//! - **CORS-safe**: OPTIONS requests pass through without authentication check
 
 use axum::body::Body;
 use axum::extract::State;
-use axum::response::IntoResponse;
+use axum::http::HeaderValue;
+use axum::http::Request;
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
-use tower::Layer;
+use std::sync::Arc;
 
+use crate::api::errors::ApiError;
 use crate::api::types::AppState;
 use crate::config;
 
 // ── Auth Types ───────────────────────────────────────────────────────
-
-/// Extractor that validates the Authorization header against configured API keys.
-///
-/// Returns the name of the authenticated key, or `ApiError::Unauthorized` if
-/// authentication is required and the key is missing/invalid.
-#[derive(Debug, Clone)]
-pub struct AuthenticatedKey {
-    /// The name of the API key that passed validation
-    pub key_name: String,
-}
 
 /// Response for GET /api/v1/auth/status
 #[derive(Serialize, Debug, Clone)]
@@ -54,138 +49,133 @@ pub struct AuthStatusResponse {
 ///
 /// Returns the key name if valid, or `None` if no match.
 /// Uses constant-time comparison to prevent timing attacks.
+/// Compares against ALL keys to prevent position-based timing leaks.
 pub fn validate_api_key(
     provided_key: &str,
     configured_keys: &[config::ApiKeyEntry],
 ) -> Option<String> {
+    let mut matched_name: Option<String> = None;
     for entry in configured_keys {
         if constant_time_compare(provided_key, &entry.secret) {
-            return Some(entry.name.clone());
+            matched_name = Some(entry.name.clone());
         }
     }
-    None
+    matched_name
 }
 
 /// Constant-time string comparison to prevent timing attacks.
+///
+/// This implementation does NOT short-circuit on length mismatch.
+/// It always iterates over the maximum length of both strings,
+/// padding the shorter one with null bytes, to prevent length leaks.
 fn constant_time_compare(a: &str, b: &str) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
+    let bytes_a = a.as_bytes();
+    let bytes_b = b.as_bytes();
+    let max_len = bytes_a.len().max(bytes_b.len());
     let mut result = 0u8;
-    for (xa, xb) in a.bytes().zip(b.bytes()) {
-        result |= xa ^ xb;
+    // Length mismatch contributes to result (prevents short-circuit)
+    result |= bytes_a.len() as u8 ^ bytes_b.len() as u8;
+    for i in 0..max_len {
+        let ca = bytes_a.get(i).copied().unwrap_or(0);
+        let cb = bytes_b.get(i).copied().unwrap_or(0);
+        result |= ca ^ cb;
     }
     result == 0
 }
 
 // ── Middleware ───────────────────────────────────────────────────────
 
-use axum::http::Request as HttpRequest;
-use axum::http::StatusCode;
-use axum::response::Response;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::task::{Context, Poll};
-use tower::{Service, ServiceExt};
-
+/// Create an unauthorized response with proper format and WWW-Authenticate header.
 fn unauthorized_response(msg: &str) -> Response {
-    (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": msg}))).into_response()
+    let error = ApiError::Unauthorized(msg.to_string());
+    let mut resp = error.into_response();
+    resp.headers_mut().insert(
+        axum::http::header::WWW_AUTHENTICATE,
+        HeaderValue::from_static("Bearer"),
+    );
+    resp
 }
 
-/// A clonable tower service that wraps another service with auth checking.
-#[derive(Clone)]
-pub struct AuthCloneService<S> {
-    inner: Arc<S>,
-    auth_config: Arc<config::AuthenticationSettings>,
-}
-
-impl<S> Service<HttpRequest<Body>> for AuthCloneService<S>
-where
-    S: Service<HttpRequest<Body>, Response = Response> + Clone + Send + Sync + 'static,
-    S::Error: IntoResponse,
-    S::Future: Send + 'static,
-{
-    type Response = Response;
-    type Error = std::convert::Infallible;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: HttpRequest<Body>) -> Self::Future {
-        let auth_config = self.auth_config.clone();
-        let inner = self.inner.clone();
-        Box::pin(async move {
-            if !auth_config.enabled {
-                let s = (*inner).clone();
-                return Ok(s.oneshot(req).await.unwrap_or_else(|e| e.into_response()));
-            }
-
-            let method_requires_auth = match req.method().as_str() {
-                "GET" => auth_config.authenticate_read,
-                _ => true,
-            };
-
-            if !method_requires_auth {
-                let s = (*inner).clone();
-                return Ok(s.oneshot(req).await.unwrap_or_else(|e| e.into_response()));
-            }
-
-            match req.headers().get(axum::http::header::AUTHORIZATION) {
-                Some(header) => {
-                    match header.to_str() {
-                        Ok(header_str) => {
-                            let parts: Vec<&str> = header_str.split_whitespace().collect();
-                            if parts.len() != 2 || parts[0] != "Bearer" {
-                                return Ok(unauthorized_response(
-                                    "Authorization header must use Bearer format: 'Authorization: Bearer <key>'",
-                                ));
-                            }
-                            if validate_api_key(parts[1], &auth_config.api_keys).is_none() {
-                                return Ok(unauthorized_response("Invalid API key"));
-                            }
-                            tracing::info!(method = %req.method(), uri = %req.uri(), "Authenticated request");
-                            let s = (*inner).clone();
-                            Ok(s.oneshot(req).await.unwrap_or_else(|e| e.into_response()))
-                        }
-                        Err(_) => Ok(unauthorized_response("Invalid Authorization header encoding")),
-                    }
-                }
-                None => Ok(unauthorized_response("Missing Authorization header. API key required.")),
-            }
-        })
-    }
-}
-
-/// Tower middleware layer for authentication.
-#[derive(Clone)]
-pub struct AuthLayer {
-    auth_config: Arc<config::AuthenticationSettings>,
-}
-
-impl<S> Layer<S> for AuthLayer
-where
-    S: Clone + Send + 'static,
-{
-    type Service = AuthCloneService<S>;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        AuthCloneService {
-            inner: Arc::new(inner),
-            auth_config: self.auth_config.clone(),
-        }
-    }
-}
-
-/// Returns an Axum layer wrapping the auth middleware.
+/// Authentication middleware handler (2-parameter form for axum `from_fn`).
 ///
-/// Takes [`AppState`] to extract the authentication configuration,
-/// then creates a tower middleware layer with the config captured.
-pub fn auth_layer(state: AppState) -> AuthLayer {
-    AuthLayer {
-        auth_config: Arc::new(state.config.global.authentication.clone()),
+/// The auth config is captured via `Arc` in the closure returned by
+/// [`create_auth_middleware`]. This avoids the 3-parameter `State`
+/// extractor pattern which axum 0.8 cannot infer for middleware layers.
+///
+/// - If auth is disabled in config, passes through without checking.
+/// - OPTIONS requests always pass through (CORS preflight).
+/// - If auth is enabled and `authenticate_read` is false, only checks
+///   write methods (POST, PUT, PATCH, DELETE).
+/// - If auth is enabled and `authenticate_read` is true, checks all methods.
+/// - Validates `Authorization: Bearer <key>` header against configured keys.
+/// - Returns 401 with `ApiErrorResponse` format and `WWW-Authenticate: Bearer` header.
+pub async fn auth_middleware(
+    req: Request<Body>,
+    next: Next,
+    auth_config: Arc<config::AuthenticationSettings>,
+) -> Response {
+    // If auth is disabled, pass through
+    if !auth_config.enabled {
+        return next.run(req).await;
+    }
+
+    // OPTIONS always passes through (CORS preflight)
+    if req.method().as_str() == "OPTIONS" {
+        return next.run(req).await;
+    }
+
+    // Determine if this request method requires auth
+    let method_requires_auth = match req.method().as_str() {
+        "GET" => auth_config.authenticate_read,
+        _ => true, // POST, PUT, PATCH, DELETE always require auth when enabled
+    };
+
+    if !method_requires_auth {
+        return next.run(req).await;
+    }
+
+    // Extract and validate API key
+    let auth_header = req.headers().get(axum::http::header::AUTHORIZATION);
+    match auth_header {
+        Some(header) => {
+            match header.to_str() {
+                Ok(header_str) => {
+                    // Parse "Bearer <key>" format
+                    let parts: Vec<&str> = header_str.split_whitespace().collect();
+                    if parts.len() != 2 || parts[0] != "Bearer" {
+                        return unauthorized_response(
+                            "Authorization header must use Bearer format: 'Authorization: Bearer <key>'",
+                        );
+                    }
+
+                    let key_name = match validate_api_key(parts[1], &auth_config.api_keys) {
+                        Some(name) => name,
+                        None => return unauthorized_response("Invalid API key"),
+                    };
+
+                    // Log successful authentication
+                    tracing::info!(key_name = %key_name, method = %req.method(), uri = %req.uri(), "Authenticated request");
+                    return next.run(req).await;
+                }
+                Err(_) => {
+                    return unauthorized_response("Invalid Authorization header encoding");
+                }
+            }
+        }
+        None => unauthorized_response("Missing Authorization header. API key required."),
+    }
+}
+
+/// Creates a 2-parameter middleware closure that captures the auth config.
+///
+/// Returns a `Clone` + `Send` + `Sync` function suitable for use with
+/// `axum::middleware::from_fn`.
+pub fn create_auth_middleware(
+    auth_config: Arc<config::AuthenticationSettings>,
+) -> impl Fn(Request<Body>, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>> + Clone + Send + Sync + 'static {
+    move |req: Request<Body>, next: Next| {
+        let auth_config = auth_config.clone();
+        Box::pin(async move { auth_middleware(req, next, auth_config).await })
     }
 }
 
@@ -225,7 +215,14 @@ mod tests {
 
     #[test]
     fn test_constant_time_compare_different_length() {
+        // This now does NOT short-circuit on length mismatch
         assert!(!constant_time_compare("abc", "abcd"));
+    }
+
+    #[test]
+    fn test_constant_time_compare_empty() {
+        assert!(constant_time_compare("", ""));
+        assert!(!constant_time_compare("", "a"));
     }
 
     #[test]

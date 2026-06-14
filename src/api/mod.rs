@@ -19,6 +19,7 @@ use axum::{
     routing::{get, patch, post},
     Router,
 };
+use std::sync::Arc;
 
 pub use types::*;
 
@@ -38,6 +39,8 @@ pub use types::*;
 ///
 /// All routes use `/api/v1/` prefix for URL-based versioning.
 pub fn create_router(state: AppState) -> Router {
+    let auth_config = Arc::new(state.config.global.authentication.clone());
+
     Router::new()
         // Health check
         .route("/api/v1/health", get(execution::health_check))
@@ -64,8 +67,9 @@ pub fn create_router(state: AppState) -> Router {
         // Auth endpoints
         .route("/api/v1/auth/status", get(auth::get_auth_status))
 
-        // Middleware layers (order matters: auth before request_id)
-        .layer(auth::auth_layer(state.clone()))
-        .layer(axum::middleware::from_fn(middleware::request_id_middleware))
         .with_state(state)
+
+        // Middleware layers (order matters: auth before request_id)
+        .layer(axum::middleware::from_fn(auth::create_auth_middleware(auth_config)))
+        .layer(axum::middleware::from_fn(middleware::request_id_middleware))
 }
