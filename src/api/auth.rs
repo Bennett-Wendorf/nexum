@@ -155,7 +155,7 @@ pub async fn auth_middleware(
 
                     // Log successful authentication
                     tracing::info!(key_name = %key_name, method = %req.method(), uri = %req.uri(), "Authenticated request");
-                    return next.run(req).await;
+                    next.run(req).await
                 }
                 Err(_) => {
                     return unauthorized_response("Invalid Authorization header encoding");

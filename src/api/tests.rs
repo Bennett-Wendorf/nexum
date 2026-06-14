@@ -1213,3 +1213,67 @@ async fn test_auth_enabled_plan_lifecycle() {
     let res = app.clone().oneshot(del_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
 }
+
+/// Verify that Bearer token with extra whitespace is handled.
+#[tokio::test]
+async fn test_auth_bearer_extra_whitespace() {
+    let (app, _dir) = test_app_with_auth();
+    // Extra space between Bearer and key — split_whitespace handles this
+    let req = Request::builder()
+        .uri("/api/v1/plans")
+        .method("POST")
+        .header(http::header::AUTHORIZATION, "Bearer  test-key-123")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    // split_whitespace collapses multiple spaces, so "Bearer  key" → ["Bearer", "key"]
+    // This should succeed since the key is valid
+    assert_eq!(res.status(), StatusCode::CREATED);
+}
+
+/// Verify that empty Bearer token returns 401.
+#[tokio::test]
+async fn test_auth_bearer_empty_token() {
+    let (app, _dir) = test_app_with_auth();
+    let req = Request::builder()
+        .uri("/api/v1/plans")
+        .method("POST")
+        .header(http::header::AUTHORIZATION, "Bearer ")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Verify that OPTIONS request passes through without auth.
+#[tokio::test]
+async fn test_auth_options_preflight() {
+    let (app, _dir) = test_app_with_auth();
+    let req = Request::builder()
+        .uri("/api/v1/plans")
+        .method("OPTIONS")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    // OPTIONS should pass through (not 401)
+    assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Verify that WWW-Authenticate header is present on 401 responses.
+#[tokio::test]
+async fn test_auth_www_authenticate_header() {
+    let (app, _dir) = test_app_with_auth();
+    let req = Request::builder()
+        .uri("/api/v1/plans")
+        .method("POST")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    let www_auth = res.headers().get(axum::http::header::WWW_AUTHENTICATE);
+    assert!(www_auth.is_some());
+    assert_eq!(www_auth.unwrap().to_str().unwrap(), "Bearer");
+}
