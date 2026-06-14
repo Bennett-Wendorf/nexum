@@ -24,7 +24,7 @@ use axum::{
 use chrono::Utc;
 
 use crate::api::errors::ApiError;
-use crate::api::middleware::{validate_branch_name, validate_status_transition};
+use crate::api::middleware::{resolve_plan_path, validate_branch_name, validate_status_transition};
 use crate::api::types::*;
 use crate::persistence::*;
 
@@ -121,29 +121,6 @@ fn generate_plan_id(
     }
 
     Ok(format!("PLAN-{:03}", max_num + 1))
-}
-
-/// Shared helper: locate a plan directory and extract the plan name from
-/// its slug. Returns the resolved path and plan name, or a 404 error.
-fn resolve_plan_path(
-    repo_root: &std::path::Path,
-    branch: &str,
-    plan_id: &str,
-) -> std::result::Result<(std::path::PathBuf, String), ApiError> {
-    let plan_dir = find_plan_by_id(repo_root, branch, plan_id)
-        .map_err(|_| ApiError::NotFound("plan not found".to_string()))?;
-
-    let slug = plan_dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| ApiError::NotFound("plan not found".to_string()))?;
-
-    let plan_name = match parse_slug(slug) {
-        (Some(_), Some(name)) => name.to_string(),
-        _ => return Err(ApiError::NotFound("plan not found".to_string())),
-    };
-
-    Ok((plan_dir, plan_name))
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────

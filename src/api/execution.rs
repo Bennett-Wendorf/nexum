@@ -23,6 +23,7 @@ use serde::Serialize;
 
 use crate::api::errors::ApiError;
 use crate::api::types::*;
+use crate::api::middleware::{resolve_plan_path, resolve_task_path};
 use crate::persistence::*;
 
 // ── Helper Functions ──────────────────────────────────────────────────
@@ -51,29 +52,6 @@ fn execution_state_to_response(state: &ExecutionState) -> ExecutionStateResponse
             .map(|(k, v)| (k.clone(), task_status_to_string(v).to_string()))
             .collect(),
     }
-}
-
-/// Shared helper: locate a plan directory and extract the plan name from
-/// its slug. Returns the resolved path and plan name, or a 404 error.
-fn resolve_plan_path(
-    repo_root: &std::path::Path,
-    branch: &str,
-    plan_id: &str,
-) -> std::result::Result<(std::path::PathBuf, String), ApiError> {
-    let plan_dir = find_plan_by_id(repo_root, branch, plan_id)
-        .map_err(|_| ApiError::NotFound("plan not found".to_string()))?;
-
-    let slug = plan_dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| ApiError::NotFound("plan not found".to_string()))?;
-
-    let plan_name = match parse_slug(slug) {
-        (Some(_), Some(name)) => name.to_string(),
-        _ => return Err(ApiError::NotFound("plan not found".to_string())),
-    };
-
-    Ok((plan_dir, plan_name))
 }
 
 /// List all plan directory slugs under a branch's state directory.
@@ -105,45 +83,6 @@ fn list_state_plans(
         .collect::<Vec<_>>();
     names.sort();
     Ok(names)
-}
-
-/// Locate the task directory within a plan's specs directory and extract
-/// the task ID and name from its slug.
-///
-/// Searches all subdirectories of the plan's `tasks/` directory for a
-/// slug that starts with `<task_id>-`. Returns the resolved path, task
-/// ID, and task name, or a 404 error if the task does not exist.
-fn resolve_task_path(
-    repo_root: &std::path::Path,
-    branch: &str,
-    plan_id: &str,
-    plan_name: &str,
-    task_id: &str,
-) -> std::result::Result<(std::path::PathBuf, String, String), ApiError> {
-    let tasks_dir = plan_dir(repo_root, branch, plan_id, plan_name).join("tasks");
-
-    if !tasks_dir.exists() {
-        return Err(ApiError::NotFound("task not found".to_string()));
-    }
-
-    let entries = crate::persistence::list_dir(&tasks_dir)
-        .map_err(|_| ApiError::NotFound("task not found".to_string()))?;
-
-    for entry in entries {
-        if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-            if let Some(name) = entry.file_name().to_str() {
-                if name.starts_with(&format!("{}-", task_id)) {
-                    let (parsed_id, parsed_name) = match parse_slug(name) {
-                        (Some(id), Some(n)) => (id.to_string(), n.to_string()),
-                        _ => continue,
-                    };
-                    return Ok((entry.path(), parsed_id, parsed_name));
-                }
-            }
-        }
-    }
-
-    Err(ApiError::NotFound("task not found".to_string()))
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────

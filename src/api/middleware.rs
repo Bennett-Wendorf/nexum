@@ -18,6 +18,7 @@ use crate::api::errors::ApiError;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
+use std::path::{Path, PathBuf};
 
 // ── Request ID Middleware ──────────────────────────────────────────────
 
@@ -283,6 +284,82 @@ pub fn validate_slug(name: &str) -> Result<(), ApiError> {
     }
 
     Ok(())
+}
+
+/// Locate a plan directory and extract the plan name from its slug.
+///
+/// Searches for a plan directory whose slug starts with `<plan_id>-`
+/// under `.agent/specs/<branch>/`. Returns the resolved path and plan
+/// name, or a 404 error if the plan does not exist.
+///
+/// # Errors
+///
+/// Returns [`ApiError::NotFound`] if the plan cannot be located or
+/// its directory slug cannot be parsed.
+pub fn resolve_plan_path(
+    repo_root: &Path,
+    branch: &str,
+    plan_id: &str,
+) -> Result<(PathBuf, String), ApiError> {
+    let plan_dir = crate::persistence::find_plan_by_id(repo_root, branch, plan_id)
+        .map_err(|e| ApiError::NotFound(format!("plan not found: {e}")))?;
+
+    let slug = plan_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| ApiError::NotFound("plan not found".to_string()))?;
+
+    let plan_name = match crate::persistence::parse_slug(slug) {
+        (Some(_), Some(name)) => name.to_string(),
+        _ => return Err(ApiError::NotFound("plan not found".to_string())),
+    };
+
+    Ok((plan_dir, plan_name))
+}
+
+/// Locate a task directory within a plan and extract its ID and name.
+///
+/// Searches all subdirectories of the plan's `tasks/` directory for a
+/// slug that starts with `<task_id>-`. Returns the resolved path, task
+/// ID, and task name, or a 404 error if the task does not exist.
+///
+/// # Errors
+///
+/// Returns [`ApiError::NotFound`] if the task cannot be located or
+/// its directory slug cannot be parsed.
+pub fn resolve_task_path(
+    repo_root: &Path,
+    branch: &str,
+    plan_id: &str,
+    plan_name: &str,
+    task_id: &str,
+) -> Result<(PathBuf, String, String), ApiError> {
+    let tasks_dir = crate::persistence::plan_dir(repo_root, branch, plan_id, plan_name).join("tasks");
+
+    if !tasks_dir.exists() {
+        return Err(ApiError::NotFound("task not found".to_string()));
+    }
+
+    let entries = crate::persistence::list_dir(&tasks_dir)
+        .map_err(|e| ApiError::NotFound(format!("task not found: {e}")))?;
+
+    let prefix = format!("{}-", task_id);
+
+    for entry in entries {
+        if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
+            if let Some(name) = entry.file_name().to_str() {
+                if name.starts_with(&prefix) {
+                    let (parsed_id, parsed_name) = match crate::persistence::parse_slug(name) {
+                        (Some(id), Some(n)) => (id.to_string(), n.to_string()),
+                        _ => continue,
+                    };
+                    return Ok((entry.path(), parsed_id, parsed_name));
+                }
+            }
+        }
+    }
+
+    Err(ApiError::NotFound("task not found".to_string()))
 }
 
 #[cfg(test)]
