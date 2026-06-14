@@ -18,6 +18,7 @@ use crate::api::errors::ApiError;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
+use std::path::{Path, PathBuf};
 
 // ── Request ID Middleware ──────────────────────────────────────────────
 
@@ -296,12 +297,12 @@ pub fn validate_slug(name: &str) -> Result<(), ApiError> {
 /// Returns [`ApiError::NotFound`] if the plan cannot be located or
 /// its directory slug cannot be parsed.
 pub fn resolve_plan_path(
-    repo_root: &std::path::Path,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
-) -> std::result::Result<(std::path::PathBuf, String), ApiError> {
+) -> Result<(PathBuf, String), ApiError> {
     let plan_dir = crate::persistence::find_plan_by_id(repo_root, branch, plan_id)
-        .map_err(|_| ApiError::NotFound("plan not found".to_string()))?;
+        .map_err(|e| ApiError::NotFound(format!("plan not found: {e}")))?;
 
     let slug = plan_dir
         .file_name()
@@ -327,12 +328,12 @@ pub fn resolve_plan_path(
 /// Returns [`ApiError::NotFound`] if the task cannot be located or
 /// its directory slug cannot be parsed.
 pub fn resolve_task_path(
-    repo_root: &std::path::Path,
+    repo_root: &Path,
     branch: &str,
     plan_id: &str,
     plan_name: &str,
     task_id: &str,
-) -> std::result::Result<(std::path::PathBuf, String, String), ApiError> {
+) -> Result<(PathBuf, String, String), ApiError> {
     let tasks_dir = crate::persistence::plan_dir(repo_root, branch, plan_id, plan_name).join("tasks");
 
     if !tasks_dir.exists() {
@@ -340,12 +341,14 @@ pub fn resolve_task_path(
     }
 
     let entries = crate::persistence::list_dir(&tasks_dir)
-        .map_err(|_| ApiError::NotFound("task not found".to_string()))?;
+        .map_err(|e| ApiError::NotFound(format!("task not found: {e}")))?;
+
+    let prefix = format!("{}-", task_id);
 
     for entry in entries {
         if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
             if let Some(name) = entry.file_name().to_str() {
-                if name.starts_with(&format!("{}-", task_id)) {
+                if name.starts_with(&prefix) {
                     let (parsed_id, parsed_name) = match crate::persistence::parse_slug(name) {
                         (Some(id), Some(n)) => (id.to_string(), n.to_string()),
                         _ => continue,
