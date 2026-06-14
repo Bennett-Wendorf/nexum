@@ -1,0 +1,1433 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Nexum REST API",
+    "description": "REST API for the Nexum AI-powered development orchestration system. Provides CRUD operations for plans and tasks, status transitions, execution state inspection, agent claiming, and configuration access. All endpoints are versioned under `/api/v1/`.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "/api/v1",
+      "description": "API v1"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "healthCheck",
+        "summary": "Health check",
+        "description": "Returns a simple status response indicating the server is alive.",
+        "tags": ["Execution"],
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    }
+                  },
+                  "required": ["status"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plans": {
+      "get": {
+        "operationId": "listPlans",
+        "summary": "List all plans",
+        "description": "Returns all plans, optionally filtered by branch and/or status.",
+        "tags": ["Plans"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/QueryBranch"
+          },
+          {
+            "$ref": "#/components/parameters/QueryPlanStatus"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of plans",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Plan"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPlan",
+        "summary": "Create a new plan",
+        "description": "Creates a new plan with the given name, branch, and goal. Generates a unique plan ID automatically. Returns 201 Created on success.",
+        "tags": ["Plans"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Plan created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/plans/{branch}/{plan_id}": {
+      "get": {
+        "operationId": "getPlan",
+        "summary": "Get a specific plan",
+        "description": "Returns the details of a plan identified by branch and plan ID.",
+        "tags": ["Plans"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PathBranch"
+          },
+          {
+            "$ref": "#/components/parameters/PathPlanId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Plan details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updatePlan",
+        "summary": "Update a plan",
+        "description": "Partially updates a plan. Only fields provided in the request body are changed.",
+        "tags": ["Plans"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PathBranch"
+          },
+          {
+            "$ref": "#/components/parameters/PathPlanId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated plan",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deletePlan",
+        "summary": "Delete a plan",
+        "description": "Deletes a plan and all associated data (specs directory and state directory). Returns 204 No Content on success.",
+        "tags": ["Plans"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PathBranch"
+          },
+          {
+            "$ref": "#/components/parameters/PathPlanId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Plan deleted successfully"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/plans/{branch}/{plan_id}/status": {
+      "patch": {
+        "operationId": "transitionPlanStatus",
+        "summary": "Transition plan status",
+        "description": "Transitions a plan to a new status. The transition must be valid according to the plan status machine. Returns 422 if the transition is not permitted.",
+        "tags": ["Plans"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PathBranch"
+          },
+          {
+            "$ref": "#/components/parameters/PathPlanId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionPlanStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated plan with new status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/plans/{branch}/{plan_id}/tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "summary": "List tasks for a plan",
+        "description": "Returns all tasks for a plan, optionally filtered by status.",
+        "tags": ["Tasks"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PathBranch"
+          },
+          {
+            "$ref": "#/components/parameters/PathPlanId"
+          },
+          {
+            "$ref": "#/components/parameters/QueryTaskStatus"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Task"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTask",
+        "summary": "Create a new task",
+        "description": "Creates a new task within an existing plan. Generates a unique task ID automatically. Returns 201 Created on success.",
+        "tags": ["Tasks"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PathBranch"
+          },
+          {
+            "$ref": "#/components/parameters/PathPlanId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Task created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/plans/{branch}/{plan_id}/tasks/{task_id}": {
+      "get": {
+        "operationId": "getTask",
+        "summary": "Get a specific task",
+        "description": "Returns the details of a task including its runtime status.",
+        "tags": ["Tasks"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PathBranch"
+          },
+          {
+            "$ref": "#/components/parameters/PathPlanId"
+          },
+          {
+            "$ref": "#/components/parameters/PathTaskId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "put": {
+        "operationId": "updateTask",
+        "summary": "Update a task",
+        "description": "Partially updates a task. Only fields provided in the request body are changed.",
+        "tags": ["Tasks"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PathBranch"
+          },
+          {
+            "$ref": "#/components/parameters/PathPlanId"
+          },
+          {
+            "$ref": "#/components/parameters/PathTaskId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated task",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteTask",
+        "summary": "Delete a task",
+        "description": "Deletes a task and removes it from the plan's task list and execution state. Returns 204 No Content on success.",
+        "tags": ["Tasks"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PathBranch"
+          },
+          {
+            "$ref": "#/components/parameters/PathPlanId"
+          },
+          {
+            "$ref": "#/components/parameters/PathTaskId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Task deleted successfully"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/plans/{branch}/{plan_id}/tasks/{task_id}/status": {
+      "patch": {
+        "operationId": "transitionTaskStatus",
+        "summary": "Transition task status",
+        "description": "Transitions a task to a new status. The transition must be valid according to the task status machine. Returns 422 if the transition is not permitted.",
+        "tags": ["Tasks"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PathBranch"
+          },
+          {
+            "$ref": "#/components/parameters/PathPlanId"
+          },
+          {
+            "$ref": "#/components/parameters/PathTaskId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionTaskStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated task with new status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/plans/{branch}/{plan_id}/tasks/{task_id}/claim": {
+      "post": {
+        "operationId": "claimTask",
+        "summary": "Claim a task for execution",
+        "description": "An agent claims (leases) a queued task for execution. The task must be in 'queued' status. Creates an agent lease and transitions the task to 'running'. Returns 409 if a concurrency conflict occurs.",
+        "tags": ["Tasks"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PathBranch"
+          },
+          {
+            "$ref": "#/components/parameters/PathPlanId"
+          },
+          {
+            "$ref": "#/components/parameters/PathTaskId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task claimed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/plans/{branch}/{plan_id}/execution": {
+      "get": {
+        "operationId": "getExecutionState",
+        "summary": "Get execution state for a plan",
+        "description": "Returns the execution state snapshot for a plan, including all task IDs and their current statuses.",
+        "tags": ["Execution"],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PathBranch"
+          },
+          {
+            "$ref": "#/components/parameters/PathPlanId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Execution state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionStateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/running": {
+      "get": {
+        "operationId": "listRunningTasks",
+        "summary": "List all running tasks",
+        "description": "Returns all tasks currently in the 'running' state across all branches and plans, including agent lease information.",
+        "tags": ["Execution"],
+        "responses": {
+          "200": {
+            "description": "List of running tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunningTaskResponse"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/config": {
+      "get": {
+        "operationId": "getConfig",
+        "summary": "Get current server configuration",
+        "description": "Returns non-sensitive server configuration settings. API keys, OAuth tokens, and other secrets are excluded.",
+        "tags": ["Config"],
+        "responses": {
+          "200": {
+            "description": "Server configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/agents": {
+      "get": {
+        "operationId": "listAgents",
+        "summary": "List registered agents",
+        "description": "Returns all agent registrations from the configuration file.",
+        "tags": ["Config"],
+        "responses": {
+          "200": {
+            "description": "List of registered agents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentsResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "PathBranch": {
+        "name": "branch",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Git branch name. Must be non-empty, contain no '..' or leading/trailing '/', and only use alphanumeric characters, hyphens, underscores, or forward slashes."
+      },
+      "PathPlanId": {
+        "name": "plan_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Unique plan identifier (e.g., 'PLAN-001')."
+      },
+      "PathTaskId": {
+        "name": "task_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Unique task identifier (e.g., 'TASK-001')."
+      },
+      "QueryBranch": {
+        "name": "branch",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Filter plans by git branch name."
+      },
+      "QueryPlanStatus": {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": ["draft", "queued", "planning", "reviewing", "approved", "complete", "rejected"]
+        },
+        "description": "Filter plans by status."
+      },
+      "QueryTaskStatus": {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": ["backlog", "queued", "running", "reviewing", "waiting-manual-review", "merge-queue", "abandoned", "completed"]
+        },
+        "description": "Filter tasks by status."
+      }
+    },
+    "schemas": {
+      "ApiErrorResponse": {
+        "type": "object",
+        "required": ["error", "message", "status"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Short error type name (e.g., 'NotFound', 'Validation', 'Conflict').",
+            "enum": ["NotFound", "BadRequest", "Conflict", "Internal", "Unauthorized", "MethodNotAllowed", "Validation"]
+          },
+          "message": {
+            "type": "string",
+            "description": "Full human-readable error message."
+          },
+          "status": {
+            "type": "integer",
+            "format": "uint16",
+            "description": "HTTP status code."
+          }
+        }
+      },
+      "PlanResponse": {
+        "type": "object",
+        "required": ["id", "name", "status", "created", "branch", "goal", "scope", "background", "tasks"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique plan identifier (e.g., 'PLAN-001')."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable plan name."
+          },
+          "status": {
+            "type": "string",
+            "description": "Current plan status.",
+            "enum": ["draft", "queued", "planning", "reviewing", "approved", "complete", "rejected"]
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 timestamp when the plan was created."
+          },
+          "branch": {
+            "type": "string",
+            "description": "Git branch associated with this plan."
+          },
+          "goal": {
+            "type": "string",
+            "description": "High-level goal the plan aims to achieve."
+          },
+          "scope": {
+            "type": "string",
+            "description": "Description of the scope and boundaries of the work."
+          },
+          "background": {
+            "type": "string",
+            "description": "Background context explaining why this plan exists."
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskReferenceResponse"
+            },
+            "description": "Ordered list of task references belonging to this plan."
+          }
+        }
+      },
+      "TaskReferenceResponse": {
+        "type": "object",
+        "required": ["id", "name", "completed"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique task identifier."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable task name."
+          },
+          "completed": {
+            "type": "boolean",
+            "description": "Whether the task has been completed."
+          }
+        }
+      },
+      "CreatePlanRequest": {
+        "type": "object",
+        "required": ["name", "branch", "goal"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the plan. Must be non-empty."
+          },
+          "branch": {
+            "type": "string",
+            "description": "Git branch to associate with the plan. Must pass branch name validation."
+          },
+          "goal": {
+            "type": "string",
+            "description": "High-level goal the plan aims to achieve."
+          },
+          "scope": {
+            "type": "string",
+            "description": "Optional description of the scope and boundaries."
+          },
+          "background": {
+            "type": "string",
+            "description": "Optional background context."
+          }
+        }
+      },
+      "UpdatePlanRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "New name for the plan."
+          },
+          "goal": {
+            "type": "string",
+            "description": "New goal statement."
+          },
+          "scope": {
+            "type": "string",
+            "description": "New scope description."
+          },
+          "background": {
+            "type": "string",
+            "description": "New background context."
+          }
+        },
+        "description": "Only fields provided will be updated."
+      },
+      "TransitionPlanStatusRequest": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Target plan status.",
+            "enum": ["draft", "queued", "planning", "reviewing", "approved", "complete", "rejected"]
+          },
+          "by": {
+            "type": "string",
+            "description": "Optional identifier of the actor performing the transition."
+          }
+        }
+      },
+      "TaskResponse": {
+        "type": "object",
+        "required": ["id", "name", "parent_plan", "dependencies", "description", "acceptance_criteria", "files_to_modify", "background", "notes", "status"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique task identifier (e.g., 'TASK-001')."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable task name."
+          },
+          "parent_plan": {
+            "type": "string",
+            "description": "ID of the parent plan this task belongs to."
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "IDs of tasks that must complete before this one."
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description of the task."
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of acceptance criteria defining completion."
+          },
+          "files_to_modify": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "File paths this task is expected to modify."
+          },
+          "background": {
+            "type": "string",
+            "description": "Background context specific to this task."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Free-form notes."
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatusResponse"
+          }
+        }
+      },
+      "TaskStatusResponse": {
+        "type": "object",
+        "required": ["id", "status", "transitions", "attempts", "dependencies", "dependent_tasks"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "ID of the task this status belongs to."
+          },
+          "status": {
+            "type": "string",
+            "description": "Current task status.",
+            "enum": ["backlog", "queued", "running", "reviewing", "waiting-manual-review", "merge-queue", "abandoned", "completed"]
+          },
+          "agent": {
+            "$ref": "#/components/schemas/AgentLeaseResponse",
+            "nullable": true,
+            "description": "Agent currently executing this task, if any."
+          },
+          "transitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatusTransitionResponse"
+            },
+            "description": "History of status transitions."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "ISO-8601 timestamp when execution started."
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "ISO-8601 timestamp when execution completed."
+          },
+          "attempts": {
+            "type": "integer",
+            "format": "uint32",
+            "description": "Number of execution attempts."
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "IDs of tasks this task depends on."
+          },
+          "dependent_tasks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "IDs of tasks that depend on this one."
+          },
+          "heartbeat_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "ISO-8601 timestamp of the last heartbeat."
+          }
+        }
+      },
+      "AgentLeaseResponse": {
+        "type": "object",
+        "required": ["role", "pid", "leased_at"],
+        "properties": {
+          "role": {
+            "type": "string",
+            "description": "Role of the agent (e.g., 'coder', 'reviewer')."
+          },
+          "pid": {
+            "type": "integer",
+            "format": "uint32",
+            "description": "Process ID of the agent."
+          },
+          "leased_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 timestamp when the lease was acquired."
+          }
+        }
+      },
+      "StatusTransitionResponse": {
+        "type": "object",
+        "required": ["from", "to", "at", "by"],
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Previous status."
+          },
+          "to": {
+            "type": "string",
+            "description": "New status."
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO-8601 timestamp of the transition."
+          },
+          "by": {
+            "type": "string",
+            "description": "Identifier of the actor who performed the transition."
+          }
+        }
+      },
+      "CreateTaskRequest": {
+        "type": "object",
+        "required": ["name", "parent_plan", "dependencies", "description", "acceptance_criteria", "files_to_modify"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the task. Must be non-empty."
+          },
+          "parent_plan": {
+            "type": "string",
+            "description": "ID of the parent plan."
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "IDs of tasks that must complete before this one."
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description of the task."
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Acceptance criteria defining completion."
+          },
+          "files_to_modify": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "File paths this task will modify."
+          },
+          "background": {
+            "type": "string",
+            "description": "Optional background context."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional free-form notes."
+          }
+        }
+      },
+      "UpdateTaskRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "New name for the task."
+          },
+          "description": {
+            "type": "string",
+            "description": "New description."
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "New acceptance criteria."
+          },
+          "files_to_modify": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "New list of files to modify."
+          },
+          "background": {
+            "type": "string",
+            "description": "New background context."
+          },
+          "notes": {
+            "type": "string",
+            "description": "New notes."
+          }
+        },
+        "description": "Only fields provided will be updated."
+      },
+      "TransitionTaskStatusRequest": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Target task status.",
+            "enum": ["backlog", "queued", "running", "reviewing", "waiting-manual-review", "merge-queue", "abandoned", "completed"]
+          },
+          "by": {
+            "type": "string",
+            "description": "Optional identifier of the actor performing the transition."
+          }
+        }
+      },
+      "ClaimTaskRequest": {
+        "type": "object",
+        "required": ["agent_role", "agent_pid"],
+        "properties": {
+          "agent_role": {
+            "type": "string",
+            "description": "Role of the claiming agent (e.g., 'coder', 'reviewer')."
+          },
+          "agent_pid": {
+            "type": "integer",
+            "format": "uint32",
+            "description": "Process ID of the claiming agent."
+          }
+        }
+      },
+      "ExecutionStateResponse": {
+        "type": "object",
+        "required": ["plan_id", "branch", "tasks", "task_status_map"],
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "description": "ID of the plan."
+          },
+          "branch": {
+            "type": "string",
+            "description": "Git branch being used for execution."
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "IDs of all tasks in the plan."
+          },
+          "task_status_map": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "enum": ["backlog", "queued", "running", "reviewing", "waiting-manual-review", "merge-queue", "abandoned", "completed"]
+            },
+            "description": "Mapping from task ID to current status."
+          }
+        }
+      },
+      "RunningTaskResponse": {
+        "type": "object",
+        "required": ["task_id", "task_name", "plan_id", "branch"],
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "ID of the task."
+          },
+          "task_name": {
+            "type": "string",
+            "description": "Name of the task."
+          },
+          "plan_id": {
+            "type": "string",
+            "description": "ID of the parent plan."
+          },
+          "branch": {
+            "type": "string",
+            "description": "Git branch being used."
+          },
+          "agent": {
+            "$ref": "#/components/schemas/AgentLeaseResponse",
+            "nullable": true,
+            "description": "Agent currently executing the task, if any."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "ISO-8601 timestamp when execution started."
+          },
+          "heartbeat_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "ISO-8601 timestamp of the last heartbeat."
+          }
+        }
+      },
+      "ConfigResponse": {
+        "type": "object",
+        "required": ["server_host", "server_port", "max_parallel", "default_timeout_seconds", "log_level", "yolo_mode"],
+        "properties": {
+          "server_host": {
+            "type": "string",
+            "description": "Host the server binds to."
+          },
+          "server_port": {
+            "type": "integer",
+            "format": "uint16",
+            "description": "Port the server listens on."
+          },
+          "max_parallel": {
+            "type": "integer",
+            "format": "uint16",
+            "description": "Maximum number of tasks that may execute in parallel."
+          },
+          "default_timeout_seconds": {
+            "type": "integer",
+            "format": "uint64",
+            "description": "Default timeout in seconds for task execution."
+          },
+          "log_level": {
+            "type": "string",
+            "description": "Log level (e.g., 'info', 'debug', 'warn')."
+          },
+          "yolo_mode": {
+            "type": "boolean",
+            "description": "Whether yolo mode is enabled (skips safety checks)."
+          }
+        }
+      },
+      "AgentRegistrationResponse": {
+        "type": "object",
+        "required": ["name", "type", "spawn_command"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Human-readable name of the agent."
+          },
+          "type": {
+            "type": "string",
+            "description": "Type/role of the agent."
+          },
+          "spawn_command": {
+            "type": "string",
+            "description": "Command used to spawn the agent process."
+          },
+          "model": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional LLM model to use for the agent."
+          },
+          "tool_permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "Optional list of tool permissions."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "format": "uint64",
+            "nullable": true,
+            "description": "Optional per-agent timeout in seconds."
+          }
+        }
+      },
+      "AgentsResponse": {
+        "type": "object",
+        "required": ["agents"],
+        "properties": {
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentRegistrationResponse"
+            },
+            "description": "List of registered agents."
+          }
+        }
+      },
+      "ListResponse_Plan": {
+        "type": "object",
+        "required": ["items", "total"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "uint",
+            "description": "Total number of items."
+          }
+        }
+      },
+      "ListResponse_Task": {
+        "type": "object",
+        "required": ["items", "total"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "uint",
+            "description": "Total number of items."
+          }
+        }
+      }
+    },
+    "responses": {
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            },
+            "example": {
+              "error": "NotFound",
+              "message": "Not found: plan not found",
+              "status": 404
+            }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Malformed or invalid request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            },
+            "example": {
+              "error": "BadRequest",
+              "message": "Invalid request: malformed JSON",
+              "status": 400
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Concurrency conflict",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            },
+            "example": {
+              "error": "Conflict",
+              "message": "Conflict: file was modified by another process",
+              "status": 409
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Unexpected internal server error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            },
+            "example": {
+              "error": "Internal",
+              "message": "Internal error: IO operation failed",
+              "status": 500
+            }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "Request failed schema validation",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiErrorResponse"
+            },
+            "example": {
+              "error": "Validation",
+              "message": "Validation error: Invalid plan status transition: 'draft' -> 'complete'",
+              "status": 422
+            }
+          }
+        }
+      }
+    },
+    "tags": [
+      {
+        "name": "Plans",
+        "description": "Plan CRUD and status transitions"
+      },
+      {
+        "name": "Tasks",
+        "description": "Task CRUD, status transitions, and claiming"
+      },
+      {
+        "name": "Execution",
+        "description": "Execution state inspection and health checks"
+      },
+      {
+        "name": "Config",
+        "description": "Server configuration and agent listing"
+      }
+    ]
+  }
+}
