@@ -20,4 +20,4 @@ pub use loader::{
     config_path, create_default_config, load, validate, ConfigError, DEFAULT_CONFIG_TEMPLATE,
 };
 #[allow(unused_imports)]
-pub use schema::{AgentRegistration, ApiKeyEntry, Config, GlobalSettings, Preferences};
+pub use schema::{AgentRegistration, ApiKeyEntry, AuthenticationSettings, Config, GlobalSettings, Preferences};

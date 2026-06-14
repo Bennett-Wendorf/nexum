@@ -1,7 +1,7 @@
 //! REST API module for Nexum.
 //!
-//! This module defines the HTTP routes, request/response types, and error
-//! handling for the Nexum REST API.
+//! This module defines the HTTP routes, request/response types, error
+//! handling, and authentication middleware for the Nexum REST API.
 
 pub mod auth;
 pub mod config;
@@ -33,6 +33,8 @@ pub use types::*;
 /// - Task claim: POST /api/v1/plans/{branch}/{plan_id}/tasks/{task_id}/claim
 /// - Execution: GET /api/v1/plans/{branch}/{plan_id}/execution, GET /api/v1/running
 /// - Config: GET /api/v1/config, GET /api/v1/agents
+/// - Auth: GET /api/v1/auth/status (unauthenticated)
+/// - Authentication middleware guards write endpoints when enabled
 ///
 /// All routes use `/api/v1/` prefix for URL-based versioning.
 pub fn create_router(state: AppState) -> Router {
@@ -62,7 +64,8 @@ pub fn create_router(state: AppState) -> Router {
         // Auth endpoints
         .route("/api/v1/auth/status", get(auth::get_auth_status))
 
-        // Middleware
+        // Middleware layers (order matters: auth before request_id)
+        .layer(auth::auth_layer(state.clone()))
         .layer(axum::middleware::from_fn(middleware::request_id_middleware))
         .with_state(state)
 }
