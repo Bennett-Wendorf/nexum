@@ -29,6 +29,7 @@ use crate::api::types::*;
 pub async fn get_config(
     State(state): State<AppState>,
 ) -> Result<Json<ConfigResponse>, ApiError> {
+    let auth = &state.config.global.authentication;
     let response = ConfigResponse {
         server_host: state.config.global.server_host.clone(),
         server_port: state.config.global.server_port,
@@ -36,6 +37,9 @@ pub async fn get_config(
         default_timeout_seconds: state.config.global.default_timeout_seconds,
         log_level: state.config.global.log_level.clone(),
         yolo_mode: state.config.preferences.yolo_mode,
+        auth_enabled: auth.enabled,
+        auth_require_read: auth.authenticate_read,
+        auth_keys_count: auth.api_keys.len(),
     };
 
     Ok(Json(response))

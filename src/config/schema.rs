@@ -23,6 +23,48 @@ mod defaults {
     }
 }
 
+/// Authentication settings for the REST API.
+///
+/// Controls whether API key authentication is required and which keys
+/// are accepted. When disabled (default), all endpoints are publicly
+/// accessible — suitable for localhost-only MVP deployment.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AuthenticationSettings {
+    /// Whether authentication is enabled. Defaults to false for MVP.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Whether GET (read) endpoints also require authentication.
+    /// Defaults to false: writes require auth, reads do not.
+    #[serde(default)]
+    pub authenticate_read: bool,
+
+    /// Named API keys. Each key has a name (for logging/identification)
+    /// and a secret value. Empty list means no keys configured.
+    #[serde(default)]
+    pub api_keys: Vec<ApiKeyEntry>,
+}
+
+/// A single named API key entry.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ApiKeyEntry {
+    /// Human-readable name for this key (e.g., "cli", "slack-bot")
+    pub name: String,
+
+    /// The API key secret value
+    pub secret: String,
+}
+
+impl Default for AuthenticationSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            authenticate_read: false,
+            api_keys: Vec::new(),
+        }
+    }
+}
+
 /// Top-level configuration struct
 ///
 /// Represents the complete nexum configuration loaded from `~/.config/nexum/config.toml`.
@@ -102,6 +144,11 @@ pub struct GlobalSettings {
     /// Override for config directory (useful for testing)
     #[serde(default)]
     pub nexum_config_dir: Option<PathBuf>,
+
+    /// Authentication settings (API keys, enabled/disabled).
+    /// Defaults to disabled (no auth) for localhost MVP deployment.
+    #[serde(default)]
+    pub authentication: AuthenticationSettings,
 }
 
 impl Default for GlobalSettings {
@@ -113,6 +160,7 @@ impl Default for GlobalSettings {
             default_timeout_seconds: defaults::default_timeout_seconds(),
             log_level: defaults::log_level(),
             nexum_config_dir: None,
+            authentication: AuthenticationSettings::default(),
         }
     }
 }
