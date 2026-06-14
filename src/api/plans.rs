@@ -22,7 +22,6 @@ use axum::{
     Json,
 };
 use chrono::Utc;
-use std::path::PathBuf;
 
 use crate::api::errors::ApiError;
 use crate::api::middleware::{validate_branch_name, validate_status_transition};
@@ -130,18 +129,18 @@ fn resolve_plan_path(
     repo_root: &std::path::Path,
     branch: &str,
     plan_id: &str,
-) -> std::result::Result<(PathBuf, String), ApiError> {
+) -> std::result::Result<(std::path::PathBuf, String), ApiError> {
     let plan_dir = find_plan_by_id(repo_root, branch, plan_id)
-        .map_err(|_| ApiError::NotFound("plan not found"))?;
+        .map_err(|_| ApiError::NotFound("plan not found".to_string()))?;
 
     let slug = plan_dir
         .file_name()
         .and_then(|n| n.to_str())
-        .ok_or_else(|| ApiError::NotFound("plan not found"))?;
+        .ok_or_else(|| ApiError::NotFound("plan not found".to_string()))?;
 
     let plan_name = match parse_slug(slug) {
         (Some(_), Some(name)) => name.to_string(),
-        _ => return Err(ApiError::NotFound("plan not found")),
+        _ => return Err(ApiError::NotFound("plan not found".to_string())),
     };
 
     Ok((plan_dir, plan_name))
@@ -167,6 +166,7 @@ pub async fn list_plans(
         .map_err(ApiError::from)?;
 
     let mut items = Vec::new();
+    let mut total = 0usize;
 
     for branch in &branches {
         // Filter by branch if specified
@@ -177,7 +177,7 @@ pub async fn list_plans(
         }
 
         let plan_slugs = crate::persistence::list_plans(&state.repo_root, branch)
-            .unwrap_or_default();
+            .map_err(ApiError::from)?;
 
         for slug in plan_slugs {
             let (plan_id, plan_name) = match parse_slug(&slug) {
@@ -187,6 +187,9 @@ pub async fn list_plans(
 
             let plan = read_plan(&state.repo_root, branch, &plan_id, &plan_name)
                 .map_err(ApiError::from)?;
+
+            // Count total before filtering
+            total += 1;
 
             // Filter by status if specified
             if let Some(ref filter_status) = query.status {
@@ -198,8 +201,6 @@ pub async fn list_plans(
             items.push(plan_to_response(&plan));
         }
     }
-
-    let total = items.len();
     Ok(Json(ListResponse {
         items,
         total,
@@ -336,15 +337,15 @@ pub async fn delete_plan(
         resolve_plan_path(&state.repo_root, &branch, &plan_id)?;
 
     // Remove the specs directory (plan.md + tasks)
-    std::fs::remove_dir_all(&plan_dir)
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+    crate::persistence::remove_dir_all(&plan_dir)
+        .map_err(ApiError::from)?;
 
     // Remove the state directory (execution.json + logs)
     let plan_name_slug = slugify(&plan_name);
     let state_slug = format!("{}-{}", plan_id, plan_name_slug);
     let state_path = state_dir(&state.repo_root, &branch).join(&state_slug);
-    std::fs::remove_dir_all(&state_path)
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+    crate::persistence::remove_dir_all(&state_path)
+        .map_err(ApiError::from)?;
 
     Ok(StatusCode::NO_CONTENT)
 }

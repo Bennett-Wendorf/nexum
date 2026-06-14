@@ -23,7 +23,6 @@ use axum::{
     Json,
 };
 use chrono::Utc;
-use std::path::PathBuf;
 
 use crate::api::errors::ApiError;
 use crate::api::middleware::validate_status_transition;
@@ -88,15 +87,15 @@ fn resolve_task_path(
     plan_id: &str,
     plan_name: &str,
     task_id: &str,
-) -> std::result::Result<(PathBuf, String, String), ApiError> {
+) -> std::result::Result<(std::path::PathBuf, String, String), ApiError> {
     let tasks_dir = plan_dir(repo_root, branch, plan_id, plan_name).join("tasks");
 
     if !tasks_dir.exists() {
-        return Err(ApiError::NotFound("task not found"));
+        return Err(ApiError::NotFound("task not found".to_string()));
     }
 
     let entries = crate::persistence::list_dir(&tasks_dir)
-        .map_err(|_| ApiError::NotFound("task not found"))?;
+        .map_err(|_| ApiError::NotFound("task not found".to_string()))?;
 
     for entry in entries {
         if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
@@ -112,7 +111,7 @@ fn resolve_task_path(
         }
     }
 
-    Err(ApiError::NotFound("task not found"))
+    Err(ApiError::NotFound("task not found".to_string()))
 }
 
 /// Parse a kebab-case status string into a [`TaskStatusValue`] enum variant.
@@ -179,18 +178,18 @@ fn resolve_plan_path(
     repo_root: &std::path::Path,
     branch: &str,
     plan_id: &str,
-) -> std::result::Result<(PathBuf, String), ApiError> {
+) -> std::result::Result<(std::path::PathBuf, String), ApiError> {
     let plan_dir_path = find_plan_by_id(repo_root, branch, plan_id)
-        .map_err(|_| ApiError::NotFound("plan not found"))?;
+        .map_err(|_| ApiError::NotFound("plan not found".to_string()))?;
 
     let slug = plan_dir_path
         .file_name()
         .and_then(|n| n.to_str())
-        .ok_or_else(|| ApiError::NotFound("plan not found"))?;
+        .ok_or_else(|| ApiError::NotFound("plan not found".to_string()))?;
 
     let plan_name = match parse_slug(slug) {
         (Some(_), Some(name)) => name.to_string(),
-        _ => return Err(ApiError::NotFound("plan not found")),
+        _ => return Err(ApiError::NotFound("plan not found".to_string())),
     };
 
     Ok((plan_dir_path, plan_name))
@@ -218,9 +217,10 @@ pub async fn list_tasks(
 
     // List task directory slugs
     let task_slugs = crate::persistence::list_tasks(&state.repo_root, &branch, &plan_id, &plan_name)
-        .unwrap_or_default();
+        .map_err(ApiError::from)?;
 
     let mut items = Vec::new();
+    let mut total = 0usize;
 
     for slug in task_slugs {
         let (task_id, task_name) = match parse_slug(&slug) {
@@ -241,6 +241,9 @@ pub async fn list_tasks(
         )
         .map_err(ApiError::from)?;
 
+        // Count total before filtering
+        total += 1;
+
         // Filter by status if specified
         if let Some(ref filter_status) = query.status {
             if task_status_to_string(&status.status) != filter_status.as_str() {
@@ -250,8 +253,6 @@ pub async fn list_tasks(
 
         items.push(task_to_response(&task, &status));
     }
-
-    let total = items.len();
     Ok(Json(ListResponse {
         items,
         total,
@@ -481,8 +482,8 @@ pub async fn delete_task(
         resolve_task_path(&state.repo_root, &branch, &plan_id, &plan_name, &task_id)?;
 
     // Remove task directory
-    std::fs::remove_dir_all(&task_dir)
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+    crate::persistence::remove_dir_all(&task_dir)
+        .map_err(ApiError::from)?;
 
     // Update plan's task list: remove reference
     let mut plan = read_plan(&state.repo_root, &branch, &plan_id, &plan_name)
@@ -673,7 +674,7 @@ pub async fn claim_task(
     let mut final_status = updated_status;
     final_status.agent = Some(lease);
 
-    // Re-write status.json with the agent lease
+    // Re-write status.json with the agent lease (with TOCTOU verification)
     let status_path = task_status_path(
         &state.repo_root,
         &branch,
@@ -682,6 +683,16 @@ pub async fn claim_task(
         &resolved_task_id,
         &task_name,
     );
+
+    // Re-read status.json to verify it still has status=Running (TOCTOU check)
+    let re_read_status: TaskStatus = read_json(&status_path)
+        .map_err(ApiError::from)?;
+    if !matches!(re_read_status.status, TaskStatusValue::Running) {
+        return Err(ApiError::Conflict(
+            "task status was modified by another process".to_string(),
+        ));
+    }
+
     atomic_write_json(&status_path, &final_status).map_err(ApiError::from)?;
 
     // Update execution state task_status_map

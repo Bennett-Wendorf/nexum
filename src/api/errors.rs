@@ -48,7 +48,7 @@ use crate::persistence;
 pub enum ApiError {
     /// Resource not found — HTTP 404.
     #[error("Not found: {0}")]
-    NotFound(&'static str),
+    NotFound(String),
 
     /// Malformed or invalid request — HTTP 400.
     #[error("Invalid request: {0}")]
@@ -150,7 +150,7 @@ impl From<persistence::PersistenceError> for ApiError {
         match err {
             persistence::PersistenceError::FileNotFound(_)
             | persistence::PersistenceError::DirectoryNotFound(_) => {
-                ApiError::NotFound("resource not found")
+                ApiError::NotFound("resource not found".to_string())
             }
             persistence::PersistenceError::Io(_, _)
             | persistence::PersistenceError::IoBare(_)

@@ -19,12 +19,19 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use serde::Serialize;
 
 use crate::api::errors::ApiError;
 use crate::api::types::*;
 use crate::persistence::*;
 
 // ── Helper Functions ──────────────────────────────────────────────────
+
+/// Simple health check response.
+#[derive(Serialize)]
+struct HealthResponse {
+    status: String,
+}
 
 /// Convert a persistence-layer [`ExecutionState`] into an API
 /// [`ExecutionStateResponse`].
@@ -54,16 +61,16 @@ fn resolve_plan_path(
     plan_id: &str,
 ) -> std::result::Result<(std::path::PathBuf, String), ApiError> {
     let plan_dir = find_plan_by_id(repo_root, branch, plan_id)
-        .map_err(|_| ApiError::NotFound("plan not found"))?;
+        .map_err(|_| ApiError::NotFound("plan not found".to_string()))?;
 
     let slug = plan_dir
         .file_name()
         .and_then(|n| n.to_str())
-        .ok_or_else(|| ApiError::NotFound("plan not found"))?;
+        .ok_or_else(|| ApiError::NotFound("plan not found".to_string()))?;
 
     let plan_name = match parse_slug(slug) {
         (Some(_), Some(name)) => name.to_string(),
-        _ => return Err(ApiError::NotFound("plan not found")),
+        _ => return Err(ApiError::NotFound("plan not found".to_string())),
     };
 
     Ok((plan_dir, plan_name))
@@ -116,11 +123,11 @@ fn resolve_task_path(
     let tasks_dir = plan_dir(repo_root, branch, plan_id, plan_name).join("tasks");
 
     if !tasks_dir.exists() {
-        return Err(ApiError::NotFound("task not found"));
+        return Err(ApiError::NotFound("task not found".to_string()));
     }
 
     let entries = crate::persistence::list_dir(&tasks_dir)
-        .map_err(|_| ApiError::NotFound("task not found"))?;
+        .map_err(|_| ApiError::NotFound("task not found".to_string()))?;
 
     for entry in entries {
         if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
@@ -136,7 +143,7 @@ fn resolve_task_path(
         }
     }
 
-    Err(ApiError::NotFound("task not found"))
+    Err(ApiError::NotFound("task not found".to_string()))
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────
@@ -207,7 +214,14 @@ pub async fn list_running_tasks(
                 &plan_name,
             ) {
                 Ok(state) => state,
-                Err(_) => continue, // Skip plans without execution state
+                Err(e) => {
+                    tracing::warn!(
+                        plan_id = %plan_id,
+                        branch = %branch,
+                        "Skipping plan without execution state: {}", e
+                    );
+                    continue;
+                }
             };
 
             // Check each task in the status map for Running status
@@ -225,7 +239,15 @@ pub async fn list_running_tasks(
                     task_id,
                 ) {
                     Ok(result) => result,
-                    Err(_) => continue, // Skip tasks that can't be resolved
+                    Err(e) => {
+                        tracing::warn!(
+                            task_id = %task_id,
+                            plan_id = %plan_id,
+                            branch = %branch,
+                            "Skipping task that can't be resolved: {}", e
+                        );
+                        continue;
+                    }
                 };
 
                 // Read task status to get agent lease info
@@ -266,5 +288,5 @@ pub async fn list_running_tasks(
 /// status code. Used by load balancers and monitoring systems to verify
 /// that the server is alive and accepting requests.
 pub async fn health_check() -> impl IntoResponse {
-    Json(serde_json::json!({"status": "ok"}))
+    Json(HealthResponse { status: "ok".to_string() })
 }

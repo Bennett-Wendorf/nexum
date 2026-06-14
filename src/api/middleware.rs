@@ -72,22 +72,15 @@ pub fn request_id_layer() -> impl tower::Layer<axum::routing::MethodRouter> + Cl
 
 // ── Status Transition Maps ─────────────────────────────────────────────
 
-/// Allowed status transitions for plans during the pre-planning phase.
+/// Allowed status transitions for plans.
 ///
 /// Each tuple is `(current_status, &[allowed_next_statuses])`.
-/// Covers: `draft → queued → planning → reviewing → approved|queued`.
-const PLAN_TRANSITIONS_PRE: &[(&str, &[&str])] = &[
+/// Covers: `draft → queued → planning → reviewing → approved|queued → complete|rejected`.
+const PLAN_TRANSITIONS: &[(&str, &[&str])] = &[
     ("draft", &["queued"]),
     ("queued", &["planning"]),
     ("planning", &["reviewing"]),
     ("reviewing", &["approved", "queued"]),
-];
-
-/// Allowed status transitions for plans during the post-planning phase.
-///
-/// Covers: `approved → complete|rejected`. Both `complete` and
-/// `rejected` are terminal states with no outgoing transitions.
-const PLAN_TRANSITIONS_POST: &[(&str, &[&str])] = &[
     ("approved", &["complete", "rejected"]),
 ];
 
@@ -182,9 +175,9 @@ pub fn validate_status_transition(
                 )));
             }
 
-            // Consult both pre- and post-planning transition maps
-            let mut all_transitions = PLAN_TRANSITIONS_PRE.iter().chain(PLAN_TRANSITIONS_POST.iter());
-            let allowed = all_transitions
+            // Consult plan transition map
+            let allowed = PLAN_TRANSITIONS
+                .iter()
                 .find(|&&(from, _)| from == current)
                 .map(|&(_, to)| to);
 
