@@ -20,7 +20,7 @@ use axum::{
 };
 
 pub use errors::{ApiError, ApiErrorResponse};
-pub use middleware::{request_id_layer, validate_branch_name, validate_plan_status, validate_slug, validate_status_transition, validate_task_status};
+pub use middleware::{request_id_layer, resolve_plan_path, resolve_task_path, validate_branch_name, validate_plan_status, validate_slug, validate_status_transition, validate_task_status};
 pub use types::*;
 
 /// Construct the API router with all routes and middleware.
