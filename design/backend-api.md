@@ -104,9 +104,42 @@ Event types:
 
 ## Authentication
 
-MVP: localhost-only, no auth required.
+Nexum supports optional API key authentication. When enabled, write
+operations (POST, PUT, PATCH, DELETE) require a valid API key. Read
+operations (GET) are open by default but can be protected via config.
 
-Future: API key or token-based auth for remote access. Auth requirements are documented per-endpoint and enforced consistently.
+### Configuration
+
+In `~/.config/nexum/config.toml`:
+
+```toml
+[global.authentication]
+enabled = true
+authenticate_read = false
+api_keys = [
+  { name = "cli", secret = "your-api-key-here" },
+  { name = "slack-bot", secret = "another-api-key" },
+]
+```
+
+### Usage
+
+Include the API key in the `Authorization` header:
+
+```
+Authorization: Bearer your-api-key-here
+```
+
+### Endpoints
+
+- `GET /api/v1/auth/status` — Check auth requirements (unauthenticated)
+- All write endpoints — Require auth when `enabled=true`
+- All read endpoints — Require auth when `enabled=true` AND `authenticate_read=true`
+
+### Default (MVP)
+
+Authentication is disabled by default. All endpoints are publicly accessible
+on localhost. Enable authentication for remote or production deployments.
 
 ## Versioning
 
