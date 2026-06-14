@@ -19,11 +19,8 @@ use axum::{
     Router,
 };
 
-#[allow(unused_imports)]
 pub use errors::{ApiError, ApiErrorResponse};
-#[allow(unused_imports)]
 pub use middleware::{request_id_layer, validate_branch_name, validate_plan_status, validate_slug, validate_status_transition, validate_task_status};
-#[allow(unused_imports)]
 pub use types::*;
 
 /// Construct the API router with all routes and middleware.
