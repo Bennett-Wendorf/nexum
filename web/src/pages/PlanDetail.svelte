@@ -10,11 +10,11 @@
   
   let { branch, planId }: { branch: string; planId: string } = $props();
   
-  let loading = false;
+  let loading = $state(false);
   let error = $state<string | null>(null);
   
-  let plan: Plan | null = null;
-  let tasks: Task[] = [];
+  let plan = $state<Plan | null>(null);
+  let tasks = $state<Task[]>([]);
   
   onMount(async () => {
     loading = true;
