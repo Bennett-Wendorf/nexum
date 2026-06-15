@@ -31,6 +31,10 @@ use crate::config;
 // ── Auth Types ───────────────────────────────────────────────────────
 
 /// Response for GET /api/v1/auth/status
+///
+/// Returns authentication configuration without exposing sensitive details.
+/// API key names are intentionally omitted to prevent information leakage.
+/// Use `keys_count` to determine the number of configured keys.
 #[derive(Serialize, Debug, Clone)]
 pub struct AuthStatusResponse {
     /// Whether authentication is enabled
@@ -39,8 +43,6 @@ pub struct AuthStatusResponse {
     pub authenticate_read: bool,
     /// Number of configured API keys
     pub keys_count: usize,
-    /// List of key names (NOT secrets) for client identification
-    pub key_names: Vec<String>,
 }
 
 // ── Key Validation ───────────────────────────────────────────────────
@@ -193,7 +195,6 @@ pub async fn get_auth_status(
         enabled: auth.enabled,
         authenticate_read: auth.authenticate_read,
         keys_count: auth.api_keys.len(),
-        key_names: auth.api_keys.iter().map(|k| k.name.clone()).collect(),
     })
 }
 

@@ -309,6 +309,10 @@ The team-lead agent will orchestrate execution using these team members:
     **Auth status response type**:
     ```rust
     /// Response for GET /api/v1/auth/status
+    ///
+    /// Returns authentication configuration without exposing sensitive details.
+    /// API key names are intentionally omitted to prevent information leakage.
+    /// Use `keys_count` to determine the number of configured keys.
     #[derive(Serialize, Debug, Clone)]
     pub struct AuthStatusResponse {
         /// Whether authentication is enabled
@@ -317,8 +321,6 @@ The team-lead agent will orchestrate execution using these team members:
         pub authenticate_read: bool,
         /// Number of configured API keys
         pub keys_count: usize,
-        /// List of key names (NOT secrets) for client identification
-        pub key_names: Vec<String>,
     }
     ```
     
@@ -336,7 +338,6 @@ The team-lead agent will orchestrate execution using these team members:
             enabled: auth.enabled,
             authenticate_read: auth.authenticate_read,
             keys_count: auth.api_keys.len(),
-            key_names: auth.api_keys.iter().map(|k| k.name.clone()).collect(),
         })
     }
     ```
@@ -352,7 +353,7 @@ The team-lead agent will orchestrate execution using these team members:
     3. Auth enabled, write method → validate key
     4. Auth enabled, GET, authenticate_read=true → validate key
   - `auth_middleware` returns `ApiError::Unauthorized` for: missing header, bad format, invalid key
-  - `get_auth_status` returns auth configuration without exposing secrets
+  - `get_auth_status` returns auth configuration without exposing secrets or key names
   - `AuthStatusResponse` serializes correctly with serde
   - `Authorization` header parsing handles `Bearer <key>` format
   - Logging includes key name, method, and URI on successful auth
@@ -664,3 +665,4 @@ The team-lead agent will orchestrate execution using these team members:
 - **Auth status endpoint**: Intentionally unauthenticated so clients can discover auth requirements before making authenticated requests. This is a standard pattern for API discovery.
 - **Middleware order**: Auth middleware runs before request ID middleware. This ensures authenticated requests get a request ID, and unauthenticated 401 responses also get a request ID.
 - **Logging**: Successful authentication is logged at INFO level with key name, method, and URI. Failed authentication is logged at WARN level. Both exclude the actual key secret.
+- **Security fix (007.4)**: The `key_names` field was removed from `AuthStatusResponse` to prevent information leakage. API key names are considered identifying information that could help attackers target specific key identities. The `keys_count` field remains as it provides useful awareness without revealing identities.

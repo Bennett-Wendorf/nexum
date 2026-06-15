@@ -1096,7 +1096,17 @@ async fn test_auth_enabled_auth_status_no_auth() {
     assert_eq!(body["enabled"], true);
     assert_eq!(body["authenticate_read"], false);
     assert_eq!(body["keys_count"], 1);
-    assert_eq!(body["key_names"][0], "test-cli");
+}
+
+/// Verify auth status response does not expose API key names.
+/// Regression guard: verifies key_names is never serialized by AuthStatusResponse.
+#[tokio::test]
+async fn test_auth_status_no_key_names() {
+    let (app, _dir) = test_app_with_auth();
+    let (status, body, _) = get(&app, "/api/v1/auth/status").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.get("key_names").is_none(), "Auth status should not expose key_names");
+    assert!(body.get("keys_count").is_some(), "Auth status should include keys_count");
 }
 
 /// Verify that 401 responses include an error field with a descriptive message.
@@ -1276,4 +1286,111 @@ async fn test_auth_www_authenticate_header() {
     let www_auth = res.headers().get(axum::http::header::WWW_AUTHENTICATE);
     assert!(www_auth.is_some());
     assert_eq!(www_auth.unwrap().to_str().unwrap(), "Bearer");
+}
+
+// ==========================================================================
+// OpenAPI Spec Validation Tests
+// ==========================================================================
+
+/// Helper: load and parse the OpenAPI spec file.
+fn load_openapi_spec() -> serde_json::Value {
+    let spec_path = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/api/openapi.json");
+    let content = std::fs::read_to_string(spec_path).expect("Failed to read openapi.json");
+    serde_json::from_str(&content).expect("openapi.json should be valid JSON")
+}
+
+/// Verify that docs/api/openapi.json is valid JSON.
+#[test]
+fn test_openapi_json_valid() {
+    let spec = load_openapi_spec();
+    assert_eq!(spec["openapi"], "3.1.0", "OpenAPI version should be 3.1.0");
+}
+
+/// Verify that securitySchemes.bearerAuth exists in the spec.
+#[test]
+fn test_openapi_security_schemes() {
+    let spec = load_openapi_spec();
+    let schemes = &spec["components"]["securitySchemes"];
+    assert!(schemes.is_object(), "securitySchemes should be an object");
+    assert!(schemes["bearerAuth"].is_object(), "bearerAuth scheme should exist");
+    assert_eq!(schemes["bearerAuth"]["type"], "http");
+    assert_eq!(schemes["bearerAuth"]["scheme"], "bearer");
+}
+
+/// Verify that /auth/status path exists in the spec.
+#[test]
+fn test_openapi_auth_status_path() {
+    let spec = load_openapi_spec();
+    let auth_path = &spec["paths"]["/auth/status"]["get"];
+    assert!(auth_path.is_object(), "/auth/status GET path should exist");
+    assert_eq!(auth_path["operationId"], "getAuthStatus");
+    assert!(auth_path["tags"].as_array().unwrap().iter().any(|t| t == "Auth"));
+    assert_eq!(auth_path["responses"]["200"]["content"]["application/json"]["schema"]["$ref"], "#/components/schemas/AuthStatusResponse");
+    // Security: verify key_names is not in the AuthStatusResponse schema
+    assert!(spec["components"]["schemas"]["AuthStatusResponse"]["properties"].get("key_names").is_none(),
+        "AuthStatusResponse schema should not expose key_names");
+}
+
+/// Verify that all write endpoints have security requirements.
+#[test]
+fn test_openapi_write_endpoints_have_security() {
+    let spec = load_openapi_spec();
+    let write_operations = [
+        ("POST /plans", &spec["paths"]["/plans"]["post"]),
+        ("PUT /plans/{branch}/{plan_id}", &spec["paths"]["/plans/{branch}/{plan_id}"]["put"]),
+        ("DELETE /plans/{branch}/{plan_id}", &spec["paths"]["/plans/{branch}/{plan_id}"]["delete"]),
+        ("PATCH /plans/{branch}/{plan_id}/status", &spec["paths"]["/plans/{branch}/{plan_id}/status"]["patch"]),
+        ("POST /plans/{branch}/{plan_id}/tasks", &spec["paths"]["/plans/{branch}/{plan_id}/tasks"]["post"]),
+        ("PUT /plans/{branch}/{plan_id}/tasks/{task_id}", &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}"]["put"]),
+        ("DELETE /plans/{branch}/{plan_id}/tasks/{task_id}", &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}"]["delete"]),
+        ("PATCH /plans/{branch}/{plan_id}/tasks/{task_id}/status", &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}/status"]["patch"]),
+        ("POST /plans/{branch}/{plan_id}/tasks/{task_id}/claim", &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}/claim"]["post"]),
+    ];
+    for (name, op) in &write_operations {
+        let security = op["security"].as_array()
+            .expect(&format!("{} should have security array", name));
+        assert!(!security.is_empty(), "{} should have security requirements", name);
+        assert!(security[0].get("bearerAuth").is_some(), "{} should reference bearerAuth", name);
+        // Also verify 401 response exists
+        assert!(op["responses"]["401"].is_object(), "{} should have 401 response", name);
+    }
+}
+
+/// Verify that GET endpoints do not have security requirements (default: authenticate_read=false).
+#[test]
+fn test_openapi_get_endpoints_no_security() {
+    let spec = load_openapi_spec();
+    let get_operations = [
+        ("GET /health", &spec["paths"]["/health"]["get"]),
+        ("GET /plans", &spec["paths"]["/plans"]["get"]),
+        ("GET /plans/{branch}/{plan_id}", &spec["paths"]["/plans/{branch}/{plan_id}"]["get"]),
+        ("GET /plans/{branch}/{plan_id}/tasks", &spec["paths"]["/plans/{branch}/{plan_id}/tasks"]["get"]),
+        ("GET /plans/{branch}/{plan_id}/tasks/{task_id}", &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}"]["get"]),
+        ("GET /plans/{branch}/{plan_id}/execution", &spec["paths"]["/plans/{branch}/{plan_id}/execution"]["get"]),
+        ("GET /running", &spec["paths"]["/running"]["get"]),
+        ("GET /config", &spec["paths"]["/config"]["get"]),
+        ("GET /agents", &spec["paths"]["/agents"]["get"]),
+        ("GET /auth/status", &spec["paths"]["/auth/status"]["get"]),
+    ];
+    for (name, op) in &get_operations {
+        assert!(op.get("security").is_none(), "{} should NOT have security requirements", name);
+    }
+}
+
+/// Verify that the Auth tag exists in the spec.
+#[test]
+fn test_openapi_auth_tag() {
+    let spec = load_openapi_spec();
+    let tags = spec["components"]["tags"].as_array().expect("tags should be an array");
+    let has_auth_tag = tags.iter().any(|t| t["name"] == "Auth");
+    assert!(has_auth_tag, "Auth tag should exist in the spec");
+}
+
+/// Verify that the Unauthorized response exists in the spec.
+#[test]
+fn test_openapi_unauthorized_response() {
+    let spec = load_openapi_spec();
+    let unauthorized = &spec["components"]["responses"]["Unauthorized"];
+    assert!(unauthorized.is_object(), "Unauthorized response should exist");
+    assert_eq!(unauthorized["description"], "Authentication required or invalid credentials");
 }

@@ -33,7 +33,7 @@ Update the OpenAPI spec with the following changes:
 
 3. **Add `/auth/status` path**: Define `GET /auth/status` under the `paths` section with the `Auth` tag, returning `AuthStatusResponse` schema.
 
-4. **Add `AuthStatusResponse` schema**: Define the response schema with fields `enabled`, `authenticate_read`, `keys_count`, and `key_names`.
+4. **Add `AuthStatusResponse` schema**: Define the response schema with fields `enabled`, `authenticate_read`, and `keys_count`. Key names are intentionally omitted for security.
 
 5. **Add `Auth` tag**: Include the `Auth` tag in the `tags` array.
 
@@ -118,7 +118,7 @@ The team-lead agent will orchestrate execution using these team members:
     ```json
     "AuthStatusResponse": {
       "type": "object",
-      "required": ["enabled", "authenticate_read", "keys_count", "key_names"],
+      "required": ["enabled", "authenticate_read", "keys_count"],
       "properties": {
         "enabled": {
           "type": "boolean",
@@ -130,22 +130,15 @@ The team-lead agent will orchestrate execution using these team members:
         },
         "keys_count": {
           "type": "integer",
-          "format": "uint",
-          "description": "Number of configured API keys."
-        },
-        "key_names": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "List of API key names (secrets are never exposed)."
+          "format": "int32",
+          "description": "Number of configured API keys. Key names are not exposed for security."
         }
       }
     }
     ```
 - **Acceptance Criteria**:
   - `AuthStatusResponse` schema exists under `components/schemas`
-  - All four required fields are present: `enabled`, `authenticate_read`, `keys_count`, `key_names`
+  - All three required fields are present: `enabled`, `authenticate_read`, `keys_count`. Key names are intentionally omitted.
   - Types match the Rust implementation in plan 007.2
   - JSON remains valid
 
