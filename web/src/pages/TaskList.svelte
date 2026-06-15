@@ -11,10 +11,10 @@
   
   let { branch, planId }: { branch: string; planId: string } = $props();
   
-  let plan: Plan | null = null;
-  let tasks: Task[] = [];
-  
-  let loading = false;
+ let plan = $state<Plan | null>(null);
+  let tasks = $state<Task[]>([]);
+
+  let loading = $state(false);
   let error = $state<string | null>(null);
   const savedViewMode = localStorage.getItem('nexum-viewMode');
   let viewMode = $state<'kanban' | 'list'>(
