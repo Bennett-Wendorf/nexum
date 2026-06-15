@@ -7,8 +7,8 @@
   
   const ACTIVE_PLAN_STATUSES = ['approved', 'planning', 'reviewing', 'queued'] as const;
 
-  let planList: Plan[] = [];
-  let loading = false;
+  let planList = $state<Plan[]>([]);
+  let loading = $state(false);
   let error = $state<string | null>(null);
   
   onMount(async () => {
