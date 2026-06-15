@@ -12,6 +12,8 @@ use tower::ServiceExt;
 
 use crate::api::{create_router, AppState};
 use crate::config;
+use crate::config::AuthenticationSettings;
+use crate::config::ApiKeyEntry;
 
 // ── Test Setup ──────────────────────────────────────────────────────────────
 
@@ -42,6 +44,78 @@ fn test_app() -> (Router, TempDir) {
     };
 
     (create_router(state), temp_dir)
+}
+
+/// Build a test app with authentication enabled.
+fn test_app_with_auth() -> (Router, TempDir) {
+    let temp_dir = TempDir::with_prefix("nexum-test-auth").unwrap();
+    let specs_dir = temp_dir.path().join(".agent/specs");
+    let state_dir = temp_dir.path().join(".agent/state");
+    std::fs::create_dir_all(&specs_dir).unwrap();
+    std::fs::create_dir_all(&state_dir).unwrap();
+
+    let config = config::Config {
+        agents: Vec::new(),
+        global: config::GlobalSettings {
+            server_host: "127.0.0.1".to_string(),
+            server_port: 3000,
+            max_parallel: 4,
+            default_timeout_seconds: 3600,
+            log_level: "info".to_string(),
+            nexum_config_dir: None,
+            authentication: AuthenticationSettings {
+                enabled: true,
+                authenticate_read: false,
+                api_keys: vec![
+                    ApiKeyEntry { name: "test-cli".to_string(), secret: "test-key-123".to_string() },
+                ],
+            },
+        },
+        preferences: config::Preferences::default(),
+    };
+
+    let state = AppState { repo_root: temp_dir.path().to_path_buf(), config };
+    (create_router(state), temp_dir)
+}
+
+/// Helper: send a GET request with an Authorization header.
+async fn get_authed(app: &Router, uri: &str, api_key: &str) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
+    let req = Request::builder()
+        .uri(uri)
+        .header(http::header::AUTHORIZATION, format!("Bearer {}", api_key))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let status = res.status();
+    let headers = res.headers().clone();
+    let body_bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let body: serde_json::Value = if body_bytes.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_slice(&body_bytes).unwrap_or_else(|_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}))
+    };
+    (status, body, headers)
+}
+
+/// Helper: send a POST request with an Authorization header.
+async fn post_authed(app: &Router, uri: &str, api_key: &str, body: &serde_json::Value) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
+    let req = Request::builder()
+        .uri(uri)
+        .method("POST")
+        .header(http::header::AUTHORIZATION, format!("Bearer {}", api_key))
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(body).unwrap()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    let status = res.status();
+    let headers = res.headers().clone();
+    let body_bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let body: serde_json::Value = if body_bytes.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_slice(&body_bytes).unwrap_or_else(|_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}))
+    };
+    (status, body, headers)
 }
 
 /// Helper: send a GET request and return the response status code, JSON body,
@@ -867,4 +941,339 @@ async fn test_create_plan_with_minimal_fields() {
     assert_eq!(body["name"], "minimal-plan");
     assert_eq!(body["scope"], ""); // defaults to empty string
     assert_eq!(body["background"], ""); // defaults to empty string
+}
+
+// ==========================================================================
+// Authentication Tests
+// ==========================================================================
+
+/// Verify that with auth disabled (default), all endpoints are accessible without auth header.
+#[tokio::test]
+async fn test_auth_disabled_all_endpoints_open() {
+    let (app, _dir) = test_app();
+    // Health check should work
+    let (status, _, _) = get(&app, "/api/v1/health").await;
+    assert_eq!(status, StatusCode::OK);
+    // Config should work
+    let (status, _, _) = get(&app, "/api/v1/config").await;
+    assert_eq!(status, StatusCode::OK);
+    // Plans should work
+    let (status, _, _) = get(&app, "/api/v1/plans").await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+/// Verify that auth status endpoint reports enabled: false when auth is disabled.
+#[tokio::test]
+async fn test_auth_disabled_get_auth_status() {
+    let (app, _dir) = test_app();
+    let (status, body, _) = get(&app, "/api/v1/auth/status").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["enabled"], false);
+    assert_eq!(body["authenticate_read"], false);
+    assert_eq!(body["keys_count"], 0);
+}
+
+/// Verify that with auth enabled, GET endpoints work without auth (authenticate_read=false).
+#[tokio::test]
+async fn test_auth_enabled_get_allowed_without_auth() {
+    let (app, _dir) = test_app_with_auth();
+    let (status, _, _) = get(&app, "/api/v1/health").await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = get(&app, "/api/v1/plans").await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+/// Verify that POST returns 401 without auth header when auth is enabled.
+#[tokio::test]
+async fn test_auth_enabled_post_requires_auth() {
+    let (app, _dir) = test_app_with_auth();
+    let (status, body, _) = post_json(&app, "/api/v1/plans", &json!({
+        "name": "test",
+        "branch": "main",
+        "goal": "Test",
+    })).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(body["error"].is_string());
+}
+
+/// Verify that POST returns 401 with non-Bearer format.
+#[tokio::test]
+async fn test_auth_enabled_post_requires_bearer_format() {
+    let (app, _dir) = test_app_with_auth();
+    let req = Request::builder()
+        .uri("/api/v1/plans")
+        .method("POST")
+        .header(http::header::AUTHORIZATION, "Basic dXNlcjpwYXNz")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Verify that POST returns 401 with wrong key.
+#[tokio::test]
+async fn test_auth_enabled_post_invalid_key() {
+    let (app, _dir) = test_app_with_auth();
+    let (status, body, _) = post_authed(&app, "/api/v1/plans", "wrong-key", &json!({
+        "name": "test",
+        "branch": "main",
+        "goal": "Test",
+    })).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(body["error"].is_string());
+}
+
+/// Verify that POST succeeds with correct key.
+#[tokio::test]
+async fn test_auth_enabled_post_valid_key() {
+    let (app, _dir) = test_app_with_auth();
+    let (status, body, _) = post_authed(&app, "/api/v1/plans", "test-key-123", &json!({
+        "name": "auth-test-plan",
+        "branch": "main",
+        "goal": "Test goal",
+    })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(body["name"], "auth-test-plan");
+}
+
+/// Verify that PUT returns 401 without auth.
+#[tokio::test]
+async fn test_auth_enabled_put_requires_auth() {
+    let (app, _dir) = test_app_with_auth();
+    let req = Request::builder()
+        .uri("/api/v1/plans/main/PLAN-999")
+        .method("PUT")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({"name": "updated"})).unwrap()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Verify that PATCH returns 401 without auth.
+#[tokio::test]
+async fn test_auth_enabled_patch_requires_auth() {
+    let (app, _dir) = test_app_with_auth();
+    let req = Request::builder()
+        .uri("/api/v1/plans/main/PLAN-999/status")
+        .method("PATCH")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({"status": "queued"})).unwrap()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Verify that DELETE returns 401 without auth.
+#[tokio::test]
+async fn test_auth_enabled_delete_requires_auth() {
+    let (app, _dir) = test_app_with_auth();
+    let req = Request::builder()
+        .uri("/api/v1/plans/main/PLAN-999")
+        .method("DELETE")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Verify that health check remains accessible without auth.
+#[tokio::test]
+async fn test_auth_enabled_health_check_no_auth() {
+    let (app, _dir) = test_app_with_auth();
+    let (status, body, _) = get(&app, "/api/v1/health").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "ok");
+}
+
+/// Verify that auth status endpoint is accessible without auth.
+#[tokio::test]
+async fn test_auth_enabled_auth_status_no_auth() {
+    let (app, _dir) = test_app_with_auth();
+    let (status, body, _) = get(&app, "/api/v1/auth/status").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["enabled"], true);
+    assert_eq!(body["authenticate_read"], false);
+    assert_eq!(body["keys_count"], 1);
+    assert_eq!(body["key_names"][0], "test-cli");
+}
+
+/// Verify that 401 responses include an error field with a descriptive message.
+#[tokio::test]
+async fn test_auth_enabled_error_response_format() {
+    let (app, _dir) = test_app_with_auth();
+    let (status, body, _) = post_json(&app, "/api/v1/plans", &json!({
+        "name": "test",
+        "branch": "main",
+        "goal": "Test",
+    })).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(body["error"].is_string());
+}
+
+/// Build a test app with read authentication enabled.
+fn test_app_with_read_auth() -> (Router, TempDir) {
+    let temp_dir = TempDir::with_prefix("nexum-test-read-auth").unwrap();
+    let specs_dir = temp_dir.path().join(".agent/specs");
+    let state_dir = temp_dir.path().join(".agent/state");
+    std::fs::create_dir_all(&specs_dir).unwrap();
+    std::fs::create_dir_all(&state_dir).unwrap();
+
+    let config = config::Config {
+        agents: Vec::new(),
+        global: config::GlobalSettings {
+            server_host: "127.0.0.1".to_string(),
+            server_port: 3000,
+            max_parallel: 4,
+            default_timeout_seconds: 3600,
+            log_level: "info".to_string(),
+            nexum_config_dir: None,
+            authentication: AuthenticationSettings {
+                enabled: true,
+                authenticate_read: true,
+                api_keys: vec![
+                    ApiKeyEntry { name: "test-cli".to_string(), secret: "test-key-123".to_string() },
+                ],
+            },
+        },
+        preferences: config::Preferences::default(),
+    };
+
+    let state = AppState { repo_root: temp_dir.path().to_path_buf(), config };
+    (create_router(state), temp_dir)
+}
+
+/// Verify that with authenticate_read=true, GET returns 401 without auth.
+#[tokio::test]
+async fn test_auth_read_protected_get_requires_auth() {
+    let (app, _dir) = test_app_with_read_auth();
+    let (status, body, _) = get(&app, "/api/v1/plans").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(body["error"].is_string());
+}
+
+/// Verify that with authenticate_read=true, GET succeeds with valid key.
+#[tokio::test]
+async fn test_auth_read_protected_get_with_auth() {
+    let (app, _dir) = test_app_with_read_auth();
+    let (status, body, _) = get_authed(&app, "/api/v1/plans", "test-key-123").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["total"], 0);
+}
+
+/// Verify that config endpoint includes auth fields.
+#[tokio::test]
+async fn test_config_includes_auth_fields() {
+    let (app, _dir) = test_app_with_auth();
+    let (status, body, _) = get_authed(&app, "/api/v1/config", "test-key-123").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["auth_enabled"], true);
+    assert_eq!(body["auth_require_read"], false);
+    assert_eq!(body["auth_keys_count"], 1);
+}
+
+/// Verify that creating a plan with auth works through the full lifecycle.
+#[tokio::test]
+async fn test_auth_enabled_plan_lifecycle() {
+    let (app, _dir) = test_app_with_auth();
+
+    // Create plan with auth
+    let (status, body, _) = post_authed(&app, "/api/v1/plans", "test-key-123", &json!({
+        "name": "auth-lifecycle-plan",
+        "branch": "main",
+        "goal": "Test lifecycle with auth",
+    })).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let plan_id = body["id"].as_str().unwrap();
+
+    // GET plan without auth should work (authenticate_read=false)
+    let (status, body, _) = get(&app, &format!("/api/v1/plans/main/{}", plan_id)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["name"], "auth-lifecycle-plan");
+
+    // Update plan requires auth
+    let put_req = Request::builder()
+        .uri(&format!("/api/v1/plans/main/{}", plan_id))
+        .method("PUT")
+        .header(http::header::AUTHORIZATION, "Bearer test-key-123")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({"name": "updated-auth-plan"})).unwrap()))
+        .unwrap();
+    let res = app.clone().oneshot(put_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+
+    // Delete plan requires auth
+    let del_req = Request::builder()
+        .uri(&format!("/api/v1/plans/main/{}", plan_id))
+        .method("DELETE")
+        .header(http::header::AUTHORIZATION, "Bearer test-key-123")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(del_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+}
+
+/// Verify that Bearer token with extra whitespace is handled.
+#[tokio::test]
+async fn test_auth_bearer_extra_whitespace() {
+    let (app, _dir) = test_app_with_auth();
+    // Extra space between Bearer and key — split_whitespace handles this
+    let req = Request::builder()
+        .uri("/api/v1/plans")
+        .method("POST")
+        .header(http::header::AUTHORIZATION, "Bearer  test-key-123")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    // split_whitespace collapses multiple spaces, so "Bearer  key" → ["Bearer", "key"]
+    // This should succeed since the key is valid
+    assert_eq!(res.status(), StatusCode::CREATED);
+}
+
+/// Verify that empty Bearer token returns 401.
+#[tokio::test]
+async fn test_auth_bearer_empty_token() {
+    let (app, _dir) = test_app_with_auth();
+    let req = Request::builder()
+        .uri("/api/v1/plans")
+        .method("POST")
+        .header(http::header::AUTHORIZATION, "Bearer ")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Verify that OPTIONS request passes through without auth.
+#[tokio::test]
+async fn test_auth_options_preflight() {
+    let (app, _dir) = test_app_with_auth();
+    let req = Request::builder()
+        .uri("/api/v1/plans")
+        .method("OPTIONS")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    // OPTIONS should pass through (not 401)
+    assert_ne!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// Verify that WWW-Authenticate header is present on 401 responses.
+#[tokio::test]
+async fn test_auth_www_authenticate_header() {
+    let (app, _dir) = test_app_with_auth();
+    let req = Request::builder()
+        .uri("/api/v1/plans")
+        .method("POST")
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+    let www_auth = res.headers().get(axum::http::header::WWW_AUTHENTICATE);
+    assert!(www_auth.is_some());
+    assert_eq!(www_auth.unwrap().to_str().unwrap(), "Bearer");
 }

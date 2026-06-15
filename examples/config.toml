@@ -15,6 +15,18 @@ default_timeout_seconds = 3600      # Default task timeout (1 hour)
 log_level = "info"                  # Log level: trace, debug, info, warn, error
 # nexum_config_dir = "/custom/path" # Override config directory (useful for testing)
 
+# ─── Authentication ─────────────────────────────────────────────────
+# API key authentication for the REST API. Disabled by default.
+# Uncomment and configure to enable authentication for remote access.
+
+# [global.authentication]
+# enabled = true
+# authenticate_read = false
+# api_keys = [
+#   { name = "cli", secret = "your-api-key-here" },
+#   { name = "slack-bot", secret = "another-api-key" },
+# ]
+
 # ─── Preferences ────────────────────────────────────────────────────
 # User preferences for yolo mode and default agent assignments.
 

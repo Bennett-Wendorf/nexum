@@ -290,6 +290,12 @@ pub struct ConfigResponse {
     pub log_level: String,
     /// Whether yolo mode is enabled (skips safety checks).
     pub yolo_mode: bool,
+    /// Whether authentication is enabled on this server.
+    pub auth_enabled: bool,
+    /// Whether read endpoints require authentication.
+    pub auth_require_read: bool,
+    /// Number of configured API keys (for client awareness).
+    pub auth_keys_count: usize,
 }
 
 /// Response payload for a single registered agent.

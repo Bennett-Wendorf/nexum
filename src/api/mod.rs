@@ -1,8 +1,9 @@
 //! REST API module for Nexum.
 //!
-//! This module defines the HTTP routes, request/response types, and error
-//! handling for the Nexum REST API.
+//! This module defines the HTTP routes, request/response types, error
+//! handling, and authentication middleware for the Nexum REST API.
 
+pub mod auth;
 pub mod config;
 pub mod errors;
 pub mod execution;
@@ -18,6 +19,7 @@ use axum::{
     routing::{get, patch, post},
     Router,
 };
+use std::sync::Arc;
 
 pub use types::*;
 
@@ -32,9 +34,13 @@ pub use types::*;
 /// - Task claim: POST /api/v1/plans/{branch}/{plan_id}/tasks/{task_id}/claim
 /// - Execution: GET /api/v1/plans/{branch}/{plan_id}/execution, GET /api/v1/running
 /// - Config: GET /api/v1/config, GET /api/v1/agents
+/// - Auth: GET /api/v1/auth/status (unauthenticated)
+/// - Authentication middleware guards write endpoints when enabled
 ///
 /// All routes use `/api/v1/` prefix for URL-based versioning.
 pub fn create_router(state: AppState) -> Router {
+    let auth_config = Arc::new(state.config.global.authentication.clone());
+
     Router::new()
         // Health check
         .route("/api/v1/health", get(execution::health_check))
@@ -58,7 +64,12 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/config", get(config::get_config))
         .route("/api/v1/agents", get(config::list_agents))
 
-        // Middleware
-        .layer(axum::middleware::from_fn(middleware::request_id_middleware))
+        // Auth endpoints
+        .route("/api/v1/auth/status", get(auth::get_auth_status))
+
         .with_state(state)
+
+        // Middleware layers (order matters: auth before request_id)
+        .layer(axum::middleware::from_fn(auth::create_auth_middleware(auth_config)))
+        .layer(axum::middleware::from_fn(middleware::request_id_middleware))
 }
