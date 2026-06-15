@@ -158,7 +158,7 @@ pub async fn auth_middleware(
                     next.run(req).await
                 }
                 Err(_) => {
-                    return unauthorized_response("Invalid Authorization header encoding");
+                    unauthorized_response("Invalid Authorization header encoding")
                 }
             }
         }

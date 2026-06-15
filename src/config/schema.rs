@@ -28,7 +28,7 @@ mod defaults {
 /// Controls whether API key authentication is required and which keys
 /// are accepted. When disabled (default), all endpoints are publicly
 /// accessible — suitable for localhost-only MVP deployment.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct AuthenticationSettings {
     /// Whether authentication is enabled. Defaults to false for MVP.
     #[serde(default)]
@@ -53,16 +53,6 @@ pub struct ApiKeyEntry {
 
     /// The API key secret value
     pub secret: String,
-}
-
-impl Default for AuthenticationSettings {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            authenticate_read: false,
-            api_keys: Vec::new(),
-        }
-    }
 }
 
 /// Top-level configuration struct
