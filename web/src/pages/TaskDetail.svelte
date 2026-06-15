@@ -10,10 +10,10 @@
   
   let { branch, planId, taskId }: { branch: string; planId: string; taskId: string } = $props();
   
-  let task: Task | null = null;
-  let activeTab: 'definition' | 'history' = 'definition';
-  let loading = false;
-  let transitioning = false;
+  let task = $state<Task | null>(null);
+  let activeTab = $state<'definition' | 'history'>('definition');
+  let loading = $state(false);
+  let transitioning = $state(false);
   let error = $state<string | null>(null);
   
   onMount(async () => {
