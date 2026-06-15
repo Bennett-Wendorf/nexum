@@ -1,6 +1,7 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import sveltePreprocess from 'svelte-preprocess';
 import { defineConfig } from 'vite';
+import path from 'path';
 
 export default defineConfig({
   plugins: [
@@ -8,11 +9,22 @@ export default defineConfig({
       preprocess: sveltePreprocess(),
     }),
   ],
+  resolve: {
+    alias: {
+      $lib: path.resolve(__dirname, 'src/lib'),
+    },
+  },
   build: {
     outDir: '../static',
     emptyOutDir: true,
   },
   server: {
-    port: 3000,
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
   },
 });
