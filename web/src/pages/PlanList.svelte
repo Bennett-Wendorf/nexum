@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onCleanup } from 'svelte';
   import PlanCard from '../components/PlanCard.svelte';
   import { listPlans } from '$lib/api';
   import { setError } from '$lib/errorUtils';
@@ -18,7 +18,8 @@
       planList = response.items;
     } catch (e) {
       if (e instanceof Error) {
-        setError(() => { error = e.message; }, () => { error = null; });
+        const cleanup = setError(() => { error = e.message; }, () => { error = null; });
+        onCleanup(cleanup);
       }
     } finally {
       loading = false;
@@ -26,7 +27,7 @@
   });
   
   const totalPlans = $derived(planList.length);
-  const activePlans = $derived(planList.filter(p => Array.from(ACTIVE_PLAN_STATUSES).includes(p.status)).length);
+  const activePlans = $derived(planList.filter(p => ACTIVE_PLAN_STATUSES.includes(p.status)).length);
   const totalTasks = $derived(planList.reduce((sum, p) => sum + (p.tasks?.length ?? 0), 0));
   const completedTasks = $derived(planList.reduce((sum, p) => sum + (p.tasks?.filter(t => t.completed).length ?? 0), 0));
 </script>

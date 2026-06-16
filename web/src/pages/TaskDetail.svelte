@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onCleanup } from 'svelte';
   import Breadcrumb from '../components/Breadcrumb.svelte';
   import StatusBadge from '../components/StatusBadge.svelte';
   import MarkdownRenderer from '../components/MarkdownRenderer.svelte';
@@ -22,7 +22,8 @@
       task = await getTask(branch, planId, taskId);
     } catch (e) {
       if (e instanceof Error) {
-        setError(() => { error = e.message; }, () => { error = null; });
+        const cleanup = setError(() => { error = e.message; }, () => { error = null; });
+        onCleanup(cleanup);
       }
     } finally {
       loading = false;
@@ -44,7 +45,8 @@
       task = await transitionTaskStatus(branch, planId, taskId, { status: newStatus });
     } catch (e) {
       if (e instanceof Error) {
-        setError(() => { error = e.message; }, () => { error = null; });
+        const cleanup = setError(() => { error = e.message; }, () => { error = null; });
+        onCleanup(cleanup);
       }
     } finally {
       transitioning = false;

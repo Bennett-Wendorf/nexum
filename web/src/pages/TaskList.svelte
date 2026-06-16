@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onCleanup } from 'svelte';
   import Breadcrumb from '../components/Breadcrumb.svelte';
   import TaskColumn from '../components/TaskColumn.svelte';
   import StatusBadge from '../components/StatusBadge.svelte';
@@ -11,7 +11,7 @@
   
   let { branch, planId }: { branch: string; planId: string } = $props();
   
- let plan = $state<Plan | null>(null);
+  let plan = $state<Plan | null>(null);
   let tasks = $state<Task[]>([]);
 
   let loading = $state(false);
@@ -29,7 +29,8 @@
       tasks = response.items;
     } catch (e) {
       if (e instanceof Error) {
-        setError(() => { error = e.message; }, () => { error = null; });
+        const cleanup = setError(() => { error = e.message; }, () => { error = null; });
+        onCleanup(cleanup);
       }
     } finally {
       loading = false;
