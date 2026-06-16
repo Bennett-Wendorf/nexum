@@ -7,10 +7,11 @@
   
   const ACTIVE_PLAN_STATUSES = ['approved', 'planning', 'reviewing', 'queued'] as const;
 
-  let planList: Plan[] = [];
-  let loading = false;
+  let planList = $state<Plan[]>([]);
+  let loading = $state(false);
   let error = $state<string | null>(null);
-  
+  let errorCleanup: (() => void) | null = $state(null);
+
   onMount(async () => {
     loading = true;
     try {
@@ -18,15 +19,21 @@
       planList = response.items;
     } catch (e) {
       if (e instanceof Error) {
-        setError(() => { error = e.message; }, () => { error = null; });
+        errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
       }
     } finally {
       loading = false;
     }
   });
-  
+
+  $effect(() => {
+    if (errorCleanup) {
+      return errorCleanup;
+    }
+  });
+
   const totalPlans = $derived(planList.length);
-  const activePlans = $derived(planList.filter(p => Array.from(ACTIVE_PLAN_STATUSES).includes(p.status)).length);
+  const activePlans = $derived(planList.filter(p => ACTIVE_PLAN_STATUSES.includes(p.status)).length);
   const totalTasks = $derived(planList.reduce((sum, p) => sum + (p.tasks?.length ?? 0), 0));
   const completedTasks = $derived(planList.reduce((sum, p) => sum + (p.tasks?.filter(t => t.completed).length ?? 0), 0));
 </script>

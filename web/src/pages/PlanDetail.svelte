@@ -10,11 +10,12 @@
   
   let { branch, planId }: { branch: string; planId: string } = $props();
   
-  let loading = false;
+  let loading = $state(false);
   let error = $state<string | null>(null);
-  
-  let plan: Plan | null = null;
-  let tasks: Task[] = [];
+  let errorCleanup: (() => void) | null = $state(null);
+
+  let plan = $state<Plan | null>(null);
+  let tasks = $state<Task[]>([]);
   
   onMount(async () => {
     loading = true;
@@ -24,13 +25,19 @@
       tasks = response.items;
     } catch (e) {
       if (e instanceof Error) {
-        setError(() => { error = e.message; }, () => { error = null; });
+        errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
       }
     } finally {
       loading = false;
     }
   });
-  
+
+  $effect(() => {
+    if (errorCleanup) {
+      return errorCleanup;
+    }
+  });
+
   const totalTasks = $derived(tasks.length);
   const completedTasks = $derived(tasks.filter(t => t.status.status === 'completed').length);
   const progressPercent = $derived(totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0);
