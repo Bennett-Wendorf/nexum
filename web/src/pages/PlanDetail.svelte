@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onCleanup } from 'svelte';
+  import { onMount } from 'svelte';
   import Breadcrumb from '../components/Breadcrumb.svelte';
   import StatusBadge from '../components/StatusBadge.svelte';
   import MarkdownRenderer from '../components/MarkdownRenderer.svelte';
@@ -12,7 +12,8 @@
   
   let loading = $state(false);
   let error = $state<string | null>(null);
-  
+  let errorCleanup: (() => void) | null = $state(null);
+
   let plan = $state<Plan | null>(null);
   let tasks = $state<Task[]>([]);
   
@@ -24,14 +25,19 @@
       tasks = response.items;
     } catch (e) {
       if (e instanceof Error) {
-        const cleanup = setError(() => { error = e.message; }, () => { error = null; });
-        onCleanup(cleanup);
+        errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
       }
     } finally {
       loading = false;
     }
   });
-  
+
+  $effect(() => {
+    if (errorCleanup) {
+      return errorCleanup;
+    }
+  });
+
   const totalTasks = $derived(tasks.length);
   const completedTasks = $derived(tasks.filter(t => t.status.status === 'completed').length);
   const progressPercent = $derived(totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0);

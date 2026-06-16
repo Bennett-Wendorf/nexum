@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onCleanup } from 'svelte';
+  import { onMount } from 'svelte';
   import Breadcrumb from '../components/Breadcrumb.svelte';
   import TaskColumn from '../components/TaskColumn.svelte';
   import StatusBadge from '../components/StatusBadge.svelte';
@@ -16,6 +16,7 @@
 
   let loading = $state(false);
   let error = $state<string | null>(null);
+  let errorCleanup: (() => void) | null = $state(null);
   const savedViewMode = localStorage.getItem('nexum-viewMode');
   let viewMode = $state<'kanban' | 'list'>(
     (savedViewMode === 'kanban' || savedViewMode === 'list') ? savedViewMode : 'kanban'
@@ -29,14 +30,19 @@
       tasks = response.items;
     } catch (e) {
       if (e instanceof Error) {
-        const cleanup = setError(() => { error = e.message; }, () => { error = null; });
-        onCleanup(cleanup);
+        errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
       }
     } finally {
       loading = false;
     }
   });
-  
+
+  $effect(() => {
+    if (errorCleanup) {
+      return errorCleanup;
+    }
+  });
+
   const breadcrumbItems = $derived([
     { label: 'Plans', href: '/plans' },
     { label: plan?.name ?? planId, href: `/plans/${branch}/${planId}` },

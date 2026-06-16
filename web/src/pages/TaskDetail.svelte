@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onCleanup } from 'svelte';
+  import { onMount } from 'svelte';
   import Breadcrumb from '../components/Breadcrumb.svelte';
   import StatusBadge from '../components/StatusBadge.svelte';
   import MarkdownRenderer from '../components/MarkdownRenderer.svelte';
@@ -15,21 +15,27 @@
   let loading = $state(false);
   let transitioning = $state(false);
   let error = $state<string | null>(null);
-  
+  let errorCleanup: (() => void) | null = $state(null);
+
   onMount(async () => {
     loading = true;
     try {
       task = await getTask(branch, planId, taskId);
     } catch (e) {
       if (e instanceof Error) {
-        const cleanup = setError(() => { error = e.message; }, () => { error = null; });
-        onCleanup(cleanup);
+        errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
       }
     } finally {
       loading = false;
     }
   });
-  
+
+  $effect(() => {
+    if (errorCleanup) {
+      return errorCleanup;
+    }
+  });
+
   const breadcrumbItems = $derived([
     { label: 'Plans', href: '/plans' },
     { label: task?.name ?? taskId, href: `/plans/${branch}/${planId}` },
@@ -45,8 +51,7 @@
       task = await transitionTaskStatus(branch, planId, taskId, { status: newStatus });
     } catch (e) {
       if (e instanceof Error) {
-        const cleanup = setError(() => { error = e.message; }, () => { error = null; });
-        onCleanup(cleanup);
+        errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
       }
     } finally {
       transitioning = false;
