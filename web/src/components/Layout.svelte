@@ -19,10 +19,10 @@
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
     </RouterLink>
     <div class="w-8 h-[1px] bg-border-default my-2"></div>
-    <a href="#" class="w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer text-text-muted hover:bg-border-muted hover:text-text-secondary transition-colors" title="Agent Teams">
+    <a href="#" onclick={(e) => e.preventDefault()} class="w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer text-text-muted hover:bg-border-muted hover:text-text-secondary transition-colors" title="Agent Teams">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
     </a>
-    <a href="#" class="w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer text-text-muted hover:bg-border-muted hover:text-text-secondary transition-colors" title="Settings">
+    <a href="#" onclick={(e) => e.preventDefault()} class="w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer text-text-muted hover:bg-border-muted hover:text-text-secondary transition-colors" title="Settings">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37a1.724 1.724 0 002.573-1.066z"/><circle cx="12" cy="12" r="3"/></svg>
     </a>
   </nav>
