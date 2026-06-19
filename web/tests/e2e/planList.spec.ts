@@ -23,7 +23,9 @@ test.describe('Plan List Page', () => {
   test('empty state shows when no plans', async ({ page }) => {
     await page.goto('/');
     // Wait for loading to complete or empty state to appear
-    await page.waitForSelector('text=No plans yet', { timeout: 10000 }).catch(() => {});
+    await page.waitForSelector('text=No plans yet', { timeout: 10000 }).catch(() => {
+      // No plans yet message may not appear if plans exist
+    });
     // Verify either empty state or loading state is visible
     const hasEmptyState = await page.locator('text=No plans yet').isVisible().catch(() => false);
     const hasLoading = await page.locator('text=Loading plans').isVisible().catch(() => false);

@@ -6,7 +6,7 @@ test.describe('Task List Page', () => {
     await page.waitForLoadState('domcontentloaded');
     // Page should render
     const pageContent = page.locator('body');
-    await expect(pageContent).toBeTruthy();
+    await expect(pageContent).toBeVisible();
   });
 
   test('view mode toggle exists', async ({ page }) => {
@@ -15,8 +15,8 @@ test.describe('Task List Page', () => {
     // Toggle buttons should exist
     const kanbanBtn = page.locator('text=Kanban');
     const listBtn = page.locator('text=List');
-    await expect(kanbanBtn).toBeTruthy();
-    await expect(listBtn).toBeTruthy();
+    await expect(kanbanBtn).toBeVisible();
+    await expect(listBtn).toBeVisible();
   });
 
   test('can toggle between kanban and list view', async ({ page }) => {
@@ -26,6 +26,6 @@ test.describe('Task List Page', () => {
     await page.locator('text=List').click();
     // List view table should appear
     const tableHeader = page.locator('text=Task');
-    await expect(tableHeader).toBeTruthy();
+    await expect(tableHeader).toBeVisible();
   });
 });
