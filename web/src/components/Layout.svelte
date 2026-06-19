@@ -1,20 +1,21 @@
 <script lang="ts">
-  const currentPath = $derived(new URL(window.location.href).pathname);
-  
+  import { location } from 'svelte-spa-router';
+  import RouterLink from './RouterLink.svelte';
+
   function isActive(path: string): boolean {
-    return currentPath === path || currentPath.startsWith(path + '/');
+    return $location === path || $location.startsWith(path + '/');
   }
 </script>
 
 <div class="flex h-screen bg-bg-primary overflow-hidden">
   <!-- Icon Sidebar (56px) -->
   <nav class="w-[56px] bg-bg-secondary border-r border-border-default flex flex-col items-center py-3 gap-1 flex-shrink-0">
-    <a href="/" class="w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer text-text-muted hover:bg-border-muted hover:text-text-secondary transition-colors {isActive('/') ? 'bg-accent-blue-subtle text-accent-blue' : ''}" title="Dashboard">
+    <RouterLink href="/" class="w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer text-text-muted hover:bg-border-muted hover:text-text-secondary transition-colors {isActive('/') ? 'bg-accent-blue-subtle text-accent-blue' : ''}" title="Dashboard">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-    </a>
-    <a href="/plans" class="w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer text-text-muted hover:bg-border-muted hover:text-text-secondary transition-colors {isActive('/plans') ? 'bg-accent-blue-subtle text-accent-blue' : ''}" title="Plans">
+    </RouterLink>
+    <RouterLink href="/plans" class="w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer text-text-muted hover:bg-border-muted hover:text-text-secondary transition-colors {isActive('/plans') ? 'bg-accent-blue-subtle text-accent-blue' : ''}" title="Plans">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-    </a>
+    </RouterLink>
     <div class="w-8 h-[1px] bg-border-default my-2"></div>
     <a href="#" class="w-10 h-10 rounded-lg flex items-center justify-center cursor-pointer text-text-muted hover:bg-border-muted hover:text-text-secondary transition-colors" title="Agent Teams">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
