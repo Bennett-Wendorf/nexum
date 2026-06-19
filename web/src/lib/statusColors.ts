@@ -75,17 +75,13 @@ export const kanbanColumnLabels: Record<string, string> = {
 /**
  * Get the color class for a plan status badge.
  */
-export function getPlanStatusColor(status: string): [string, string] {
-  const bg = planStatusBgColors[status] ?? 'bg-border-default text-text-muted';
-  const text = planStatusColors[status] ?? 'text-text-muted';
-  return [bg, text];
+export function getPlanStatusColor(status: string): string {
+  return planStatusBgColors[status] ?? 'bg-border-default text-text-muted';
 }
 
 /**
  * Get the color class for a task status badge.
  */
-export function getTaskStatusColor(status: string): [string, string] {
-  const bg = taskStatusBgColors[status] ?? 'bg-border-default text-text-muted';
-  const text = taskStatusColors[status] ?? 'text-text-muted';
-  return [bg, text];
+export function getTaskStatusColor(status: string): string {
+  return taskStatusBgColors[status] ?? 'bg-border-default text-text-muted';
 }

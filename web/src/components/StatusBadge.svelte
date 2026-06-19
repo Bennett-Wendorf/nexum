@@ -7,12 +7,10 @@
     label?: string;
   } = $props();
   
-  const colorTuple = $derived(type === 'plan' ? getPlanStatusColor(status) : getTaskStatusColor(status));
-  const bgClass = $derived(colorTuple[0]);
-  const textClass = $derived(colorTuple[1]);
+  const colorClass = $derived(type === 'plan' ? getPlanStatusColor(status) : getTaskStatusColor(status));
   const displayLabel = $derived(label ?? (kanbanColumnLabels[status] ?? status));
 </script>
 
-<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold {bgClass} {textClass}">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold {colorClass}">
   {displayLabel}
 </span>

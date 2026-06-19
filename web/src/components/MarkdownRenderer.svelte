@@ -1,16 +1,9 @@
 <script lang="ts">
-  import MarkdownIt from 'markdown-it';
-  
-  const md = new MarkdownIt({
-    html: false,
-    breaks: true,
-    linkify: true,
-    typographer: true,
-  });
+  import { renderMarkdown } from '$lib/markdown';
   
   let { content, className = '' }: { content: string; className?: string } = $props();
   
-  const html = $derived(content.trim() ? md.render(content) : '');
+  const html = $derived(renderMarkdown(content.trim()));
   const containerClass = $derived(className || 'md-content');
 </script>
 
