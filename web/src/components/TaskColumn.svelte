@@ -18,7 +18,7 @@
   
   <!-- Body -->
   <div class="p-2 overflow-y-auto flex-1 space-y-2">
-    {#each tasks as task}
+    {#each tasks as task (task.id)}
       <TaskCard {task} {planId} {branch} />
     {/each}
     

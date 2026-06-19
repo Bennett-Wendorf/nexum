@@ -1,4 +1,6 @@
 <script lang="ts">
+  import RouterLink from './RouterLink.svelte';
+
   let { items }: { items: { label: string; href?: string }[] } = $props();
 </script>
 
@@ -8,9 +10,9 @@
       <span class="text-border-default">›</span>
     {/if}
     {#if item.href}
-      <a href={item.href} class="text-text-muted hover:text-text-secondary transition-colors">
+      <RouterLink href={item.href} class="text-text-muted hover:text-text-secondary transition-colors">
         {item.label}
-      </a>
+      </RouterLink>
     {:else}
       <span class="text-text-secondary font-semibold">{item.label}</span>
     {/if}

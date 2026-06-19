@@ -11,6 +11,6 @@ test.describe('Plan Detail Page', () => {
     await page.goto('/plans/main/test-plan');
     // Breadcrumb nav should exist in the DOM
     const breadcrumb = page.locator('nav');
-    await expect(breadcrumb).toBeTruthy();
+    await expect(breadcrumb).toBeVisible();
   });
 });

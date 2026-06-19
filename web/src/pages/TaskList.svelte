@@ -95,7 +95,7 @@
             List
           </button>
         </div>
-        <button class="px-3 py-1.5 bg-btn-green border border-btn-green text-white rounded-md text-sm hover:bg-btn-green-hover transition-colors">
+        <button class="px-3 py-1.5 bg-btn-green border border-btn-green text-white rounded-md text-sm hover:bg-btn-green-hover transition-colors" disabled title="Coming soon">
           + Add Task
         </button>
       </div>

@@ -4,6 +4,7 @@
   let { href, class: classStr = '' }: { href: string; class?: string } = $props();
   
   function handleClick(e: MouseEvent): void {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.altKey) return;
     e.preventDefault();
     push(href);
   }
