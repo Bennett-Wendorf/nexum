@@ -2,8 +2,10 @@
   import { location } from 'svelte-spa-router';
   import RouterLink from './RouterLink.svelte';
 
+  const currentPath = $derived($location);
+
   function isActive(path: string): boolean {
-    return $location === path || $location.startsWith(path + '/');
+    return currentPath === path || currentPath.startsWith(path + '/');
   }
 </script>
 
