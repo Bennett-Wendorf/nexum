@@ -1,5 +1,6 @@
 mod acp;
 mod api;
+mod builder;
 mod config;
 mod git;
 mod overlord;

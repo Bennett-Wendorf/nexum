@@ -34,7 +34,7 @@ pub enum BuilderError {
 
     /// Wrapped git merge error.
     #[error("Merge error: {0}")]
-    MergeError(#[from] GitError),
+    MergeError(GitError),
 
     /// Merge conflict detected during task branch merge.
     #[error("Merge conflict for task '{task_id}' on branch '{branch}': conflicts in {conflicts:?}")]
