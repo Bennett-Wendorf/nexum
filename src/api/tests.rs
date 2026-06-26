@@ -41,6 +41,7 @@ fn test_app() -> (Router, TempDir) {
     let state = AppState {
         repo_root: temp_dir.path().to_path_buf(),
         config,
+        orchestrator: None,
     };
 
     (create_router(state), temp_dir)
@@ -74,7 +75,7 @@ fn test_app_with_auth() -> (Router, TempDir) {
         preferences: config::Preferences::default(),
     };
 
-    let state = AppState { repo_root: temp_dir.path().to_path_buf(), config };
+    let state = AppState { repo_root: temp_dir.path().to_path_buf(), config, orchestrator: None };
     (create_router(state), temp_dir)
 }
 
@@ -1150,7 +1151,7 @@ fn test_app_with_read_auth() -> (Router, TempDir) {
         preferences: config::Preferences::default(),
     };
 
-    let state = AppState { repo_root: temp_dir.path().to_path_buf(), config };
+    let state = AppState { repo_root: temp_dir.path().to_path_buf(), config, orchestrator: None };
     (create_router(state), temp_dir)
 }
 
