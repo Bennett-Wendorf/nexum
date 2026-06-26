@@ -5,6 +5,7 @@
 //! and merging completed task branches back into the plan branch.
 
 pub mod dispatcher;
+pub mod error_recovery;
 pub mod errors;
 pub mod event_bus;
 pub mod heartbeat;
