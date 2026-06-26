@@ -1046,6 +1046,7 @@ mod error_recovery_tests {
 // ============================================================================
 
 mod completion_handler_tests {
+    #[allow(unused_imports)]
     use super::*;
     use crate::builder::completion_handler::CompletionOutcome;
 
