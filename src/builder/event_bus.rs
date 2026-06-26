@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 
 use tokio::sync::broadcast;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use crate::acp::events::ACPEvent;
@@ -50,11 +51,13 @@ pub enum CompletionResult {
 ///
 /// Uses `tokio::sync::broadcast` for many-to-many event distribution.
 /// Events flow from ACP sessions through this bus to frontend subscribers.
+/// Per-session broadcasters are protected by a `tokio::sync::Mutex` to allow
+/// shared ownership via `Arc` while still supporting mutable operations.
 pub struct BuilderEventBus {
     /// Broadcaster for builder lifecycle events.
     tx: broadcast::Sender<BuilderEvent>,
-    /// Per-session event broadcasters.
-    active_sessions: HashMap<String, broadcast::Sender<ACPEvent>>,
+    /// Per-session event broadcasters (protected by Mutex for shared ownership).
+    active_sessions: Mutex<HashMap<String, broadcast::Sender<ACPEvent>>>,
 }
 
 impl BuilderEventBus {
@@ -63,7 +66,7 @@ impl BuilderEventBus {
         let (tx, _) = broadcast::channel(capacity);
         Self {
             tx,
-            active_sessions: HashMap::new(),
+            active_sessions: Mutex::new(HashMap::new()),
         }
     }
 
@@ -127,18 +130,29 @@ impl BuilderEventBus {
     }
 
     /// Register a session's event stream broadcaster.
-    pub fn register_session(&mut self, task_id: &str, tx: broadcast::Sender<ACPEvent>) {
-        self.active_sessions.insert(task_id.to_string(), tx);
+    ///
+    /// Uses interior mutability via `tokio::sync::Mutex`, so this takes `&self`
+    /// and can be called from behind an `Arc`.
+    pub async fn register_session(&self, task_id: &str, tx: broadcast::Sender<ACPEvent>) {
+        self.active_sessions
+            .lock()
+            .await
+            .insert(task_id.to_string(), tx);
     }
 
     /// Unregister a session's event stream.
-    pub fn unregister_session(&mut self, task_id: &str) {
-        self.active_sessions.remove(task_id);
+    ///
+    /// Uses interior mutability via `tokio::sync::Mutex`, so this takes `&self`
+    /// and can be called from behind an `Arc`.
+    pub async fn unregister_session(&self, task_id: &str) {
+        self.active_sessions.lock().await.remove(task_id);
     }
 
     /// Get a subscriber for a specific session's events.
-    pub fn subscribe_session(&self, task_id: &str) -> Option<broadcast::Receiver<ACPEvent>> {
+    pub async fn subscribe_session(&self, task_id: &str) -> Option<broadcast::Receiver<ACPEvent>> {
         self.active_sessions
+            .lock()
+            .await
             .get(task_id)
             .map(|tx| tx.subscribe())
     }

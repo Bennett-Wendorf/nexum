@@ -11,5 +11,6 @@ pub mod errors;
 pub mod event_bus;
 pub mod heartbeat;
 pub mod merge_coordinator;
+pub mod orchestrator;
 pub mod session_manager;
 pub mod worktree_manager;
