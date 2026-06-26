@@ -80,7 +80,7 @@ impl HeartbeatManager {
         status.heartbeat_at = Some(Utc::now().to_rfc3339());
 
         // Atomic write
-        atomic_write_json(&status_path, &status).map_err(|e| BuilderError::PersistenceError(e))?;
+        atomic_write_json(&status_path, &status).map_err(BuilderError::PersistenceError)?;
 
         tracing::debug!(
             "Heartbeat updated for task {} at {}",

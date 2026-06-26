@@ -245,7 +245,7 @@ impl TaskDispatcher {
                 by: "overlord-dispatch".to_string(),
             })
             .await
-            .map_err(|e| BuilderError::OverlordError(e))?;
+            .map_err(BuilderError::OverlordError)?;
 
         tracing::info!(
             "Dispatched task {} ({}) from plan {} on branch {}",

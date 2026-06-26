@@ -13,7 +13,6 @@ use crate::builder::error_recovery::ErrorRecovery;
 use crate::builder::errors::{BuilderError, Result};
 use crate::builder::event_bus::{BuilderEvent, BuilderEventBus};
 use crate::builder::merge_coordinator::{MergeCoordinator, MergeResult};
-use crate::builder::session_manager::ACPSessionHandle;
 use crate::builder::worktree_manager::TaskWorktree;
 use crate::overlord::{OverlordScheduler, TransitionTaskStatusParams};
 use crate::persistence::TaskStatusValue;
@@ -90,7 +89,7 @@ impl CompletionHandler {
                 by: "builder-completion".to_string(),
             })
             .await
-            .map_err(|e| BuilderError::OverlordError(e))?;
+            .map_err(BuilderError::OverlordError)?;
 
         // Step 2: Attempt merge
         match self.merge_coordinator
@@ -115,7 +114,7 @@ impl CompletionHandler {
                         by: "builder-completion".to_string(),
                     })
                     .await
-                    .map_err(|e| BuilderError::OverlordError(e))?;
+                    .map_err(BuilderError::OverlordError)?;
 
                 // Update execution state
                 self.merge_coordinator

@@ -55,9 +55,7 @@ impl MergeCoordinator {
         let repo_root = self.repo_root.as_path();
 
         // Checkout plan branch
-        git::checkout_branch(repo_root, &task_context.branch).await.map_err(|e| {
-            BuilderError::MergeError(e)
-        })?;
+        git::checkout_branch(repo_root, &task_context.branch).await.map_err(BuilderError::MergeError)?;
 
         // Merge task branch with --no-ff
         let branch_name = &worktree.branch_name;
@@ -84,9 +82,7 @@ impl MergeCoordinator {
             }
             Err(git::GitError::SubprocessFailure { exit_code, stderr, .. }) if exit_code == 1 => {
                 // Check for merge conflicts
-                let conflicted_files = git::list_conflicted_files(repo_root).await.map_err(|e| {
-                    BuilderError::MergeError(e)
-                })?;
+                let conflicted_files = git::list_conflicted_files(repo_root).await.map_err(BuilderError::MergeError)?;
 
                 if conflicted_files.is_empty() {
                     // Merge failed but no conflicts — abort and return error
@@ -133,15 +129,13 @@ impl MergeCoordinator {
         let repo_root = self.repo_root.as_path();
 
         // Delete task branch
-        git::delete_branch(repo_root, &worktree.branch_name).await.map_err(|e| {
-            BuilderError::WorktreeError(e)
-        })?;
+        git::delete_branch(repo_root, &worktree.branch_name).await.map_err(BuilderError::WorktreeError)?;
 
         // Remove worktree
         let wt_path = &worktree.path;
         if let Err(_e) = git::git(repo_root, &["worktree", "remove", &wt_path.to_string_lossy()]).await {
             // Try force
-            if let Err(_) = git::git(repo_root, &["worktree", "remove", "--force", &wt_path.to_string_lossy()]).await {
+            if git::git(repo_root, &["worktree", "remove", "--force", &wt_path.to_string_lossy()]).await.is_err() {
                 // Fall back to manual removal
                 if let Err(e) = tokio::fs::remove_dir_all(wt_path).await {
                     tracing::error!("Failed to remove worktree directory: {}", e);
@@ -174,7 +168,7 @@ impl MergeCoordinator {
             &task_context.plan_id,
             &task_context.plan_name,
         )
-        .map_err(|e| BuilderError::PersistenceError(e))?;
+        .map_err(BuilderError::PersistenceError)?;
 
         state
             .task_status_map
@@ -187,7 +181,7 @@ impl MergeCoordinator {
             &task_context.plan_name,
             &state,
         )
-        .map_err(|e| BuilderError::PersistenceError(e))?;
+        .map_err(BuilderError::PersistenceError)?;
 
         Ok(())
     }
@@ -212,7 +206,7 @@ impl MergeCoordinator {
                 by: "overlord-merge-conflict".to_string(),
             })
             .await
-            .map_err(|e| BuilderError::OverlordError(e))?;
+            .map_err(BuilderError::OverlordError)?;
 
         tracing::warn!(
             "Task {} transitioned to waiting-manual-review due to merge conflict",

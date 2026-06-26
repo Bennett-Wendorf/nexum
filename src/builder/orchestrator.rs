@@ -424,7 +424,7 @@ impl WorkflowOrchestrator {
         dispatcher
             .list_active()
             .into_iter()
-            .map(|s| s.clone())
+            .cloned()
             .collect()
     }
 

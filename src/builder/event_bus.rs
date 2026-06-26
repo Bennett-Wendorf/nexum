@@ -18,6 +18,7 @@ use crate::builder::dispatcher::TaskContext;
 use crate::builder::errors::{BuilderError, Result};
 
 /// Builder lifecycle events broadcast to subscribers.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone)]
 pub enum BuilderEvent {
     /// A task has started execution.

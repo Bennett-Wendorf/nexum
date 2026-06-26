@@ -81,7 +81,7 @@ impl ErrorRecovery {
                 by: "overlord-crash-recovery".to_string(),
             })
             .await
-            .map_err(|e| BuilderError::OverlordError(e))?;
+            .map_err(BuilderError::OverlordError)?;
 
         // Clean up worktree
         self.worktree_manager
@@ -141,7 +141,7 @@ impl ErrorRecovery {
                 by: "overlord-timeout".to_string(),
             })
             .await
-            .map_err(|e| BuilderError::OverlordError(e))?;
+            .map_err(BuilderError::OverlordError)?;
 
         // Clean up worktree
         self.worktree_manager
@@ -215,7 +215,7 @@ impl ErrorRecovery {
                 by: "overlord-merge-conflict".to_string(),
             })
             .await
-            .map_err(|e| BuilderError::OverlordError(e))?;
+            .map_err(BuilderError::OverlordError)?;
 
         // Record conflict details in status.json
         let status_path = crate::persistence::task_status_path(
@@ -294,7 +294,7 @@ impl ErrorRecovery {
                         by: "overlord-error-recovery".to_string(),
                     })
                     .await
-                    .map_err(|e| BuilderError::OverlordError(e))?;
+                    .map_err(BuilderError::OverlordError)?;
 
                 self.worktree_manager.cleanup(worktree).await?;
             }
