@@ -5,9 +5,11 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use crate::builder::orchestrator::WorkflowOrchestrator;
 use crate::config;
 
 // ---------------------------------------------------------------------------
@@ -352,6 +354,8 @@ pub struct AppState {
     pub repo_root: PathBuf,
     /// Loaded server configuration.
     pub config: config::Config,
+    /// Builder workflow orchestrator for task execution.
+    pub orchestrator: Option<Arc<WorkflowOrchestrator>>,
 }
 
 // ---------------------------------------------------------------------------
