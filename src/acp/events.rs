@@ -127,6 +127,14 @@ impl EventStream {
                 source: Box::new(e),
             })
     }
+
+    /// Get a clone of the broadcast sender.
+    ///
+    /// Useful for registering the session with external event buses
+    /// that need their own sender reference.
+    pub fn sender(&self) -> tokio::sync::broadcast::Sender<ACPEvent> {
+        self.sender.clone()
+    }
 }
 
 /// Returns `true` if the event signals the end of a session.

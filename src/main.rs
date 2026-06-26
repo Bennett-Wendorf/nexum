@@ -1,11 +1,17 @@
 mod acp;
 mod api;
+mod builder;
 mod config;
 mod git;
 mod overlord;
 mod persistence;
 
+use std::time::Duration;
+
 use tokio::signal::unix::{signal, SignalKind};
+
+/// Default broadcast channel capacity for the builder event bus.
+const DEFAULT_EVENT_BUS_CAPACITY: usize = 64;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -34,11 +40,34 @@ async fn main() -> anyhow::Result<()> {
     });
     tracing::info!("Overlord scheduler spawned as background task");
 
-    // Start the REST API server
+    // Initialize Builder Workflow Orchestrator
     let cfg = config::get().expect("Config should be loaded");
+    let agent_config = crate::acp::AgentConfig {
+        name: "builder".to_string(),
+        binary: std::env::current_exe().unwrap_or_else(|_| "/usr/bin/nexum".into()),
+        args: vec!["acp".to_string()],
+        env: std::collections::HashMap::new(),
+    };
+    let orchestrator = builder::orchestrator::WorkflowOrchestrator::new(
+        repo_root.clone(),
+        scheduler.clone(),
+        agent_config,
+        cfg.global.max_parallel as usize,
+        Duration::from_secs(cfg.global.default_timeout_seconds),
+        DEFAULT_EVENT_BUS_CAPACITY,
+    );
+    let orchestrator = std::sync::Arc::new(orchestrator);
+    tracing::info!(
+        concurrency_limit = cfg.global.max_parallel,
+        task_timeout_secs = cfg.global.default_timeout_seconds,
+        "Builder workflow orchestrator initialized"
+    );
+
+    // Start the REST API server
     let state = api::AppState {
         repo_root: repo_root.clone(),
         config: cfg.clone(),
+        orchestrator: Some(orchestrator),
     };
     let app = api::create_router(state);
 
