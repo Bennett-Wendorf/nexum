@@ -14,8 +14,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::task::JoinHandle;
-
 use crate::acp::AgentConfig;
 use crate::builder::completion_handler::CompletionHandler;
 use crate::builder::dispatcher::{ActiveSession, TaskContext, TaskDispatcher};
@@ -24,8 +22,8 @@ use crate::builder::errors::{BuilderError, Result};
 use crate::builder::event_bus::{BuilderEvent, BuilderEventBus, CompletionResult};
 use crate::builder::heartbeat::HeartbeatManager;
 use crate::builder::merge_coordinator::MergeCoordinator;
-use crate::builder::session_manager::{ACPSessionHandle, SessionManager};
-use crate::builder::worktree_manager::{TaskWorktree, WorktreeManager};
+use crate::builder::session_manager::SessionManager;
+use crate::builder::worktree_manager::WorktreeManager;
 use crate::overlord::OverlordScheduler;
 
 /// Central orchestrator coordinating all builder sub-components.
@@ -135,77 +133,65 @@ impl WorkflowOrchestrator {
     /// 6. **Cleanup phase**: Stop heartbeat, unregister session, cleanup worktree, emit `TaskCleanedUp`
     ///
     /// Cleanup is guaranteed to run regardless of success or failure.
-    #[allow(unused_assignments)] // Initial None values overwritten before read for state tracking
     pub async fn execute_task(&self, task_context: TaskContext) -> Result<()> {
         let task_id = task_context.task_id.clone();
         let task_name = task_context.task_name.clone();
         let branch = task_context.branch.clone();
 
-        // ── State tracking for conditional cleanup ──
-        let mut worktree: Option<TaskWorktree> = None;
-        let mut session: Option<ACPSessionHandle> = None;
-        let mut heartbeat_handle: Option<JoinHandle<()>> = None;
-        let mut error_recovery_ran = false;
-
         // ============================================================
         // SETUP PHASE: Create worktree, emit TaskStarted
         // ============================================================
-        let wt = self
+        let worktree = self
             .worktree_manager
             .setup_and_commit_agent_dir(&task_id, &task_name, &branch)
             .await?;
-        worktree = Some(wt.clone());
 
         self.event_bus
             .emit(BuilderEvent::TaskStarted(task_context.clone()))?;
 
         tracing::info!(
             task_id = %task_id,
-            worktree_path = %worktree.as_ref().unwrap().path.display(),
+            worktree_path = %worktree.path.display(),
             "Setup phase complete"
         );
 
         // ============================================================
         // SESSION PHASE: Create ACP session, start heartbeat, start event relay
         // ============================================================
-        let sess = self
+        let session = self
             .session_manager
-            .create_session(&task_context, worktree.as_ref().unwrap().path.as_path())
+            .create_session(&task_context, worktree.path.as_path())
             .await?;
-        let session_id = sess.session_id.clone();
-        session = Some(sess);
+        let session_id = session.session_id.clone();
 
         // Start periodic heartbeat
-        let hb_handle = self
+        let heartbeat_handle = self
             .heartbeat_manager
             .start_periodic_heartbeat(&task_context)
             .await?;
-        heartbeat_handle = Some(hb_handle);
 
         // Start event relay from session to builder event bus
-        let event_rx = self.session_manager.get_event_stream(session.as_ref().unwrap());
+        let event_rx = self.session_manager.get_event_stream(&session);
         let _relay_handle = self
             .event_bus
             .relay_session_events(&task_id, event_rx)
             .await;
 
         // Register session in event bus for per-session subscription
-        let session_tx = session.as_ref().unwrap().event_stream.sender();
+        let session_tx = session.event_stream.sender();
         self.event_bus.register_session(&task_id, session_tx).await;
 
         // Track session in dispatcher
         self.dispatcher.lock().await.add_session(ActiveSession {
             task_context: task_context.clone(),
-            worktree: worktree.clone().unwrap(),
+            worktree: worktree.clone(),
             session_id: session_id.clone(),
             pid: session
-                .as_ref()
-                .unwrap()
                 .subprocess
                 .child
                 .as_ref()
                 .and_then(|c| c.id()),
-            started_at: session.as_ref().unwrap().started_at,
+            started_at: session.started_at,
         });
 
         tracing::info!(
@@ -219,7 +205,7 @@ impl WorkflowOrchestrator {
         // ============================================================
         let completion_result = self
             .session_manager
-            .wait_for_completion(session.as_ref().unwrap(), self.task_timeout)
+            .wait_for_completion(&session, self.task_timeout)
             .await?;
 
         tracing::info!(
@@ -231,27 +217,23 @@ impl WorkflowOrchestrator {
         // ============================================================
         // COMPLETION / ERROR PHASE
         // ============================================================
+        let mut error_recovery_ran = false;
 
         match completion_result {
             CompletionResult::Completed => {
                 // Successful completion — handle via completion handler
+                // (the completion_handler already emits TaskCompleted)
                 let _outcome = self
                     .completion_handler
-                    .handle_completion(&task_context, worktree.as_ref().unwrap())
+                    .handle_completion(&task_context, &worktree)
                     .await?;
-
-                self.event_bus
-                    .emit(BuilderEvent::TaskCompleted {
-                        task_id: task_id.clone(),
-                        result: CompletionResult::Completed,
-                    })?;
             }
             CompletionResult::Timeout(timeout) => {
                 // Timeout — handle via error recovery
                 self.error_recovery
                     .handle_timeout(
                         &task_context,
-                        worktree.as_ref().unwrap(),
+                        &worktree,
                         timeout,
                         self.task_timeout,
                     )
@@ -261,7 +243,7 @@ impl WorkflowOrchestrator {
             CompletionResult::Crashed { exit_code: _ } => {
                 // Agent crash — handle via error recovery
                 self.error_recovery
-                    .handle_agent_crash(&task_context, worktree.as_ref().unwrap())
+                    .handle_agent_crash(&task_context, &worktree)
                     .await?;
                 error_recovery_ran = true;
             }
@@ -272,14 +254,10 @@ impl WorkflowOrchestrator {
         // ============================================================
 
         // Stop heartbeat background task
-        if let Some(handle) = heartbeat_handle.take() {
-            handle.abort();
-        }
+        heartbeat_handle.abort();
 
         // Destroy ACP session
-        if let Some(sess) = session.take() {
-            self.session_manager.destroy_session(sess).await?;
-        }
+        self.session_manager.destroy_session(session).await?;
 
         // Unregister session from event bus
         self.event_bus.unregister_session(&task_id).await;
@@ -290,14 +268,12 @@ impl WorkflowOrchestrator {
         // Cleanup worktree if error recovery didn't already do it
         // (error_recovery::handle_agent_crash and handle_timeout both clean up)
         if !error_recovery_ran {
-            if let Some(wt) = worktree.take() {
-                // Only clean up if the worktree directory still exists.
-                // The completion handler's post_merge_cleanup handles cleanup
-                // on successful merge. If we reach here, it means either
-                // a merge conflict occurred or the worktree wasn't cleaned.
-                if tokio::fs::try_exists(&wt.path).await.unwrap_or(false) {
-                    self.worktree_manager.cleanup(&wt).await?;
-                }
+            // Only clean up if the worktree directory still exists.
+            // The completion handler's post_merge_cleanup handles cleanup
+            // on successful merge. If we reach here, it means either
+            // a merge conflict occurred or the worktree wasn't cleaned.
+            if tokio::fs::try_exists(&worktree.path).await.unwrap_or(false) {
+                self.worktree_manager.cleanup(&worktree).await?;
             }
         }
 
@@ -373,6 +349,13 @@ impl WorkflowOrchestrator {
                         "Queued task for parallel execution"
                     );
                     task_contexts.push(context);
+                    if task_contexts.len() >= self.concurrency_limit {
+                        tracing::info!(
+                            concurrency_limit = self.concurrency_limit,
+                            "Concurrency limit reached, stopping dispatch"
+                        );
+                        break;
+                    }
                 }
                 None => {
                     tracing::info!(
@@ -388,14 +371,19 @@ impl WorkflowOrchestrator {
         // Spawn all tasks concurrently
         let mut handles = Vec::new();
         for ctx in task_contexts {
+            let task_id = ctx.task_id.clone();
             let self_clone = Arc::new(self.clone_components());
-            let handle = tokio::spawn(async move { self_clone.execute_task(ctx).await });
+            let handle = tokio::spawn(async move { (task_id, self_clone.execute_task(ctx).await) });
             handles.push(handle);
         }
 
         // Wait for all tasks to complete
         for handle in handles {
-            handle.await.expect("Task execution panicked")?;
+            match handle.await {
+                Ok((_task_id, Ok(()))) => {},
+                Ok((task_id, Err(e))) => tracing::error!(task_id = %task_id, "Task execution failed: {}", e),
+                Err(join_err) => tracing::error!("Task panicked: {}", join_err),
+            }
         }
 
         Ok(())

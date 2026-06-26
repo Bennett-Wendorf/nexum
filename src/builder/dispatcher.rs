@@ -77,10 +77,11 @@ impl TaskDispatcher {
     ///
     /// # Steps
     /// 1. Read `execution.json` to get task list and status map
-    /// 2. Filter tasks with status `queued`
-    /// 3. For each queued task, check `ConcurrencyChecker::can_dispatch()`
-    /// 4. If no dispatchable tasks, return `None`
-    /// 5. Return `TaskContext` for the first eligible task
+    /// 2. List tasks once and build a HashMap for O(1) name lookups
+    /// 3. Filter tasks with status `queued`
+    /// 4. For each queued task, check `ConcurrencyChecker::can_dispatch()`
+    /// 5. If no dispatchable tasks, return `None`
+    /// 6. Return `TaskContext` for the first eligible task
     pub async fn find_next_task(
         &self,
         branch: &str,
@@ -98,6 +99,27 @@ impl TaskDispatcher {
             }
         };
 
+        // List tasks once and build a HashMap for O(1) name lookups
+        let task_names: HashMap<String, String> = match crate::persistence::list_tasks(repo_root, branch, plan_id, plan_name) {
+            Ok(tasks) => {
+                let mut map = HashMap::new();
+                for slug in &tasks {
+                    if let (Some(tid), Some(tname)) = parse_slug(slug) {
+                        map.insert(tid.to_string(), tname.to_string());
+                    }
+                }
+                map
+            }
+            Err(e) => {
+                tracing::debug!("Failed to list tasks: {}", e);
+                return Ok(None);
+            }
+        };
+
+        // Fallback: try to find task names from directory listing
+        let plan_dir = crate::persistence::plan_dir(repo_root, branch, plan_id, plan_name);
+        let tasks_dir = plan_dir.join("tasks");
+
         // Find queued tasks
         for task_id in &exec_state.tasks {
             // Check status map first (fast path)
@@ -107,37 +129,23 @@ impl TaskDispatcher {
                 }
             }
 
-            // List tasks to get task_name from slug
-            let tasks = match crate::persistence::list_tasks(repo_root, branch, plan_id, plan_name) {
-                Ok(tasks) => tasks,
-                Err(e) => {
-                    tracing::debug!("Failed to list tasks: {}", e);
-                    continue;
-                }
-            };
-
-            let task_name: String = 'found: {
-                for slug in &tasks {
-                    if let (Some(tid), Some(tname)) = parse_slug(slug) {
-                        if tid == *task_id {
-                            break 'found tname.to_string();
-                        }
-                    }
-                }
+            // Look up task name from pre-built HashMap (O(1))
+            let task_name = if let Some(name) = task_names.get(task_id) {
+                name.clone()
+            } else {
                 // Try to find task name from directory listing
-                let plan_dir = crate::persistence::plan_dir(repo_root, branch, plan_id, plan_name);
-                let tasks_dir = plan_dir.join("tasks");
+                let mut name_found = String::from("unknown");
                 if let Ok(mut entries) = tokio::fs::read_dir(&tasks_dir).await {
                     while let Ok(Some(entry)) = entries.next_entry().await {
                         let name_str = entry.file_name().to_string_lossy().into_owned();
                         let parts: Vec<&str> = name_str.splitn(2, '-').collect();
                         if parts.len() == 2 && parts[0] == task_id {
-                            break 'found parts[1].to_string();
+                            name_found = parts[1].to_string();
+                            break;
                         }
                     }
                 }
-                // Fallback
-                break 'found String::from("unknown");
+                name_found
             };
 
             // Verify status by reading status.json
@@ -150,12 +158,12 @@ impl TaskDispatcher {
                 continue;
             }
 
-            // Check concurrency limit
+            // Check concurrency limit — if reached, no more tasks can be dispatched
             match ConcurrencyChecker::can_dispatch(repo_root, branch, plan_id, plan_name) {
                 Ok(can) => {
                     if !can {
                         tracing::debug!("Concurrency limit reached, cannot dispatch {}", task_id);
-                        return Ok(None);
+                        break;
                     }
                 }
                 Err(e) => {

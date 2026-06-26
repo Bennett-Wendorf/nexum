@@ -121,12 +121,18 @@ impl SessionManager {
     }
 
     /// Respond to a permission request from the agent.
+    ///
+    /// Note: Actual ACP permission response requires JSON-RPC communication
+    /// through the client, which is handled at a lower layer. Here we publish
+    /// a progress event to the event stream to record the decision.
     pub async fn handle_permission_request(
         &self,
         handle: &ACPSessionHandle,
         permission_id: &str,
         approve: bool,
     ) -> Result<()> {
+        let decision = if approve { "approved" } else { "denied" };
+
         if approve {
             tracing::info!(
                 session_id = %handle.session_id,
@@ -140,6 +146,15 @@ impl SessionManager {
                 "Permission denied"
             );
         }
+
+        // Publish a progress event to record the permission decision
+        // The actual JSON-RPC response to the agent is handled at a lower layer
+        let _ = handle.event_stream.publish(ACPEvent::Progress {
+            session_id: handle.session_id.clone(),
+            message: format!("Permission {} for '{}'", decision, permission_id),
+            percentage: None,
+            timestamp: Utc::now().to_rfc3339(),
+        });
 
         Ok(())
     }
@@ -167,10 +182,10 @@ impl SessionManager {
 
     /// Check if the session has completed.
     ///
-    /// Note: `AgentProcess::is_alive()` requires `&mut self`, so with only a
-    /// shared reference to the handle we cannot check subprocess state directly.
-    /// In practice, completion is detected via [`wait_for_completion`] monitoring
+    /// Deprecated: This method always returns `false` since `AgentProcess::is_alive()`
+    /// requires `&mut self`. Use [`wait_for_completion`] instead, which monitors
     /// the event stream for terminal events.
+    #[deprecated(since = "0.1.0", note = "Always returns false; use wait_for_completion instead")]
     pub fn is_completed(&self, _handle: &ACPSessionHandle) -> bool {
         false
     }

@@ -284,12 +284,25 @@ impl WorktreeManager {
                     let task_name = parts[1];
                     let branch_name = TaskWorktree::branch_name(task_id);
 
+                    // Try to derive created_at from filesystem metadata.
+                    // Note: birth time is not reliably available on all filesystems
+                    // (e.g., ext4), so we fall back to modification time or Utc::now().
+                    let created_at = if let Ok(meta) = entry.metadata().await {
+                        meta.created()
+                            .ok()
+                            .or_else(|| meta.modified().ok())
+                            .map(DateTime::<Utc>::from)
+                            .unwrap_or_else(Utc::now)
+                    } else {
+                        Utc::now()
+                    };
+
                     entries.push(TaskWorktree {
                         task_id: task_id.to_string(),
                         task_name: task_name.to_string(),
                         branch_name,
                         path: path.clone(),
-                        created_at: Utc::now(), // We don't store this, so approximate
+                        created_at,
                     });
                 }
             }

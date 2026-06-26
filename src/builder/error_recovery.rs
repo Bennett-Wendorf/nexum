@@ -296,7 +296,11 @@ impl ErrorRecovery {
                     .await
                     .map_err(BuilderError::OverlordError)?;
 
-                self.worktree_manager.cleanup(worktree).await?;
+                // Only clean up worktree if it still exists to avoid double-cleanup
+                // (specific handlers like handle_agent_crash may have already cleaned up)
+                if tokio::fs::try_exists(&worktree.path).await.unwrap_or(false) {
+                    self.worktree_manager.cleanup(worktree).await?;
+                }
             }
         }
 

@@ -32,26 +32,39 @@ pub struct MergeCoordinator {
     repo_root: PathBuf,
     /// Reference to the Overlord scheduler.
     overlord: std::sync::Arc<OverlordScheduler>,
+    /// Serializes merge operations to prevent concurrent git state corruption.
+    merge_lock: tokio::sync::Mutex<()>,
 }
 
 impl MergeCoordinator {
     /// Create a new merge coordinator.
     pub fn new(repo_root: PathBuf, overlord: std::sync::Arc<OverlordScheduler>) -> Self {
-        Self { repo_root, overlord }
+        Self {
+            repo_root,
+            overlord,
+            merge_lock: tokio::sync::Mutex::new(()),
+        }
     }
 
     /// Merge task branch into plan branch.
     ///
     /// # Steps
-    /// 1. Switch to plan branch
-    /// 2. Merge task branch with --no-ff
-    /// 3. On success: return MergeResult::Success
-    /// 4. On conflict: return MergeResult::Conflict with conflicted files
+    /// 1. Acquire merge lock to serialize concurrent merge operations
+    /// 2. Switch to plan branch
+    /// 3. Merge task branch with --no-ff
+    /// 4. On success: return MergeResult::Success
+    /// 5. On conflict: return MergeResult::Conflict with conflicted files
+    ///
+    /// The merge lock prevents concurrent git state corruption when multiple
+    /// tasks attempt to merge into the same plan branch simultaneously.
     pub async fn merge_task_branch(
         &self,
         task_context: &TaskContext,
         worktree: &TaskWorktree,
     ) -> Result<MergeResult> {
+        // Acquire merge lock to serialize concurrent merge operations
+        let _lock = self.merge_lock.lock().await;
+
         let repo_root = self.repo_root.as_path();
 
         // Checkout plan branch
@@ -219,12 +232,13 @@ impl MergeCoordinator {
     /// Trigger dependency auto-queue after successful merge.
     ///
     /// Checks if dependent tasks are now eligible for dispatch.
+    /// The resolver handles auto-queueing internally, so we return `()` on success.
     pub async fn trigger_dependency_auto_queue(
         &self,
         task_context: &TaskContext,
-    ) -> Result<Vec<String>> {
+    ) -> Result<()> {
         let resolver = DependencyResolver::new();
-        let _eligible = resolver
+        resolver
             .auto_queue_tasks(
                 self.repo_root.as_path(),
                 &task_context.branch,
@@ -233,10 +247,6 @@ impl MergeCoordinator {
             )
             .map_err(|e| BuilderError::OverlordError(crate::overlord::OverlordError::DependencyError(e.to_string())))?;
 
-        // The auto_queue_tasks method transitions tasks internally;
-        // we return the list of newly eligible tasks for logging
-        // In the actual overlord implementation, this returns the tasks that were queued
-        // For now, return empty vec as a placeholder since the resolver handles it internally
-        Ok(Vec::new())
+        Ok(())
     }
 }

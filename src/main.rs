@@ -10,6 +10,9 @@ use std::time::Duration;
 
 use tokio::signal::unix::{signal, SignalKind};
 
+/// Default broadcast channel capacity for the builder event bus.
+const DEFAULT_EVENT_BUS_CAPACITY: usize = 64;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
@@ -51,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
         agent_config,
         cfg.global.max_parallel as usize,
         Duration::from_secs(cfg.global.default_timeout_seconds),
-        64, // event bus broadcast capacity
+        DEFAULT_EVENT_BUS_CAPACITY,
     );
     let orchestrator = std::sync::Arc::new(orchestrator);
     tracing::info!(
