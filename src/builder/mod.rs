@@ -4,6 +4,7 @@
 //! tasks to isolated worktrees, running agent sessions, collecting results,
 //! and merging completed task branches back into the plan branch.
 
+pub mod completion_handler;
 pub mod dispatcher;
 pub mod error_recovery;
 pub mod errors;
