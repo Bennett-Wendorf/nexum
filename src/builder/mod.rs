@@ -6,5 +6,6 @@
 
 pub mod dispatcher;
 pub mod errors;
+pub mod event_bus;
 pub mod heartbeat;
 pub mod worktree_manager;
