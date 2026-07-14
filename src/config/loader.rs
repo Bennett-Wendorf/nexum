@@ -50,7 +50,6 @@ yolo_mode = false
 name = "Example Agent"
 type = "opencode"
 spawn_command = "opencode acp"
-# model = "llama3.1"
 # tool_permissions = ["read", "write", "shell"]
 # timeout_seconds = 1800
 # working_dir = "/path/to/project"

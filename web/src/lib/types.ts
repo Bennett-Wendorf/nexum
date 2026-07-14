@@ -134,7 +134,6 @@ export interface AgentRegistration {
   name: string;
   type: string;
   spawn_command: string;
-  model?: string;
   tool_permissions?: string[];
   timeout_seconds?: number;
 }

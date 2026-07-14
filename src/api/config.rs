@@ -51,7 +51,7 @@ pub async fn get_config(
 /// of [`AgentRegistrationResponse`] entries inside an [`AgentsResponse`].
 ///
 /// Only non-internal fields are exposed: `name`, `type`, `spawn_command`,
-/// and optional fields (`model`, `tool_permissions`, `timeout_seconds`).
+/// and optional fields (`tool_permissions`, `timeout_seconds`).
 /// The `working_dir` field is omitted as it is internal to the agent
 /// harness and maps to task worktrees.
 ///
@@ -67,7 +67,6 @@ pub async fn list_agents(
             name: agent.name.clone(),
             r#type: agent.r#type.clone(),
             spawn_command: agent.spawn_command.clone(),
-            model: agent.model.clone(),
             tool_permissions: agent.tool_permissions.clone(),
             timeout_seconds: agent.timeout_seconds,
         })

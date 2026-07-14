@@ -93,10 +93,6 @@ pub struct AgentRegistration {
     /// Binary path or adapter command (e.g., "opencode acp")
     pub spawn_command: String,
 
-    /// Model selection (optional, agent-specific)
-    #[serde(default)]
-    pub model: Option<String>,
-
     /// Allowed tools (optional, defaults to all)
     #[serde(default)]
     pub tool_permissions: Option<Vec<String>>,

@@ -58,7 +58,6 @@ Each `[[agents]]` entry defines an agent that Nexum can spawn and communicate wi
 | `name`             | string   | yes      | Human-readable name (must be unique across agents)   |
 | `type`             | string   | yes      | Agent type identifier (e.g., `"opencode"`, `"kiro"`, `"claude"`) |
 | `spawn_command`    | string   | yes      | Binary path or adapter command (e.g., `"opencode acp"`) |
-| `model`            | string   | no       | Model selection (agent-specific)                     |
 | `tool_permissions` | [string] | no       | Allowed tools; if omitted, all tools are permitted   |
 | `timeout_seconds`  | u64      | no       | Per-agent timeout; falls back to global default      |
 | `working_dir`      | string   | no       | Working directory (maps to task worktree)            |
@@ -68,7 +67,6 @@ Each `[[agents]]` entry defines an agent that Nexum can spawn and communicate wi
 name = "opencode-builder"
 type = "opencode"
 spawn_command = "opencode acp"
-model = "llama3.1"
 tool_permissions = ["read", "write", "shell", "fs_read", "fs_write"]
 timeout_seconds = 1800
 

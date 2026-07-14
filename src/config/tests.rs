@@ -47,7 +47,6 @@ fn test_agent_registration_parse() {
 name = "Test Agent"
 type = "opencode"
 spawn_command = "opencode acp"
-model = "llama3.1"
 tool_permissions = ["read", "write"]
 timeout_seconds = 1800
 "#;
@@ -57,7 +56,6 @@ timeout_seconds = 1800
     assert_eq!(agent.name, "Test Agent");
     assert_eq!(agent.r#type, "opencode");
     assert_eq!(agent.spawn_command, "opencode acp");
-    assert_eq!(agent.model, Some("llama3.1".to_string()));
     assert_eq!(
         agent.tool_permissions,
         Some(vec!["read".to_string(), "write".to_string()])
@@ -149,7 +147,6 @@ fn test_validate_duplicate_agent_names() {
         name: "Same".to_string(),
         r#type: "opencode".to_string(),
         spawn_command: "opencode acp".to_string(),
-        model: None,
         tool_permissions: None,
         timeout_seconds: None,
         working_dir: None,
@@ -173,7 +170,6 @@ fn test_validate_empty_spawn_command() {
         name: "Bad Agent".to_string(),
         r#type: "opencode".to_string(),
         spawn_command: "".to_string(),
-        model: None,
         tool_permissions: None,
         timeout_seconds: None,
         working_dir: None,
@@ -195,7 +191,6 @@ fn test_validate_whitespace_spawn_command() {
         name: "Bad Agent".to_string(),
         r#type: "opencode".to_string(),
         spawn_command: "   ".to_string(),
-        model: None,
         tool_permissions: None,
         timeout_seconds: None,
         working_dir: None,
@@ -239,7 +234,6 @@ fn test_validate_valid_config() {
         name: "Good Agent".to_string(),
         r#type: "opencode".to_string(),
         spawn_command: "opencode acp".to_string(),
-        model: None,
         tool_permissions: None,
         timeout_seconds: None,
         working_dir: None,
@@ -310,7 +304,6 @@ fn make_test_config() -> Config {
                 name: "Builder".to_string(),
                 r#type: "opencode".to_string(),
                 spawn_command: "opencode acp".to_string(),
-                model: Some("llama3.1".to_string()),
                 tool_permissions: None,
                 timeout_seconds: None,
                 working_dir: None,
@@ -319,7 +312,6 @@ fn make_test_config() -> Config {
                 name: "Reviewer".to_string(),
                 r#type: "kiro".to_string(),
                 spawn_command: "kiro acp".to_string(),
-                model: None,
                 tool_permissions: None,
                 timeout_seconds: None,
                 working_dir: None,
@@ -328,7 +320,6 @@ fn make_test_config() -> Config {
                 name: "Planner".to_string(),
                 r#type: "opencode".to_string(),
                 spawn_command: "opencode acp".to_string(),
-                model: None,
                 tool_permissions: None,
                 timeout_seconds: None,
                 working_dir: None,

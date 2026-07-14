@@ -220,7 +220,7 @@ This allows the `?` operator to be used freely in route handlers.
 The `config` module provides server settings and agent registrations. The API exposes:
 
 - **`GET /api/v1/config`**: Returns non-sensitive global settings (host, port, max_parallel, timeout, log level, yolo mode). API keys and OAuth tokens are excluded.
-- **`GET /api/v1/agents`**: Returns all registered agents with name, type, spawn command, model, tool permissions, and timeout. The internal `working_dir` field is omitted.
+- **`GET /api/v1/agents`**: Returns all registered agents with name, type, spawn command, tool permissions, and timeout. The internal `working_dir` field is omitted.
 
 ---
 

@@ -1342,10 +1342,6 @@
             "type": "string",
             "description": "Command used to spawn the agent process."
           },
-          "model": {
-            "type": ["string", "null"],
-            "description": "Optional LLM model to use for the agent."
-          },
           "tool_permissions": {
             "type": ["array", "null"],
             "items": {

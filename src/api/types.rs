@@ -309,8 +309,6 @@ pub struct AgentRegistrationResponse {
     pub r#type: String,
     /// Command used to spawn the agent process.
     pub spawn_command: String,
-    /// Optional LLM model to use for the agent.
-    pub model: Option<String>,
     /// Optional list of tool permissions.
     pub tool_permissions: Option<Vec<String>>,
     /// Optional per-agent timeout in seconds.
