@@ -453,7 +453,9 @@ impl ACPClient {
                         if let Some(id_value) = obj.get("id") {
                             // This is a response — dispatch to pending request
                             // JSON-RPC 2.0 allows id to be Number or String
-                            let id_key = id_value.as_u64().map(|n| n.to_string())
+                            let id_key = id_value
+                                .as_u64()
+                                .map(|n| n.to_string())
                                 .or_else(|| id_value.as_str().map(String::from));
                             if let Some(id_key) = id_key {
                                 let tx = {

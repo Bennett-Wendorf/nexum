@@ -84,9 +84,7 @@ impl ErrorRecovery {
             .map_err(BuilderError::OverlordError)?;
 
         // Clean up worktree
-        self.worktree_manager
-            .cleanup(worktree)
-            .await?;
+        self.worktree_manager.cleanup(worktree).await?;
 
         // Emit event
         self.event_bus.emit(BuilderEvent::TaskFailed {
@@ -98,10 +96,7 @@ impl ErrorRecovery {
             task_id: task_context.task_id.clone(),
         })?;
 
-        tracing::info!(
-            "Crash recovery complete for task {}",
-            task_context.task_id
-        );
+        tracing::info!("Crash recovery complete for task {}", task_context.task_id);
 
         Ok(())
     }
@@ -144,9 +139,7 @@ impl ErrorRecovery {
             .map_err(BuilderError::OverlordError)?;
 
         // Clean up worktree
-        self.worktree_manager
-            .cleanup(worktree)
-            .await?;
+        self.worktree_manager.cleanup(worktree).await?;
 
         // Emit events
         self.event_bus.emit(BuilderEvent::TaskFailed {
@@ -227,15 +220,19 @@ impl ErrorRecovery {
             &task_context.task_name,
         );
 
-        if let Ok(mut status) = crate::persistence::read_json::<crate::persistence::TaskStatus>(&status_path) {
+        if let Ok(mut status) =
+            crate::persistence::read_json::<crate::persistence::TaskStatus>(&status_path)
+        {
             // Add conflict info to transitions
             use chrono::Utc;
-            status.transitions.push(crate::persistence::StatusTransition {
-                from: "reviewing".to_string(),
-                to: "waiting-manual-review".to_string(),
-                at: Utc::now().to_rfc3339(),
-                by: "overlord-merge-conflict".to_string(),
-            });
+            status
+                .transitions
+                .push(crate::persistence::StatusTransition {
+                    from: "reviewing".to_string(),
+                    to: "waiting-manual-review".to_string(),
+                    at: Utc::now().to_rfc3339(),
+                    by: "overlord-merge-conflict".to_string(),
+                });
             let _ = crate::persistence::atomic_write_json(&status_path, &status);
         }
 
@@ -264,17 +261,34 @@ impl ErrorRecovery {
         );
 
         match error {
-            BuilderError::AgentCrash { task_id: _, exit_code: _ } => {
+            BuilderError::AgentCrash {
+                task_id: _,
+                exit_code: _,
+            } => {
                 self.handle_agent_crash(task_context, worktree).await?;
             }
-            BuilderError::TimeoutError { task_id: _, elapsed, limit } => {
-                self.handle_timeout(task_context, worktree, *elapsed, *limit).await?;
+            BuilderError::TimeoutError {
+                task_id: _,
+                elapsed,
+                limit,
+            } => {
+                self.handle_timeout(task_context, worktree, *elapsed, *limit)
+                    .await?;
             }
-            BuilderError::MergeConflict { task_id: _, branch: _, conflicts } => {
-                self.handle_merge_conflict(task_context, worktree, conflicts.clone()).await?;
+            BuilderError::MergeConflict {
+                task_id: _,
+                branch: _,
+                conflicts,
+            } => {
+                self.handle_merge_conflict(task_context, worktree, conflicts.clone())
+                    .await?;
             }
-            BuilderError::PermissionDenied { task_id: _, resource } => {
-                self.handle_permission_denied(task_context, resource).await?;
+            BuilderError::PermissionDenied {
+                task_id: _,
+                resource,
+            } => {
+                self.handle_permission_denied(task_context, resource)
+                    .await?;
             }
             _ => {
                 // Generic error — log and transition to queued for retry

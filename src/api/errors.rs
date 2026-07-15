@@ -107,12 +107,26 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, body) = match &self {
             ApiError::NotFound(_) => (StatusCode::NOT_FOUND, Json(ApiErrorResponse::from(&self))),
-            ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, Json(ApiErrorResponse::from(&self))),
+            ApiError::BadRequest(_) => {
+                (StatusCode::BAD_REQUEST, Json(ApiErrorResponse::from(&self)))
+            }
             ApiError::Conflict(_) => (StatusCode::CONFLICT, Json(ApiErrorResponse::from(&self))),
-            ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiErrorResponse::from(&self))),
-            ApiError::Unauthorized(_) => (StatusCode::UNAUTHORIZED, Json(ApiErrorResponse::from(&self))),
-            ApiError::MethodNotAllowed(_) => (StatusCode::METHOD_NOT_ALLOWED, Json(ApiErrorResponse::from(&self))),
-            ApiError::Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, Json(ApiErrorResponse::from(&self))),
+            ApiError::Internal(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiErrorResponse::from(&self)),
+            ),
+            ApiError::Unauthorized(_) => (
+                StatusCode::UNAUTHORIZED,
+                Json(ApiErrorResponse::from(&self)),
+            ),
+            ApiError::MethodNotAllowed(_) => (
+                StatusCode::METHOD_NOT_ALLOWED,
+                Json(ApiErrorResponse::from(&self)),
+            ),
+            ApiError::Validation(_) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(ApiErrorResponse::from(&self)),
+            ),
         };
         (status, body).into_response()
     }
@@ -143,7 +157,11 @@ impl From<&ApiError> for ApiErrorResponse {
 
 impl fmt::Display for ApiErrorResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {} (status {})", self.error, self.message, self.status)
+        write!(
+            f,
+            "{}: {} (status {})",
+            self.error, self.message, self.status
+        )
     }
 }
 
@@ -170,9 +188,7 @@ impl From<persistence::PersistenceError> for ApiError {
             | persistence::PersistenceError::PathResolution(_) => {
                 ApiError::BadRequest(err.to_string())
             }
-            persistence::PersistenceError::SchemaValidation(msg) => {
-                ApiError::Validation(msg)
-            }
+            persistence::PersistenceError::SchemaValidation(msg) => ApiError::Validation(msg),
             persistence::PersistenceError::ConcurrencyConflict(_) => {
                 ApiError::Conflict("file was modified by another process".to_string())
             }

@@ -4,26 +4,38 @@
   import StatusBadge from '../components/StatusBadge.svelte';
   import MarkdownRenderer from '../components/MarkdownRenderer.svelte';
   import RouterLink from '../components/RouterLink.svelte';
-  import { getTask, transitionTaskStatus } from '$lib/api';
+  import { getTask, transitionTaskStatus, getConfig } from '$lib/api';
   import { setError } from '$lib/errorUtils';
-  import type { Task } from '$lib/types';
+  import type { Task, Config } from '$lib/types';
   
   let { branch, planId, taskId }: { branch: string; planId: string; taskId: string } = $props();
   
   let task = $state<Task | null>(null);
+  let config = $state<Config | null>(null);
   let activeTab = $state<'definition' | 'history'>('definition');
   let loading = $state(false);
-  let transitioning = $state(false);
+  let executing = $state(false);
+  let abandoning = $state(false);
   let error = $state<string | null>(null);
-  let errorCleanup: (() => void) | null = $state(null);
+  let errorCleanup: (() => void) | null = null;
+  let loadFailed = $state(false);
+
+  const SPINNER_SVG = `<svg class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+</svg>`;
 
   onMount(async () => {
     loading = true;
     try {
-      task = await getTask(branch, planId, taskId);
+      [task, config] = await Promise.all([
+        getTask(branch, planId, taskId),
+        getConfig(),
+      ]);
     } catch (e) {
       if (e instanceof Error) {
         errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
+        loadFailed = true;
       }
     } finally {
       loading = false;
@@ -42,11 +54,14 @@
     { label: 'Tasks', href: `/plans/${branch}/${planId}/tasks` },
     { label: task?.name ?? taskId },
   ]);
+
+  const babyStepMode = $derived(config !== null && !config.yolo_mode && !loading);
   
   async function handleTransition(newStatus: string): Promise<void> {
     if (!newStatus) return;
     if (!task) return;
-    transitioning = true;
+    if (newStatus === 'running') executing = true;
+    if (newStatus === 'abandoned') abandoning = true;
     try {
       task = await transitionTaskStatus(branch, planId, taskId, { status: newStatus });
     } catch (e) {
@@ -54,12 +69,16 @@
         errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
       }
     } finally {
-      transitioning = false;
+      executing = false;
+      abandoning = false;
     }
   }
 
   function handleStatusChange(e: Event): void {
-    handleTransition((e.target as HTMLSelectElement).value);
+    const target = e.target as HTMLSelectElement | null;
+    if (target instanceof HTMLSelectElement) {
+      handleTransition(target.value);
+    }
   }
 </script>
 
@@ -68,11 +87,20 @@
     <div class="flex items-center justify-center py-12">
       <div class="text-text-muted">Loading task...</div>
     </div>
+  {:else if loadFailed}
+    <div class="flex flex-col items-center justify-center py-12 text-text-muted">
+      <p class="text-lg">Failed to load task</p>
+    </div>
   {:else if !task}
     <div class="flex flex-col items-center justify-center py-12 text-text-muted">
       <p class="text-lg">Task not found</p>
     </div>
   {:else}
+    {#if error}
+      <div class="mb-4 p-3 bg-accent-red-subtle border border-accent-red/30 rounded-md text-accent-red text-sm">
+        {error}
+      </div>
+    {/if}
     <!-- Top Bar -->
     <div class="flex items-center gap-4 mb-4">
       <RouterLink href={`/plans/${branch}/${planId}/tasks`} class="text-text-muted hover:text-text-secondary text-sm">← Back</RouterLink>
@@ -89,30 +117,64 @@
           <span class="text-sm text-text-muted">{task.files_to_modify.length} files</span>
         </div>
       </div>
-      <select class="px-3 py-1.5 border border-border-default bg-bg-secondary text-accent-blue rounded-md text-sm cursor-pointer"
-              onchange={handleStatusChange}
-              disabled={transitioning}>
-        <option value="">Change status...</option>
-        <option value="queued">Queued</option>
-        <option value="running">Running</option>
-        <option value="reviewing">Reviewing</option>
-        <option value="waiting-manual-review">Manual Review</option>
-        <option value="merge-queue">Merge Queue</option>
-        <option value="completed">Completed</option>
-        <option value="abandoned">Abandoned</option>
-      </select>
+      <div class="flex flex-col items-end gap-2">
+        <div class="flex items-center gap-2">
+          <button type="button" class="bg-accent-blue border border-accent-blue text-white hover:bg-accent-blue/80 rounded-md text-sm px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  onclick={() => handleTransition('running')}
+                  disabled={executing}>
+            {#if executing}
+              <span class="inline-flex items-center gap-1.5">
+                {@html SPINNER_SVG}
+                Executing...
+              </span>
+            {:else}
+              ▶ Execute
+            {/if}
+          </button>
+          <button type="button" class="bg-accent-red border border-accent-red text-white hover:bg-accent-red/80 rounded-md text-sm px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  onclick={() => { if (confirm('Are you sure you want to abandon this task?')) handleTransition('abandoned'); }}
+                  disabled={abandoning}>
+            {#if abandoning}
+              <span class="inline-flex items-center gap-1.5">
+                {@html SPINNER_SVG}
+                Abandoning...
+              </span>
+            {:else}
+              Abandon
+            {/if}
+          </button>
+        </div>
+        <select class="px-3 py-1.5 border border-border-default bg-bg-secondary text-accent-blue rounded-md text-sm cursor-pointer"
+                onchange={handleStatusChange}
+                disabled={executing || abandoning}>
+          <option value="">Change status...</option>
+          <option value="queued">Queued</option>
+          <option value="reviewing">Reviewing</option>
+          <option value="waiting-manual-review">Manual Review</option>
+          <option value="merge-queue">Merge Queue</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
     </div>
     
     <div class="flex gap-6">
       <!-- Main Content -->
       <div class="flex-1 min-w-0">
+        <!-- Baby Step Mode Banner -->
+        {#if babyStepMode}
+          <div class="flex items-start gap-3 p-3 mb-4 bg-yellow-500/10 border border-yellow-500/30 rounded-md text-yellow-400">
+            <span class="text-lg flex-shrink-0">🚂</span>
+            <span class="text-sm">Baby Step Mode: Each status transition requires your confirmation before proceeding.</span>
+          </div>
+        {/if}
+        
         <!-- Tabs -->
         <div class="flex border-b border-border-default mb-6">
-          <button class="px-4 py-2.5 text-sm border-b-2 border-transparent {activeTab === 'definition' ? 'text-accent-blue border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'} transition-colors"
+          <button type="button" aria-label="Show task definition" class="px-4 py-2.5 text-sm border-b border-transparent {activeTab === 'definition' ? 'border-b-2 text-accent-blue border-accent-blue' : 'text-text-muted hover:text-text-secondary'} transition-colors"
                   onclick={() => activeTab = 'definition'}>
             Task Definition
           </button>
-          <button class="px-4 py-2.5 text-sm border-b-2 border-transparent {activeTab === 'history' ? 'text-accent-blue border-b-2 border-accent-blue' : 'text-text-muted hover:text-text-secondary'} transition-colors"
+          <button type="button" aria-label="Show status history" class="px-4 py-2.5 text-sm border-b border-transparent {activeTab === 'history' ? 'border-b-2 text-accent-blue border-accent-blue' : 'text-text-muted hover:text-text-secondary'} transition-colors"
                   onclick={() => activeTab = 'history'}>
             Status History
           </button>

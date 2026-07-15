@@ -22,8 +22,8 @@ use axum::{
 use serde::Serialize;
 
 use crate::api::errors::ApiError;
-use crate::api::types::*;
 use crate::api::middleware::{resolve_plan_path, resolve_task_path};
+use crate::api::types::*;
 use crate::persistence::*;
 
 // ── Helper Functions ──────────────────────────────────────────────────
@@ -40,7 +40,7 @@ struct HealthResponse {
 /// Maps the plan ID, branch, and task list directly. The
 /// `task_status_map` values (which are [`TaskStatusValue`] enums) are
 /// converted to their kebab-case string representations via
-/// [`task_status_to_string`].
+/// [`std::fmt::Display`].
 fn execution_state_to_response(state: &ExecutionState) -> ExecutionStateResponse {
     ExecutionStateResponse {
         plan_id: state.plan_id.clone(),
@@ -49,7 +49,7 @@ fn execution_state_to_response(state: &ExecutionState) -> ExecutionStateResponse
         task_status_map: state
             .task_status_map
             .iter()
-            .map(|(k, v)| (k.clone(), task_status_to_string(v).to_string()))
+            .map(|(k, v)| (k.clone(), v.to_string()))
             .collect(),
     }
 }
@@ -68,8 +68,7 @@ fn list_state_plans(
         return Ok(Vec::new());
     }
 
-    let entries = crate::persistence::list_dir(&state_branch_dir)
-        .map_err(ApiError::from)?;
+    let entries = crate::persistence::list_dir(&state_branch_dir).map_err(ApiError::from)?;
 
     let mut names = entries
         .into_iter()
@@ -131,8 +130,7 @@ pub async fn list_running_tasks(
     let mut running_tasks = Vec::new();
 
     // List all branches under .agent/specs/
-    let branches = crate::persistence::list_branches(&state.repo_root)
-        .map_err(ApiError::from)?;
+    let branches = crate::persistence::list_branches(&state.repo_root).map_err(ApiError::from)?;
 
     for branch in &branches {
         // List plan slugs under .agent/state/<branch>/
@@ -146,22 +144,18 @@ pub async fn list_running_tasks(
             };
 
             // Read execution state
-            let exec_state = match read_execution_state(
-                &state.repo_root,
-                branch,
-                &plan_id,
-                &plan_name,
-            ) {
-                Ok(state) => state,
-                Err(e) => {
-                    tracing::warn!(
-                        plan_id = %plan_id,
-                        branch = %branch,
-                        "Skipping plan without execution state: {}", e
-                    );
-                    continue;
-                }
-            };
+            let exec_state =
+                match read_execution_state(&state.repo_root, branch, &plan_id, &plan_name) {
+                    Ok(state) => state,
+                    Err(e) => {
+                        tracing::warn!(
+                            plan_id = %plan_id,
+                            branch = %branch,
+                            "Skipping plan without execution state: {}", e
+                        );
+                        continue;
+                    }
+                };
 
             // Check each task in the status map for Running status
             for (task_id, task_status) in &exec_state.task_status_map {
@@ -227,5 +221,7 @@ pub async fn list_running_tasks(
 /// status code. Used by load balancers and monitoring systems to verify
 /// that the server is alive and accepting requests.
 pub async fn health_check() -> impl IntoResponse {
-    Json(HealthResponse { status: "ok".to_string() })
+    Json(HealthResponse {
+        status: "ok".to_string(),
+    })
 }

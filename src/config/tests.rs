@@ -6,7 +6,9 @@ use tempfile::TempDir;
 
 use super::accessor::*;
 use super::loader::{validate, ConfigError, DEFAULT_CONFIG_TEMPLATE};
-use super::schema::{AgentRegistration, AuthenticationSettings, Config, GlobalSettings, Preferences};
+use super::schema::{
+    AgentRegistration, AuthenticationSettings, Config, GlobalSettings, Preferences,
+};
 
 // ─── Helper utilities ───────────────────────────────────────────────
 

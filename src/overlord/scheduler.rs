@@ -15,9 +15,7 @@ use super::dependency_resolver::DependencyResolver;
 use super::errors::{OverlordError, Result};
 use super::heartbeat_monitor::{HeartbeatMonitor, StaleTask};
 use super::id_generator::{PlanIdGenerator, TaskIdGenerator};
-use super::status_machine::plan_status_to_string;
 use super::status_machine::{PlanStateMachine, TaskStateMachine};
-use crate::persistence::task_status_to_string;
 
 use crate::persistence::{list_branches, list_plans, list_tasks, parse_slug};
 use crate::persistence::{read_plan, read_task_status, update_plan, update_task_status};
@@ -243,8 +241,8 @@ impl OverlordScheduler {
         // Validate transition
         if !TaskStateMachine::can_transition(&status.status, &params.new_status) {
             return Err(OverlordError::InvalidTransition {
-                from: task_status_to_string(&status.status).to_string(),
-                to: task_status_to_string(&params.new_status).to_string(),
+                from: status.status.to_string(),
+                to: params.new_status.to_string(),
                 entity: "task".to_string(),
             });
         }
@@ -299,18 +297,13 @@ impl OverlordScheduler {
         // Validate transition
         if !PlanStateMachine::can_transition(&plan.status, &new_status) {
             return Err(OverlordError::InvalidTransition {
-                from: plan_status_to_string(&plan.status).to_string(),
-                to: plan_status_to_string(&new_status).to_string(),
+                from: plan.status.to_string(),
+                to: new_status.to_string(),
                 entity: "plan".to_string(),
             });
         }
 
-        // Check concurrency if target is planning or reviewing
-        if matches!(new_status, PlanStatus::Planning | PlanStatus::Reviewing) {
-            // For now, no concurrency check on plans (future enhancement)
-        }
-
-        // Update plan — use struct update syntax to avoid cloning
+        // Update plan status using struct update syntax
         let updated_plan = Plan {
             status: new_status.clone(),
             ..plan

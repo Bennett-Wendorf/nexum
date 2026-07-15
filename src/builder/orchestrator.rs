@@ -77,10 +77,7 @@ impl WorkflowOrchestrator {
         event_bus_capacity: usize,
     ) -> Self {
         let worktree_manager = Arc::new(WorktreeManager::new(repo_root.clone()));
-        let session_manager = Arc::new(SessionManager::new(
-            repo_root.clone(),
-            agent_config,
-        ));
+        let session_manager = Arc::new(SessionManager::new(repo_root.clone(), agent_config));
         let heartbeat_manager =
             Arc::new(HeartbeatManager::with_default_interval(repo_root.clone()));
         let event_bus = Arc::new(BuilderEventBus::new(event_bus_capacity));
@@ -186,11 +183,7 @@ impl WorkflowOrchestrator {
             task_context: task_context.clone(),
             worktree: worktree.clone(),
             session_id: session_id.clone(),
-            pid: session
-                .subprocess
-                .child
-                .as_ref()
-                .and_then(|c| c.id()),
+            pid: session.subprocess.child.as_ref().and_then(|c| c.id()),
             started_at: session.started_at,
         });
 
@@ -231,12 +224,7 @@ impl WorkflowOrchestrator {
             CompletionResult::Timeout(timeout) => {
                 // Timeout — handle via error recovery
                 self.error_recovery
-                    .handle_timeout(
-                        &task_context,
-                        &worktree,
-                        timeout,
-                        self.task_timeout,
-                    )
+                    .handle_timeout(&task_context, &worktree, timeout, self.task_timeout)
                     .await?;
                 error_recovery_ran = true;
             }
@@ -278,10 +266,9 @@ impl WorkflowOrchestrator {
         }
 
         // Emit cleanup event
-        self.event_bus
-            .emit(BuilderEvent::TaskCleanedUp {
-                task_id: task_id.clone(),
-            })?;
+        self.event_bus.emit(BuilderEvent::TaskCleanedUp {
+            task_id: task_id.clone(),
+        })?;
 
         tracing::info!(task_id = %task_id, "Cleanup phase complete");
 
@@ -380,8 +367,10 @@ impl WorkflowOrchestrator {
         // Wait for all tasks to complete
         for handle in handles {
             match handle.await {
-                Ok((_task_id, Ok(()))) => {},
-                Ok((task_id, Err(e))) => tracing::error!(task_id = %task_id, "Task execution failed: {}", e),
+                Ok((_task_id, Ok(()))) => {}
+                Ok((task_id, Err(e))) => {
+                    tracing::error!(task_id = %task_id, "Task execution failed: {}", e)
+                }
                 Err(join_err) => tracing::error!("Task panicked: {}", join_err),
             }
         }
@@ -409,11 +398,7 @@ impl WorkflowOrchestrator {
     /// Get a list of currently active sessions.
     pub async fn get_active_sessions(&self) -> Vec<ActiveSession> {
         let dispatcher = self.dispatcher.lock().await;
-        dispatcher
-            .list_active()
-            .into_iter()
-            .cloned()
-            .collect()
+        dispatcher.list_active().into_iter().cloned().collect()
     }
 
     /// Get a reference to the event bus for subscribing to builder events.

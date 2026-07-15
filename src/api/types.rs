@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
 use crate::builder::orchestrator::WorkflowOrchestrator;
 use crate::config;
@@ -354,6 +355,43 @@ pub struct AppState {
     pub config: config::Config,
     /// Builder workflow orchestrator for task execution.
     pub orchestrator: Option<Arc<WorkflowOrchestrator>>,
+    /// Per-plan async mutex map for serializing read-modify-write operations.
+    /// Keyed by plan_id. Each value is an Arc<tokio::sync::Mutex<()>> that
+    /// prevents concurrent handlers from corrupting plan data.
+    pub plan_locks: Arc<RwLock<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
+}
+
+impl AppState {
+    /// Remove per-plan lock entries for plans that no longer exist on disk.
+    ///
+    /// This prevents the `plan_locks` HashMap from growing unboundedly
+    /// as plans are created and deleted over the lifetime of the server.
+    pub async fn cleanup_stale_locks(&self) {
+        let mut locks = self.plan_locks.write().await;
+
+        // Collect keys of plans that no longer exist
+        let mut stale_keys = Vec::new();
+        for plan_id in locks.keys() {
+            // Check if the plan still exists in any branch
+            let branches = match crate::persistence::list_branches(&self.repo_root) {
+                Ok(b) => b,
+                Err(_) => continue,
+            };
+
+            let exists = branches.iter().any(|branch| {
+                crate::persistence::find_plan_by_id(&self.repo_root, branch, plan_id).is_ok()
+            });
+
+            if !exists {
+                stale_keys.push(plan_id.clone());
+            }
+        }
+
+        // Remove stale entries
+        for key in stale_keys {
+            locks.remove(&key);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

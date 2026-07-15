@@ -37,7 +37,9 @@ pub enum BuilderError {
     MergeError(GitError),
 
     /// Merge conflict detected during task branch merge.
-    #[error("Merge conflict for task '{task_id}' on branch '{branch}': conflicts in {conflicts:?}")]
+    #[error(
+        "Merge conflict for task '{task_id}' on branch '{branch}': conflicts in {conflicts:?}"
+    )]
     MergeConflict {
         task_id: String,
         branch: String,
@@ -69,10 +71,7 @@ pub enum BuilderError {
 
     /// Agent permission request was denied.
     #[error("Permission denied for task '{task_id}': {resource}")]
-    PermissionDenied {
-        task_id: String,
-        resource: String,
-    },
+    PermissionDenied { task_id: String, resource: String },
 
     /// General workflow error.
     #[error("Workflow error: {0}")]

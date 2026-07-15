@@ -25,7 +25,9 @@ use axum::{
 use chrono::Utc;
 
 use crate::api::errors::ApiError;
-use crate::api::middleware::{resolve_plan_path, resolve_task_path, validate_status_transition};
+use crate::api::middleware::{
+    lock_plan, resolve_plan_path, resolve_task_path, validate_status_transition,
+};
 use crate::api::types::*;
 use crate::persistence::*;
 
@@ -50,7 +52,7 @@ fn task_to_response(task: &Task, status: &TaskStatus) -> TaskResponse {
         notes: task.notes.clone(),
         status: TaskStatusResponse {
             id: status.id.clone(),
-            status: task_status_to_string(&status.status).to_string(),
+            status: status.status.to_string(),
             agent: status.agent.as_ref().map(|a| AgentLeaseResponse {
                 role: a.role.clone(),
                 pid: a.pid,
@@ -76,26 +78,6 @@ fn task_to_response(task: &Task, status: &TaskStatus) -> TaskResponse {
     }
 }
 
-/// Parse a kebab-case status string into a [`TaskStatusValue`] enum variant.
-///
-/// Returns [`ApiError::Validation`] if the string does not match any
-/// recognised task status.
-fn parse_task_status_value(s: &str) -> std::result::Result<TaskStatusValue, ApiError> {
-    match s {
-        "backlog" => Ok(TaskStatusValue::Backlog),
-        "queued" => Ok(TaskStatusValue::Queued),
-        "running" => Ok(TaskStatusValue::Running),
-        "reviewing" => Ok(TaskStatusValue::Reviewing),
-        "waiting-manual-review" => Ok(TaskStatusValue::WaitingManualReview),
-        "merge-queue" => Ok(TaskStatusValue::MergeQueue),
-        "abandoned" => Ok(TaskStatusValue::Abandoned),
-        "completed" => Ok(TaskStatusValue::Completed),
-        _ => Err(ApiError::Validation(format!(
-            "Invalid task status: {s}"
-        ))),
-    }
-}
-
 /// Generate the next available task ID by scanning existing tasks in a plan.
 ///
 /// Iterates over task directory slugs, extracts the numeric suffix from
@@ -113,8 +95,7 @@ fn generate_task_id(
     let mut max_num: u32 = 0;
 
     if tasks_dir.exists() {
-        let entries = crate::persistence::list_dir(&tasks_dir)
-            .map_err(ApiError::from)?;
+        let entries = crate::persistence::list_dir(&tasks_dir).map_err(ApiError::from)?;
 
         for entry in entries {
             if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
@@ -155,8 +136,9 @@ pub async fn list_tasks(
     let (_plan_dir, plan_name) = resolve_plan_path(&state.repo_root, &branch, &plan_id)?;
 
     // List task directory slugs
-    let task_slugs = crate::persistence::list_tasks(&state.repo_root, &branch, &plan_id, &plan_name)
-        .map_err(ApiError::from)?;
+    let task_slugs =
+        crate::persistence::list_tasks(&state.repo_root, &branch, &plan_id, &plan_name)
+            .map_err(ApiError::from)?;
 
     let mut items = Vec::new();
     let mut total = 0usize;
@@ -167,8 +149,15 @@ pub async fn list_tasks(
             _ => continue,
         };
 
-        let task = read_task(&state.repo_root, &branch, &plan_id, &plan_name, &task_id, &task_name)
-            .map_err(ApiError::from)?;
+        let task = read_task(
+            &state.repo_root,
+            &branch,
+            &plan_id,
+            &plan_name,
+            &task_id,
+            &task_name,
+        )
+        .map_err(ApiError::from)?;
 
         let status = read_task_status(
             &state.repo_root,
@@ -185,17 +174,14 @@ pub async fn list_tasks(
 
         // Filter by status if specified
         if let Some(ref filter_status) = query.status {
-            if task_status_to_string(&status.status) != filter_status.as_str() {
+            if status.status.to_string() != filter_status.as_str() {
                 continue;
             }
         }
 
         items.push(task_to_response(&task, &status));
     }
-    Ok(Json(ListResponse {
-        items,
-        total,
-    }))
+    Ok(Json(ListResponse { items, total }))
 }
 
 /// Get a specific task by branch, plan ID, and task ID.
@@ -256,6 +242,10 @@ pub async fn create_task(
     // Verify plan exists
     let (_plan_dir, plan_name) = resolve_plan_path(&state.repo_root, &branch, &plan_id)?;
 
+    // Acquire per-plan lock to prevent TOCTOU race on plan read-modify-write
+    let plan_mutex = lock_plan(&state, &plan_id).await;
+    let _plan_guard = plan_mutex.lock().await;
+
     // Validate request fields
     if req.name.trim().is_empty() {
         return Err(ApiError::Validation(
@@ -295,8 +285,8 @@ pub async fn create_task(
     .map_err(ApiError::from)?;
 
     // Update plan's task list: add TaskReference
-    let mut plan = read_plan(&state.repo_root, &branch, &plan_id, &plan_name)
-        .map_err(ApiError::from)?;
+    let mut plan =
+        read_plan(&state.repo_root, &branch, &plan_id, &plan_name).map_err(ApiError::from)?;
     plan.tasks.push(TaskReference {
         id: task_id.clone(),
         name: task.name.clone(),
@@ -420,13 +410,16 @@ pub async fn delete_task(
     let (task_dir, resolved_task_id, _task_name) =
         resolve_task_path(&state.repo_root, &branch, &plan_id, &plan_name, &task_id)?;
 
+    // Acquire per-plan lock to prevent TOCTOU race on plan read-modify-write
+    let plan_mutex = lock_plan(&state, &plan_id).await;
+    let _plan_guard = plan_mutex.lock().await;
+
     // Remove task directory
-    crate::persistence::remove_dir_all(&task_dir)
-        .map_err(ApiError::from)?;
+    crate::persistence::remove_dir_all(&task_dir).map_err(ApiError::from)?;
 
     // Update plan's task list: remove reference
-    let mut plan = read_plan(&state.repo_root, &branch, &plan_id, &plan_name)
-        .map_err(ApiError::from)?;
+    let mut plan =
+        read_plan(&state.repo_root, &branch, &plan_id, &plan_name).map_err(ApiError::from)?;
     plan.tasks.retain(|t| t.id != resolved_task_id);
     crate::persistence::update_plan(&state.repo_root, &branch, &plan_id, &plan_name, &plan)
         .map_err(ApiError::from)?;
@@ -456,6 +449,8 @@ pub async fn delete_task(
 /// [`update_task_status`] to persist the change (with TOCTOU protection),
 /// and updates the execution state's `task_status_map`.
 ///
+/// Acquires the per-plan lock to serialize `status.json` and `task_status_map` updates atomically.
+///
 /// Returns the updated [`TaskResponse`]. Returns **404 Not Found** if the
 /// plan or task does not exist, or **422 Unprocessable Entity** if the
 /// transition is not permitted from the current status.
@@ -471,56 +466,67 @@ pub async fn transition_task_status(
     let (_task_dir, resolved_task_id, task_name) =
         resolve_task_path(&state.repo_root, &branch, &plan_id, &plan_name, &task_id)?;
 
-    // Read current status
-    let current_status = read_task_status(
-        &state.repo_root,
-        &branch,
-        &plan_id,
-        &plan_name,
-        &resolved_task_id,
-        &task_name,
-    )
-    .map_err(ApiError::from)?;
+    // Acquire per-plan lock to serialize all mutations on this plan.
+    // This prevents TOCTOU races between concurrent handlers that
+    // read-modify-write the execution state's task_status_map.
+    let plan_mutex = lock_plan(&state, &plan_id).await;
+    let updated_status;
+    {
+        let _plan_guard = plan_mutex.lock().await;
 
-    // Validate the transition against the task transition map
-    let current_status_str = task_status_to_string(&current_status.status);
-    validate_status_transition(current_status_str, &req.status, "task")?;
-
-    // Parse target status string to TaskStatusValue enum
-    let new_status = parse_task_status_value(&req.status)?;
-
-    // Call persistence::update_task_status with TOCTOU protection
-    let params = UpdateTaskStatusParams {
-        path: TaskPathParams {
-            repo_root: state.repo_root.clone(),
-            branch: branch.clone(),
-            plan_id: plan_id.clone(),
-            plan_name: plan_name.clone(),
-            task_id: resolved_task_id.clone(),
-            task_name: task_name.clone(),
-        },
-        new_status: new_status.clone(),
-        by: req.by.clone().unwrap_or_else(|| "api".to_string()),
-    };
-    let updated_status = crate::persistence::update_task_status(&params)
+        // Read current status
+        let current_status = read_task_status(
+            &state.repo_root,
+            &branch,
+            &plan_id,
+            &plan_name,
+            &resolved_task_id,
+            &task_name,
+        )
         .map_err(ApiError::from)?;
 
-    // Update execution state task_status_map
-    let mut exec_state = read_execution_state(&state.repo_root, &branch, &plan_id, &plan_name)
-        .map_err(ApiError::from)?;
-    exec_state
-        .task_status_map
-        .insert(resolved_task_id.clone(), new_status);
-    crate::persistence::update_execution_state(
-        &state.repo_root,
-        &branch,
-        &plan_id,
-        &plan_name,
-        &exec_state,
-    )
-    .map_err(ApiError::from)?;
+        // Validate the transition against the task transition map
+        let current_status_str = current_status.status.to_string();
+        validate_status_transition(current_status_str.as_str(), req.status.as_str(), "task")?;
 
-    // Read updated task
+        // Parse target status string to TaskStatusValue enum
+        let new_status = req
+            .status
+            .parse::<TaskStatusValue>()
+            .map_err(ApiError::Validation)?;
+
+        // Call persistence::update_task_status with TOCTOU protection
+        let params = UpdateTaskStatusParams {
+            path: TaskPathParams {
+                repo_root: state.repo_root.clone(),
+                branch: branch.clone(),
+                plan_id: plan_id.clone(),
+                plan_name: plan_name.clone(),
+                task_id: resolved_task_id.clone(),
+                task_name: task_name.clone(),
+            },
+            new_status: new_status.clone(),
+            by: req.by.clone().unwrap_or_else(|| "api".to_string()),
+        };
+        updated_status = crate::persistence::update_task_status(&params).map_err(ApiError::from)?;
+
+        // Update execution state task_status_map
+        let mut exec_state = read_execution_state(&state.repo_root, &branch, &plan_id, &plan_name)
+            .map_err(ApiError::from)?;
+        exec_state
+            .task_status_map
+            .insert(resolved_task_id.clone(), new_status);
+        crate::persistence::update_execution_state(
+            &state.repo_root,
+            &branch,
+            &plan_id,
+            &plan_name,
+            &exec_state,
+        )
+        .map_err(ApiError::from)?;
+    } // _plan_guard dropped here
+
+    // Read updated task (outside lock)
     let task = read_task(
         &state.repo_root,
         &branch,
@@ -542,6 +548,8 @@ pub async fn transition_task_status(
 /// "running". If the status was already changed by another process (TOCTOU
 /// conflict), returns **409 Conflict**.
 ///
+/// Acquires the per-plan lock to serialize `status.json` and `task_status_map` updates atomically.
+///
 /// Returns the updated [`TaskResponse`]. Returns **404 Not Found** if the
 /// plan or task does not exist, **422 Unprocessable Entity** if the task
 /// is not in "queued" status, or **409 Conflict** if a concurrency
@@ -558,98 +566,107 @@ pub async fn claim_task(
     let (_task_dir, resolved_task_id, task_name) =
         resolve_task_path(&state.repo_root, &branch, &plan_id, &plan_name, &task_id)?;
 
-    // Read current status
-    let current_status = read_task_status(
-        &state.repo_root,
-        &branch,
-        &plan_id,
-        &plan_name,
-        &resolved_task_id,
-        &task_name,
-    )
-    .map_err(ApiError::from)?;
+    // Acquire per-plan lock to serialize all mutations on this plan.
+    // This prevents TOCTOU races between concurrent handlers that
+    // read-modify-write the execution state's task_status_map.
+    let plan_mutex = lock_plan(&state, &plan_id).await;
+    let mut final_status;
+    {
+        let _plan_guard = plan_mutex.lock().await;
 
-    // Verify current status is "queued"
-    if !matches!(current_status.status, TaskStatusValue::Queued) {
-        return Err(ApiError::Validation(format!(
-            "Task is in '{}' status, must be 'queued' to claim",
-            task_status_to_string(&current_status.status)
-        )));
-    }
+        // Read current status
+        let current_status = read_task_status(
+            &state.repo_root,
+            &branch,
+            &plan_id,
+            &plan_name,
+            &resolved_task_id,
+            &task_name,
+        )
+        .map_err(ApiError::from)?;
 
-    // Create AgentLease
-    let lease = AgentLease {
-        role: req.agent_role.clone(),
-        pid: req.agent_pid,
-        leased_at: Utc::now().to_rfc3339(),
-    };
+        // Verify current status is "queued"
+        if !matches!(current_status.status, TaskStatusValue::Queued) {
+            return Err(ApiError::Validation(format!(
+                "Task is in '{}' status, must be 'queued' to claim",
+                current_status.status
+            )));
+        }
 
-    // Build updated status with the lease
-    let params = UpdateTaskStatusParams {
-        path: TaskPathParams {
-            repo_root: state.repo_root.clone(),
-            branch: branch.clone(),
-            plan_id: plan_id.clone(),
-            plan_name: plan_name.clone(),
-            task_id: resolved_task_id.clone(),
-            task_name: task_name.clone(),
-        },
-        new_status: TaskStatusValue::Running,
-        by: format!("agent:{}:{}", req.agent_role, req.agent_pid),
-    };
+        // Create AgentLease
+        let lease = AgentLease {
+            role: req.agent_role.clone(),
+            pid: req.agent_pid,
+            leased_at: Utc::now().to_rfc3339(),
+        };
 
-    // Attempt status transition with TOCTOU protection
-    let updated_status = match crate::persistence::update_task_status(&params) {
-        Ok(status) => status,
-        Err(crate::persistence::PersistenceError::ConcurrencyConflict(_)) => {
+        // Build updated status with the lease
+        let params = UpdateTaskStatusParams {
+            path: TaskPathParams {
+                repo_root: state.repo_root.clone(),
+                branch: branch.clone(),
+                plan_id: plan_id.clone(),
+                plan_name: plan_name.clone(),
+                task_id: resolved_task_id.clone(),
+                task_name: task_name.clone(),
+            },
+            new_status: TaskStatusValue::Running,
+            by: format!("agent:{}:{}", req.agent_role, req.agent_pid),
+        };
+
+        // Attempt status transition with TOCTOU protection
+        let updated_status = match crate::persistence::update_task_status(&params) {
+            Ok(status) => status,
+            Err(crate::persistence::PersistenceError::ConcurrencyConflict(_)) => {
+                return Err(ApiError::Conflict(
+                    "task status was modified by another process".to_string(),
+                ));
+            }
+            Err(e) => return Err(ApiError::from(e)),
+        };
+
+        // Inject the agent lease into the returned status
+        final_status = updated_status;
+        final_status.agent = Some(lease);
+
+        // Re-write status.json with the agent lease (with TOCTOU verification)
+        let status_path = task_status_path(
+            &state.repo_root,
+            &branch,
+            &plan_id,
+            &plan_name,
+            &resolved_task_id,
+            &task_name,
+        );
+
+        // Re-read status.json to verify no external process modified it
+        // between our update_task_status write and this agent lease injection.
+        let re_read_status: TaskStatus = read_json(&status_path).map_err(ApiError::from)?;
+        if !matches!(re_read_status.status, TaskStatusValue::Running) {
             return Err(ApiError::Conflict(
                 "task status was modified by another process".to_string(),
             ));
         }
-        Err(e) => return Err(ApiError::from(e)),
-    };
 
-    // Inject the agent lease into the returned status
-    let mut final_status = updated_status;
-    final_status.agent = Some(lease);
+        atomic_write_json(&status_path, &final_status).map_err(ApiError::from)?;
 
-    // Re-write status.json with the agent lease (with TOCTOU verification)
-    let status_path = task_status_path(
-        &state.repo_root,
-        &branch,
-        &plan_id,
-        &plan_name,
-        &resolved_task_id,
-        &task_name,
-    );
-
-    // Re-read status.json to verify it still has status=Running (TOCTOU check)
-    let re_read_status: TaskStatus = read_json(&status_path)
+        // Update execution state task_status_map
+        let mut exec_state = read_execution_state(&state.repo_root, &branch, &plan_id, &plan_name)
+            .map_err(ApiError::from)?;
+        exec_state
+            .task_status_map
+            .insert(resolved_task_id.clone(), TaskStatusValue::Running);
+        crate::persistence::update_execution_state(
+            &state.repo_root,
+            &branch,
+            &plan_id,
+            &plan_name,
+            &exec_state,
+        )
         .map_err(ApiError::from)?;
-    if !matches!(re_read_status.status, TaskStatusValue::Running) {
-        return Err(ApiError::Conflict(
-            "task status was modified by another process".to_string(),
-        ));
-    }
+    } // _plan_guard dropped here
 
-    atomic_write_json(&status_path, &final_status).map_err(ApiError::from)?;
-
-    // Update execution state task_status_map
-    let mut exec_state = read_execution_state(&state.repo_root, &branch, &plan_id, &plan_name)
-        .map_err(ApiError::from)?;
-    exec_state
-        .task_status_map
-        .insert(resolved_task_id.clone(), TaskStatusValue::Running);
-    crate::persistence::update_execution_state(
-        &state.repo_root,
-        &branch,
-        &plan_id,
-        &plan_name,
-        &exec_state,
-    )
-    .map_err(ApiError::from)?;
-
-    // Read updated task
+    // Read updated task (outside lock)
     let task = read_task(
         &state.repo_root,
         &branch,

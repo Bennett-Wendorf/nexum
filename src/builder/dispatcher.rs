@@ -100,21 +100,22 @@ impl TaskDispatcher {
         };
 
         // List tasks once and build a HashMap for O(1) name lookups
-        let task_names: HashMap<String, String> = match crate::persistence::list_tasks(repo_root, branch, plan_id, plan_name) {
-            Ok(tasks) => {
-                let mut map = HashMap::new();
-                for slug in &tasks {
-                    if let (Some(tid), Some(tname)) = parse_slug(slug) {
-                        map.insert(tid.to_string(), tname.to_string());
+        let task_names: HashMap<String, String> =
+            match crate::persistence::list_tasks(repo_root, branch, plan_id, plan_name) {
+                Ok(tasks) => {
+                    let mut map = HashMap::new();
+                    for slug in &tasks {
+                        if let (Some(tid), Some(tname)) = parse_slug(slug) {
+                            map.insert(tid.to_string(), tname.to_string());
+                        }
                     }
+                    map
                 }
-                map
-            }
-            Err(e) => {
-                tracing::debug!("Failed to list tasks: {}", e);
-                return Ok(None);
-            }
-        };
+                Err(e) => {
+                    tracing::debug!("Failed to list tasks: {}", e);
+                    return Ok(None);
+                }
+            };
 
         // Fallback: try to find task names from directory listing
         let plan_dir = crate::persistence::plan_dir(repo_root, branch, plan_id, plan_name);
@@ -149,7 +150,9 @@ impl TaskDispatcher {
             };
 
             // Verify status by reading status.json
-            let status = match read_task_status(repo_root, branch, plan_id, plan_name, task_id, &task_name) {
+            let status = match read_task_status(
+                repo_root, branch, plan_id, plan_name, task_id, &task_name,
+            ) {
                 Ok(s) => s,
                 Err(_) => continue,
             };
@@ -174,22 +177,12 @@ impl TaskDispatcher {
 
             // Build task context
             let task_dir = crate::persistence::task_dir(
-                repo_root,
-                branch,
-                plan_id,
-                plan_name,
-                task_id,
-                &task_name,
+                repo_root, branch, plan_id, plan_name, task_id, &task_name,
             );
 
             // Read task prompt from task.md
             let task_prompt = match crate::persistence::read_task(
-                repo_root,
-                branch,
-                plan_id,
-                plan_name,
-                task_id,
-                &task_name,
+                repo_root, branch, plan_id, plan_name, task_id, &task_name,
             ) {
                 Ok(task) => {
                     format!(

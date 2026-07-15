@@ -20,8 +20,6 @@ mod status_machine;
 mod tests;
 
 #[allow(unused_imports)]
-pub use crate::persistence::task_status_to_string;
-#[allow(unused_imports)]
 pub use concurrency_checker::validate_transition_concurrency;
 #[allow(unused_imports)]
 pub use concurrency_checker::{ConcurrencyChecker, DispatchInfo};
@@ -37,7 +35,5 @@ pub use id_generator::{PlanIdGenerator, TaskIdGenerator};
 pub use scheduler::OverlordScheduler;
 #[allow(unused_imports)]
 pub use scheduler::TransitionTaskStatusParams;
-#[allow(unused_imports)]
-pub use status_machine::plan_status_to_string;
 #[allow(unused_imports)]
 pub use status_machine::{PlanStateMachine, TaskStateMachine};

@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::acp::events::{ACPEvent, CompletionStatus, EventStream};
+use crate::acp::ACPError;
 use crate::builder::dispatcher::{ActiveSession, TaskContext, TaskDispatcher};
 use crate::builder::errors::{BuilderError, Result as BuilderResult};
 use crate::builder::event_bus::{BuilderEvent, BuilderEventBus, CompletionResult};
@@ -19,9 +20,8 @@ use crate::builder::merge_coordinator::MergeResult;
 use crate::builder::session_manager::ACPSessionHandle;
 use crate::builder::worktree_manager::{TaskWorktree, WorktreeManager};
 use crate::git::GitError;
-use crate::acp::ACPError;
-use crate::persistence::PersistenceError;
 use crate::overlord::OverlordError;
+use crate::persistence::PersistenceError;
 
 // ============================================================================
 // Test helpers
@@ -232,10 +232,7 @@ mod worktree_manager {
     fn test_worktree_path_nested() {
         let repo_root = PathBuf::from("/a/b/c");
         let path = TaskWorktree::worktree_path(&repo_root, "TASK-002", "feature-x");
-        assert_eq!(
-            path,
-            PathBuf::from("/a/b/c/.worktrees/TASK-002-feature-x")
-        );
+        assert_eq!(path, PathBuf::from("/a/b/c/.worktrees/TASK-002-feature-x"));
     }
 
     #[test]
@@ -281,9 +278,12 @@ mod worktree_manager {
         // or the parse will be wrong. We use a simple task ID to test parsing.
         let wt_path = TaskWorktree::worktree_path(tmp.path(), "TASK001", "testfeature");
         tokio::fs::create_dir_all(&wt_path).await.unwrap();
-        tokio::fs::write(wt_path.join(".git"), "gitdir: /path/to/main/.git/worktrees/...")
-            .await
-            .unwrap();
+        tokio::fs::write(
+            wt_path.join(".git"),
+            "gitdir: /path/to/main/.git/worktrees/...",
+        )
+        .await
+        .unwrap();
 
         let active = manager.list_active().await.unwrap();
         assert_eq!(active.len(), 1);
@@ -807,7 +807,9 @@ mod event_bus {
 
     #[test]
     fn test_completion_result_crashed() {
-        let result = CompletionResult::Crashed { exit_code: Some(137) };
+        let result = CompletionResult::Crashed {
+            exit_code: Some(137),
+        };
         match result {
             CompletionResult::Crashed { exit_code } => {
                 assert_eq!(exit_code, Some(137));
@@ -1171,7 +1173,9 @@ mod integration {
     async fn test_event_bus_with_dispatcher_session_tracking() {
         // Test that event bus and dispatcher can work together
         let bus = BuilderEventBus::new(16);
-        let overlord = Arc::new(crate::overlord::OverlordScheduler::new(PathBuf::from("/tmp")));
+        let overlord = Arc::new(crate::overlord::OverlordScheduler::new(PathBuf::from(
+            "/tmp",
+        )));
         let mut dispatcher = TaskDispatcher::new(PathBuf::from("/tmp"), overlord);
 
         // Add a session
@@ -1191,7 +1195,8 @@ mod integration {
         let mut rx = bus.subscribe();
         bus.emit(BuilderEvent::TaskMerged {
             task_id: "TASK-001".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
         let event = rx.try_recv();
         assert!(event.is_ok());
         assert!(matches!(event.unwrap(), BuilderEvent::TaskMerged { .. }));
@@ -1220,7 +1225,9 @@ mod integration {
             },
             BuilderEvent::TaskCompleted {
                 task_id: "TASK-001".to_string(),
-                result: CompletionResult::Crashed { exit_code: Some(137) },
+                result: CompletionResult::Crashed {
+                    exit_code: Some(137),
+                },
             },
             BuilderEvent::TaskFailed {
                 task_id: "TASK-001".to_string(),
@@ -1291,11 +1298,13 @@ mod integration {
         bus.emit(BuilderEvent::TaskFailed {
             task_id: "TASK-001".to_string(),
             error: "Agent crashed".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
 
         bus.emit(BuilderEvent::TaskRequeued {
             task_id: "TASK-001".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
 
         let e1 = rx.try_recv().unwrap();
         let e2 = rx.try_recv().unwrap();
@@ -1326,15 +1335,18 @@ mod integration {
         bus.emit(BuilderEvent::TaskCompleted {
             task_id: "TASK-001".to_string(),
             result: CompletionResult::Completed,
-        }).unwrap();
+        })
+        .unwrap();
 
         bus.emit(BuilderEvent::TaskMerged {
             task_id: "TASK-001".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
 
         bus.emit(BuilderEvent::TaskCleanedUp {
             task_id: "TASK-001".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
 
         let e1 = rx.try_recv().unwrap();
         let e2 = rx.try_recv().unwrap();
@@ -1370,7 +1382,8 @@ mod integration {
         let mut rx = bus.subscribe();
 
         // Phase 1: Setup
-        bus.emit(BuilderEvent::TaskStarted(make_task_context())).unwrap();
+        bus.emit(BuilderEvent::TaskStarted(make_task_context()))
+            .unwrap();
 
         // Phase 2: Progress
         bus.emit(BuilderEvent::TaskProgress {
@@ -1380,28 +1393,30 @@ mod integration {
                 "implementing auth".to_string(),
                 Some(75.0),
             ),
-        }).unwrap();
+        })
+        .unwrap();
 
         // Phase 3: Completion
         bus.emit(BuilderEvent::TaskCompleted {
             task_id: "TASK-001".to_string(),
             result: CompletionResult::Completed,
-        }).unwrap();
+        })
+        .unwrap();
 
         // Phase 4: Merge
         bus.emit(BuilderEvent::TaskMerged {
             task_id: "TASK-001".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
 
         // Phase 5: Cleanup
         bus.emit(BuilderEvent::TaskCleanedUp {
             task_id: "TASK-001".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
 
         // Verify all events in order
-        let events: Vec<BuilderEvent> = (0..5)
-            .map(|_| rx.try_recv().unwrap())
-            .collect();
+        let events: Vec<BuilderEvent> = (0..5).map(|_| rx.try_recv().unwrap()).collect();
 
         assert!(matches!(events[0], BuilderEvent::TaskStarted(_)));
         assert!(matches!(events[1], BuilderEvent::TaskProgress { .. }));

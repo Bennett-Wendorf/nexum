@@ -1,22 +1,26 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import PlanCard from '../components/PlanCard.svelte';
-  import { listPlans } from '$lib/api';
+  import CreatePlanForm from '../components/CreatePlanForm.svelte';
+  import { listPlans, createPlan } from '$lib/api';
   import { setError } from '$lib/errorUtils';
-  import type { Plan } from '$lib/types';
+  import type { Plan, CreatePlanRequest } from '$lib/types';
   
   const ACTIVE_PLAN_STATUSES = ['approved', 'planning', 'reviewing', 'queued'] as const;
 
   let planList = $state<Plan[]>([]);
+  let totalFromApi = $state(0);
   let loading = $state(false);
   let error = $state<string | null>(null);
-  let errorCleanup: (() => void) | null = $state(null);
+  let errorCleanup = $state<(() => void) | null>(null);
+  let showCreateForm = $state(false);
 
-  onMount(async () => {
+  async function loadPlans() {
     loading = true;
     try {
       const response = await listPlans();
       planList = response.items;
+      totalFromApi = response.total;
     } catch (e) {
       if (e instanceof Error) {
         errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
@@ -24,6 +28,19 @@
     } finally {
       loading = false;
     }
+  }
+
+  onMount(() => loadPlans());
+
+  $effect(() => {
+    if (!showCreateForm) return;
+    function handleKeydown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        showCreateForm = false;
+      }
+    }
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
   });
 
   $effect(() => {
@@ -32,7 +49,7 @@
     }
   });
 
-  const totalPlans = $derived(planList.length);
+  const totalPlans = $derived(totalFromApi);
   const activePlans = $derived(planList.filter(p => ACTIVE_PLAN_STATUSES.includes(p.status)).length);
   const totalTasks = $derived(planList.reduce((sum, p) => sum + (p.tasks?.length ?? 0), 0));
   const completedTasks = $derived(planList.reduce((sum, p) => sum + (p.tasks?.filter(t => t.completed).length ?? 0), 0));
@@ -45,7 +62,7 @@
       <h1 class="text-2xl font-bold text-text-primary">Plans</h1>
       <p class="text-text-muted text-sm mt-1">Manage your AI agent orchestration plans</p>
     </div>
-    <button disabled class="px-4 py-2 bg-bg-secondary border border-border-default text-text-muted rounded-md text-sm font-medium cursor-not-allowed" title="Coming soon">
+    <button type="button" class="px-4 py-2 bg-btn-green hover:bg-btn-green-hover text-white rounded-md text-sm font-medium transition-colors cursor-pointer" onclick={() => showCreateForm = true}>
       + New Plan
     </button>
   </div>
@@ -70,6 +87,12 @@
     </div>
   </div>
   
+  {#if error}
+    <div class="mb-4 p-3 bg-accent-red-subtle border border-accent-red/30 rounded-md text-accent-red text-sm">
+      {error}
+    </div>
+  {/if}
+  
   <!-- Loading State -->
   {#if loading}
     <div class="flex items-center justify-center py-12">
@@ -92,3 +115,28 @@
     </div>
   {/if}
 </div>
+
+{#if showCreateForm}
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-bg-primary/80 backdrop-blur-sm" onclick={() => showCreateForm = false}>
+    <div class="bg-bg-secondary border border-border-default rounded-lg shadow-2xl w-full max-w-lg mx-4" onclick={(e) => e.stopPropagation()}>
+      <CreatePlanForm
+        onSubmit={async (data: CreatePlanRequest) => {
+          try {
+            const newPlan = await createPlan(data);
+            planList.unshift(newPlan);
+            totalFromApi += 1;
+            showCreateForm = false;
+          } catch (e) {
+            if (e instanceof Error) {
+              errorCleanup = setError(
+                () => { error = e.message; },
+                () => { error = null; }
+              );
+            }
+          }
+        }}
+        onCancel={() => showCreateForm = false}
+      />
+    </div>
+  </div>
+{/if}

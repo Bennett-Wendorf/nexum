@@ -1,3 +1,13 @@
+//! # String Conversion Convention
+//!
+//! All status enums and typed values in this crate that require string
+//! representation MUST use `fmt::Display` for conversion. Do NOT create
+//! standalone `*_to_string` functions — they duplicate the `Display`
+//! implementation and create maintenance burden. Use `value.to_string()`
+//! via the `Display` trait instead.
+//!
+//! Run `bash scripts/check-display-consistency.sh` to verify compliance.
+
 mod acp;
 mod api;
 mod builder;
@@ -6,9 +16,12 @@ mod git;
 mod overlord;
 mod persistence;
 
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::RwLock;
 
 /// Default broadcast channel capacity for the builder event bus.
 const DEFAULT_EVENT_BUS_CAPACITY: usize = 64;
@@ -68,6 +81,7 @@ async fn main() -> anyhow::Result<()> {
         repo_root: repo_root.clone(),
         config: cfg.clone(),
         orchestrator: Some(orchestrator),
+        plan_locks: Arc::new(RwLock::new(HashMap::new())),
     };
     let app = api::create_router(state);
 

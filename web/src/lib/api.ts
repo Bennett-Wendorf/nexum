@@ -14,9 +14,10 @@ const API_PREFIX = '/api/v1';
 export async function request<T>(
   method: string,
   path: string,
-  body?: unknown,
-  queryParams?: Record<string, string | undefined>,
+  options?: { body?: unknown; queryParams?: Record<string, string | undefined>; signal?: AbortSignal },
 ): Promise<T> {
+  const { body, queryParams, signal } = options ?? {};
+
   let url = `${API_PREFIX}${path}`;
 
   // Append query parameters
@@ -37,6 +38,7 @@ export async function request<T>(
     method,
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
+    signal,
   });
 
   if (!response.ok) {
@@ -56,13 +58,14 @@ export async function request<T>(
 
   const data = await response.json();
 
+  // NOTE: unchecked cast — server response shape assumed to match T
   return data as T;
 }
 
 // ===== Plan API =====
 
 export async function listPlans(branch?: string, status?: string): Promise<ListResponse<Plan>> {
-  return request('GET', '/plans', undefined, { branch, status });
+  return request('GET', '/plans', { queryParams: { branch, status } });
 }
 
 export async function getPlan(branch: string, planId: string): Promise<Plan> {
@@ -70,11 +73,11 @@ export async function getPlan(branch: string, planId: string): Promise<Plan> {
 }
 
 export async function createPlan(req: CreatePlanRequest): Promise<Plan> {
-  return request('POST', '/plans', req);
+  return request('POST', '/plans', { body: req });
 }
 
 export async function updatePlan(branch: string, planId: string, req: UpdatePlanRequest): Promise<Plan> {
-  return request('PUT', `/plans/${branch}/${planId}`, req);
+  return request('PUT', `/plans/${branch}/${planId}`, { body: req });
 }
 
 export async function deletePlan(branch: string, planId: string): Promise<void> {
@@ -86,7 +89,7 @@ export async function transitionPlanStatus(
   planId: string,
   req: TransitionPlanStatusRequest,
 ): Promise<Plan> {
-  return request('PATCH', `/plans/${branch}/${planId}/status`, req);
+  return request('PATCH', `/plans/${branch}/${planId}/status`, { body: req });
 }
 
 // ===== Task API =====
@@ -96,7 +99,7 @@ export async function listTasks(
   planId: string,
   status?: string,
 ): Promise<ListResponse<Task>> {
-  return request('GET', `/plans/${branch}/${planId}/tasks`, undefined, { status });
+  return request('GET', `/plans/${branch}/${planId}/tasks`, { queryParams: { status } });
 }
 
 export async function getTask(
@@ -112,7 +115,7 @@ export async function createTask(
   planId: string,
   req: CreateTaskRequest,
 ): Promise<Task> {
-  return request('POST', `/plans/${branch}/${planId}/tasks`, req);
+  return request('POST', `/plans/${branch}/${planId}/tasks`, { body: req });
 }
 
 export async function updateTask(
@@ -121,7 +124,7 @@ export async function updateTask(
   taskId: string,
   req: UpdateTaskRequest,
 ): Promise<Task> {
-  return request('PUT', `/plans/${branch}/${planId}/tasks/${taskId}`, req);
+  return request('PUT', `/plans/${branch}/${planId}/tasks/${taskId}`, { body: req });
 }
 
 export async function deleteTask(
@@ -138,7 +141,7 @@ export async function transitionTaskStatus(
   taskId: string,
   req: TransitionTaskStatusRequest,
 ): Promise<Task> {
-  return request('PATCH', `/plans/${branch}/${planId}/tasks/${taskId}/status`, req);
+  return request('PATCH', `/plans/${branch}/${planId}/tasks/${taskId}/status`, { body: req });
 }
 
 // ===== Execution API =====
@@ -150,8 +153,8 @@ export async function getExecutionState(
   return request('GET', `/plans/${branch}/${planId}/execution`);
 }
 
-export async function listRunningTasks(): Promise<RunningTask[]> {
-  return request('GET', '/running');
+export async function listRunningTasks(options?: { signal?: AbortSignal }): Promise<RunningTask[]> {
+  return request('GET', '/running', { signal: options?.signal });
 }
 
 export async function healthCheck(): Promise<{ status: string }> {
@@ -164,6 +167,6 @@ export async function getConfig(): Promise<Config> {
   return request('GET', '/config');
 }
 
-export async function listAgents(): Promise<AgentsResponse> {
-  return request('GET', '/agents');
+export async function listAgents(options?: { signal?: AbortSignal }): Promise<AgentsResponse> {
+  return request('GET', '/agents', { signal: options?.signal });
 }

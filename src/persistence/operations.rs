@@ -188,8 +188,8 @@ pub fn update_task_status(params: &UpdateTaskStatusParams) -> Result<TaskStatus>
 
     // Record transition (from/to are strings now)
     status.transitions.push(StatusTransition {
-        from: task_status_to_string(&old_status).to_string(),
-        to: task_status_to_string(&params.new_status).to_string(),
+        from: old_status.to_string(),
+        to: params.new_status.to_string(),
         at: now.clone(),
         by: params.by.clone(),
     });
@@ -250,8 +250,8 @@ pub fn recover_task_status(params: &RecoverTaskStatusParams) -> Result<TaskStatu
 
     // Record transition with correct kebab-case strings
     status.transitions.push(StatusTransition {
-        from: task_status_to_string(&old_status).to_string(),
-        to: task_status_to_string(&params.target_status).to_string(),
+        from: old_status.to_string(),
+        to: params.target_status.to_string(),
         at: now.clone(),
         by: params.by.clone(),
     });

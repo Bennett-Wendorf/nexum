@@ -1,4 +1,4 @@
-//! Error handling middleware and request validation utilities for the Nexum REST API.
+//! Error handling middleware, request validation, and concurrency utilities for the Nexum REST API.
 //!
 //! This module provides:
 //!
@@ -9,16 +9,20 @@
 //!   [`design/work-statuses.md`]).
 //! - **Validation helpers** — functions for validating status values,
 //!   status transitions, branch names, and slugs.
+//! - **Concurrency helpers** — per-plan locking functions for serializing
+//!   read-modify-write operations on plan data files.
 
-use axum::http::{HeaderValue, HeaderName, Request};
+use axum::http::{HeaderName, HeaderValue, Request};
 use axum::middleware::Next;
 use axum::response::IntoResponse;
 
 use crate::api::errors::ApiError;
+use crate::api::types::AppState;
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::SystemTime;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::SystemTime;
 
 // ── Request ID Middleware ──────────────────────────────────────────────
 
@@ -49,9 +53,8 @@ pub async fn request_id_middleware(
     let mut response = next.run(req).await;
     response.headers_mut().insert(
         HeaderName::from_static(REQUEST_ID_HEADER),
-        HeaderValue::from_str(&request_id).unwrap_or_else(|_| {
-            HeaderValue::from_static("req-error")
-        }),
+        HeaderValue::from_str(&request_id)
+            .unwrap_or_else(|_| HeaderValue::from_static("req-error")),
     );
     response
 }
@@ -100,7 +103,10 @@ const TASK_TRANSITIONS: &[(&str, &[&str])] = &[
     ("backlog", &["queued", "abandoned"]),
     ("queued", &["running"]),
     ("running", &["reviewing", "abandoned"]),
-    ("reviewing", &["waiting-manual-review", "merge-queue", "abandoned"]),
+    (
+        "reviewing",
+        &["waiting-manual-review", "merge-queue", "abandoned"],
+    ),
     ("waiting-manual-review", &["merge-queue", "abandoned"]),
     ("merge-queue", &["completed"]),
 ];
@@ -117,8 +123,13 @@ const TASK_TERMINAL_STATUSES: &[&str] = &["abandoned", "completed"];
 /// Returns [`ApiError::Validation`] if `status` is not a valid plan state.
 pub fn validate_plan_status(status: &str) -> Result<(), ApiError> {
     const VALID: &[&str] = &[
-        "draft", "queued", "planning", "reviewing",
-        "approved", "complete", "rejected",
+        "draft",
+        "queued",
+        "planning",
+        "reviewing",
+        "approved",
+        "complete",
+        "rejected",
     ];
     if !VALID.contains(&status) {
         return Err(ApiError::Validation(format!(
@@ -135,9 +146,14 @@ pub fn validate_plan_status(status: &str) -> Result<(), ApiError> {
 /// Returns [`ApiError::Validation`] if `status` is not a valid task state.
 pub fn validate_task_status(status: &str) -> Result<(), ApiError> {
     const VALID: &[&str] = &[
-        "backlog", "queued", "running", "reviewing",
-        "waiting-manual-review", "merge-queue",
-        "abandoned", "completed",
+        "backlog",
+        "queued",
+        "running",
+        "reviewing",
+        "waiting-manual-review",
+        "merge-queue",
+        "abandoned",
+        "completed",
     ];
     if !VALID.contains(&status) {
         return Err(ApiError::Validation(format!(
@@ -334,7 +350,8 @@ pub fn resolve_task_path(
     plan_name: &str,
     task_id: &str,
 ) -> Result<(PathBuf, String, String), ApiError> {
-    let tasks_dir = crate::persistence::plan_dir(repo_root, branch, plan_id, plan_name).join("tasks");
+    let tasks_dir =
+        crate::persistence::plan_dir(repo_root, branch, plan_id, plan_name).join("tasks");
 
     if !tasks_dir.exists() {
         return Err(ApiError::NotFound("task not found".to_string()));
@@ -362,6 +379,35 @@ pub fn resolve_task_path(
     Err(ApiError::NotFound("task not found".to_string()))
 }
 
+// ── Per-Plan Async Locking ─────────────────────────────────────────────
+
+/// Acquire the per-plan lock for the given plan_id.
+///
+/// Looks up the per-plan mutex in the AppState lock map. If no entry
+/// exists, creates one. Returns the `Arc<tokio::sync::Mutex<()>>` for
+/// the plan; the caller should lock it (e.g. `lock_plan(state, id).await.lock().await`)
+/// to serialize all read-modify-write operations on this plan's data files.
+///
+/// This prevents TOCTOU races where concurrent handlers read the same
+/// plan state, make independent modifications, and write back — causing
+/// lost updates or duplicate entries.
+pub async fn lock_plan(state: &AppState, plan_id: &str) -> Arc<tokio::sync::Mutex<()>> {
+    let mut locks = state.plan_locks.write().await;
+    locks
+        .entry(plan_id.to_string())
+        .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+        .clone()
+}
+
+/// Remove the per-plan lock entry for the given plan_id.
+///
+/// Call this after deleting a plan to prevent memory leaks from
+/// accumulated mutex entries for deleted plans.
+pub async fn remove_plan_lock(state: &AppState, plan_id: &str) {
+    let mut locks = state.plan_locks.write().await;
+    locks.remove(plan_id);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,8 +416,20 @@ mod tests {
 
     #[test]
     fn test_validate_plan_status_valid() {
-        for status in &["draft", "queued", "planning", "reviewing", "approved", "complete", "rejected"] {
-            assert!(validate_plan_status(status).is_ok(), "status '{}' should be valid", status);
+        for status in &[
+            "draft",
+            "queued",
+            "planning",
+            "reviewing",
+            "approved",
+            "complete",
+            "rejected",
+        ] {
+            assert!(
+                validate_plan_status(status).is_ok(),
+                "status '{}' should be valid",
+                status
+            );
         }
     }
 
@@ -385,8 +443,21 @@ mod tests {
 
     #[test]
     fn test_validate_task_status_valid() {
-        for status in &["backlog", "queued", "running", "reviewing", "waiting-manual-review", "merge-queue", "abandoned", "completed"] {
-            assert!(validate_task_status(status).is_ok(), "status '{}' should be valid", status);
+        for status in &[
+            "backlog",
+            "queued",
+            "running",
+            "reviewing",
+            "waiting-manual-review",
+            "merge-queue",
+            "abandoned",
+            "completed",
+        ] {
+            assert!(
+                validate_task_status(status).is_ok(),
+                "status '{}' should be valid",
+                status
+            );
         }
     }
 

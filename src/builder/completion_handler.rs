@@ -92,7 +92,8 @@ impl CompletionHandler {
             .map_err(BuilderError::OverlordError)?;
 
         // Step 2: Attempt merge
-        match self.merge_coordinator
+        match self
+            .merge_coordinator
             .merge_task_branch(task_context, worktree)
             .await?
         {
@@ -127,7 +128,8 @@ impl CompletionHandler {
                     .await?;
 
                 // Trigger dependency auto-queue
-                let _ = self.merge_coordinator
+                let _ = self
+                    .merge_coordinator
                     .trigger_dependency_auto_queue(task_context)
                     .await;
 

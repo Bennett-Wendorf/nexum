@@ -16,9 +16,7 @@ use tokio::task::JoinHandle;
 use crate::acp::events::ACPEvent;
 use crate::builder::dispatcher::TaskContext;
 use crate::builder::errors::{BuilderError, Result};
-use crate::persistence::{
-    atomic_write_json, read_json, task_status_path, TaskStatus,
-};
+use crate::persistence::{atomic_write_json, read_json, task_status_path, TaskStatus};
 
 /// Manages heartbeat updates for running tasks.
 ///
@@ -37,7 +35,10 @@ impl HeartbeatManager {
     ///
     /// Default interval is 5 minutes if not specified.
     pub fn new(repo_root: PathBuf, interval: Duration) -> Self {
-        Self { repo_root, interval }
+        Self {
+            repo_root,
+            interval,
+        }
     }
 
     /// Create with default 5-minute interval.
@@ -95,7 +96,10 @@ impl HeartbeatManager {
     ///
     /// The background task loops: update heartbeat, sleep for interval.
     /// It stops when the returned JoinHandle is aborted.
-    pub async fn start_periodic_heartbeat(&self, task_context: &TaskContext) -> Result<JoinHandle<()>> {
+    pub async fn start_periodic_heartbeat(
+        &self,
+        task_context: &TaskContext,
+    ) -> Result<JoinHandle<()>> {
         let repo_root = self.repo_root.clone();
         let interval = self.interval;
         let task_id = task_context.task_id.clone();
@@ -112,12 +116,7 @@ impl HeartbeatManager {
                 interval_timer.tick().await;
 
                 let status_path = task_status_path(
-                    &repo_root,
-                    &branch,
-                    &plan_id,
-                    &plan_name,
-                    &task_id,
-                    &task_name,
+                    &repo_root, &branch, &plan_id, &plan_name, &task_id, &task_name,
                 );
 
                 let mut status: TaskStatus = match read_json(&status_path) {
@@ -143,7 +142,11 @@ impl HeartbeatManager {
     ///
     /// Triggers heartbeat for progress events (tool_call, tool_result, progress,
     /// question, permission_request). Does NOT trigger for completion events.
-    pub async fn update_on_event(&self, event: &ACPEvent, task_context: &TaskContext) -> Result<()> {
+    pub async fn update_on_event(
+        &self,
+        event: &ACPEvent,
+        task_context: &TaskContext,
+    ) -> Result<()> {
         if !Self::is_progress_event(event) {
             return Ok(());
         }

@@ -13,9 +13,7 @@ use crate::builder::errors::{BuilderError, Result};
 use crate::builder::worktree_manager::TaskWorktree;
 use crate::git;
 use crate::overlord::{DependencyResolver, OverlordScheduler, TransitionTaskStatusParams};
-use crate::persistence::{
-    read_execution_state, update_execution_state, TaskStatusValue,
-};
+use crate::persistence::{read_execution_state, update_execution_state, TaskStatusValue};
 
 /// Result of a merge operation.
 #[derive(Debug, Clone)]
@@ -68,20 +66,19 @@ impl MergeCoordinator {
         let repo_root = self.repo_root.as_path();
 
         // Checkout plan branch
-        git::checkout_branch(repo_root, &task_context.branch).await.map_err(BuilderError::MergeError)?;
+        git::checkout_branch(repo_root, &task_context.branch)
+            .await
+            .map_err(BuilderError::MergeError)?;
 
         // Merge task branch with --no-ff
         let branch_name = &worktree.branch_name;
         let merge_message = format!("Merge {}: {}", branch_name, task_context.task_name);
 
         // Use git merge command directly
-        match git::git(repo_root, &[
-            "merge",
-            branch_name,
-            "--no-ff",
-            "-m",
-            &merge_message,
-        ])
+        match git::git(
+            repo_root,
+            &["merge", branch_name, "--no-ff", "-m", &merge_message],
+        )
         .await
         {
             Ok(_) => {
@@ -93,9 +90,13 @@ impl MergeCoordinator {
                 );
                 Ok(MergeResult::Success)
             }
-            Err(git::GitError::SubprocessFailure { exit_code, stderr, .. }) if exit_code == 1 => {
+            Err(git::GitError::SubprocessFailure {
+                exit_code, stderr, ..
+            }) if exit_code == 1 => {
                 // Check for merge conflicts
-                let conflicted_files = git::list_conflicted_files(repo_root).await.map_err(BuilderError::MergeError)?;
+                let conflicted_files = git::list_conflicted_files(repo_root)
+                    .await
+                    .map_err(BuilderError::MergeError)?;
 
                 if conflicted_files.is_empty() {
                     // Merge failed but no conflicts — abort and return error
@@ -115,9 +116,7 @@ impl MergeCoordinator {
                     );
                     // Abort the merge to leave repo in clean state
                     let _ = git::abort_merge(repo_root).await;
-                    Ok(MergeResult::Conflict {
-                        conflicted_files,
-                    })
+                    Ok(MergeResult::Conflict { conflicted_files })
                 }
             }
             Err(e) => {
@@ -142,13 +141,26 @@ impl MergeCoordinator {
         let repo_root = self.repo_root.as_path();
 
         // Delete task branch
-        git::delete_branch(repo_root, &worktree.branch_name).await.map_err(BuilderError::WorktreeError)?;
+        git::delete_branch(repo_root, &worktree.branch_name)
+            .await
+            .map_err(BuilderError::WorktreeError)?;
 
         // Remove worktree
         let wt_path = &worktree.path;
-        if let Err(_e) = git::git(repo_root, &["worktree", "remove", &wt_path.to_string_lossy()]).await {
+        if let Err(_e) = git::git(
+            repo_root,
+            &["worktree", "remove", &wt_path.to_string_lossy()],
+        )
+        .await
+        {
             // Try force
-            if git::git(repo_root, &["worktree", "remove", "--force", &wt_path.to_string_lossy()]).await.is_err() {
+            if git::git(
+                repo_root,
+                &["worktree", "remove", "--force", &wt_path.to_string_lossy()],
+            )
+            .await
+            .is_err()
+            {
                 // Fall back to manual removal
                 if let Err(e) = tokio::fs::remove_dir_all(wt_path).await {
                     tracing::error!("Failed to remove worktree directory: {}", e);
@@ -159,10 +171,7 @@ impl MergeCoordinator {
         // Prune stale metadata
         let _ = git::git(repo_root, &["worktree", "prune"]).await;
 
-        tracing::info!(
-            "Cleaned up worktree for task {}",
-            task_context.task_id
-        );
+        tracing::info!("Cleaned up worktree for task {}", task_context.task_id);
 
         Ok(())
     }
@@ -233,10 +242,7 @@ impl MergeCoordinator {
     ///
     /// Checks if dependent tasks are now eligible for dispatch.
     /// The resolver handles auto-queueing internally, so we return `()` on success.
-    pub async fn trigger_dependency_auto_queue(
-        &self,
-        task_context: &TaskContext,
-    ) -> Result<()> {
+    pub async fn trigger_dependency_auto_queue(&self, task_context: &TaskContext) -> Result<()> {
         let resolver = DependencyResolver::new();
         resolver
             .auto_queue_tasks(
@@ -245,7 +251,11 @@ impl MergeCoordinator {
                 &task_context.plan_id,
                 &task_context.plan_name,
             )
-            .map_err(|e| BuilderError::OverlordError(crate::overlord::OverlordError::DependencyError(e.to_string())))?;
+            .map_err(|e| {
+                BuilderError::OverlordError(crate::overlord::OverlordError::DependencyError(
+                    e.to_string(),
+                ))
+            })?;
 
         Ok(())
     }

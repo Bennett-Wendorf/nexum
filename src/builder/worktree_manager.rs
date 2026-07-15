@@ -40,7 +40,9 @@ impl TaskWorktree {
     ///
     /// Returns `.worktrees/<TASK_ID>-<task_name>/` relative to repo root.
     pub fn worktree_path(repo_root: &Path, task_id: &str, task_name: &str) -> PathBuf {
-        repo_root.join(".worktrees").join(format!("{}-{}", task_id, task_name))
+        repo_root
+            .join(".worktrees")
+            .join(format!("{}-{}", task_id, task_name))
     }
 }
 
@@ -116,10 +118,7 @@ impl WorktreeManager {
                 // If worktree already exists, that's okay
                 if let git::GitError::SubprocessFailure { stderr, .. } = &e {
                     if stderr.contains("already exists") {
-                        tracing::warn!(
-                            "Worktree already exists at {}, reusing",
-                            wt_path.display()
-                        );
+                        tracing::warn!("Worktree already exists at {}, reusing", wt_path.display());
                     } else {
                         // Clean up branch on failure
                         let _ = git::delete_branch(repo_root, &branch_name).await;
@@ -177,23 +176,20 @@ impl WorktreeManager {
         let wt_path = &worktree.path;
 
         // Try git worktree remove first
-        match git::git(repo_root, &["worktree", "remove", &wt_path.to_string_lossy()]).await {
+        match git::git(
+            repo_root,
+            &["worktree", "remove", &wt_path.to_string_lossy()],
+        )
+        .await
+        {
             Ok(_) => {
-                tracing::info!(
-                    "Worktree removed via git for task {}",
-                    worktree.task_id
-                );
+                tracing::info!("Worktree removed via git for task {}", worktree.task_id);
             }
             Err(_) => {
                 // Git worktree remove failed — try force
                 match git::git(
                     repo_root,
-                    &[
-                        "worktree",
-                        "remove",
-                        "--force",
-                        &wt_path.to_string_lossy(),
-                    ],
+                    &["worktree", "remove", "--force", &wt_path.to_string_lossy()],
                 )
                 .await
                 {
@@ -220,9 +216,9 @@ impl WorktreeManager {
         }
 
         // Step 2: Delete task branch (no-op if already gone)
-        git::delete_branch(repo_root, &worktree.branch_name).await.map_err(|e| {
-            BuilderError::WorktreeError(e)
-        })?;
+        git::delete_branch(repo_root, &worktree.branch_name)
+            .await
+            .map_err(BuilderError::WorktreeError)?;
 
         // Force remove directory if it still exists
         if tokio::fs::try_exists(wt_path).await.unwrap_or(false) {

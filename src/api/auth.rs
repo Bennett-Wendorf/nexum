@@ -159,9 +159,7 @@ pub async fn auth_middleware(
                     tracing::info!(key_name = %key_name, method = %req.method(), uri = %req.uri(), "Authenticated request");
                     next.run(req).await
                 }
-                Err(_) => {
-                    unauthorized_response("Invalid Authorization header encoding")
-                }
+                Err(_) => unauthorized_response("Invalid Authorization header encoding"),
             }
         }
         None => unauthorized_response("Missing Authorization header. API key required."),
@@ -174,7 +172,14 @@ pub async fn auth_middleware(
 /// `axum::middleware::from_fn`.
 pub fn create_auth_middleware(
     auth_config: Arc<config::AuthenticationSettings>,
-) -> impl Fn(Request<Body>, Next) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>> + Clone + Send + Sync + 'static {
+) -> impl Fn(
+    Request<Body>,
+    Next,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Response> + Send>>
+       + Clone
+       + Send
+       + Sync
+       + 'static {
     move |req: Request<Body>, next: Next| {
         let auth_config = auth_config.clone();
         Box::pin(async move { auth_middleware(req, next, auth_config).await })
@@ -187,9 +192,7 @@ pub fn create_auth_middleware(
 ///
 /// This endpoint is intentionally unauthenticated so clients can
 /// discover auth requirements before making authenticated requests.
-pub async fn get_auth_status(
-    State(state): State<AppState>,
-) -> Json<AuthStatusResponse> {
+pub async fn get_auth_status(State(state): State<AppState>) -> Json<AuthStatusResponse> {
     let auth = &state.config.global.authentication;
     Json(AuthStatusResponse {
         enabled: auth.enabled,
@@ -229,8 +232,14 @@ mod tests {
     #[test]
     fn test_validate_api_key_match() {
         let keys = vec![
-            config::ApiKeyEntry { name: "cli".to_string(), secret: "key-123".to_string() },
-            config::ApiKeyEntry { name: "bot".to_string(), secret: "key-456".to_string() },
+            config::ApiKeyEntry {
+                name: "cli".to_string(),
+                secret: "key-123".to_string(),
+            },
+            config::ApiKeyEntry {
+                name: "bot".to_string(),
+                secret: "key-456".to_string(),
+            },
         ];
         let result = validate_api_key("key-123", &keys);
         assert_eq!(result, Some("cli".to_string()));
@@ -238,9 +247,10 @@ mod tests {
 
     #[test]
     fn test_validate_api_key_no_match() {
-        let keys = vec![
-            config::ApiKeyEntry { name: "cli".to_string(), secret: "key-123".to_string() },
-        ];
+        let keys = vec![config::ApiKeyEntry {
+            name: "cli".to_string(),
+            secret: "key-123".to_string(),
+        }];
         let result = validate_api_key("wrong-key", &keys);
         assert_eq!(result, None);
     }
@@ -248,9 +258,18 @@ mod tests {
     #[test]
     fn test_validate_api_key_multiple_keys() {
         let keys = vec![
-            config::ApiKeyEntry { name: "first".to_string(), secret: "aaa".to_string() },
-            config::ApiKeyEntry { name: "second".to_string(), secret: "bbb".to_string() },
-            config::ApiKeyEntry { name: "third".to_string(), secret: "ccc".to_string() },
+            config::ApiKeyEntry {
+                name: "first".to_string(),
+                secret: "aaa".to_string(),
+            },
+            config::ApiKeyEntry {
+                name: "second".to_string(),
+                secret: "bbb".to_string(),
+            },
+            config::ApiKeyEntry {
+                name: "third".to_string(),
+                secret: "ccc".to_string(),
+            },
         ];
         assert_eq!(validate_api_key("bbb", &keys), Some("second".to_string()));
         assert_eq!(validate_api_key("ccc", &keys), Some("third".to_string()));

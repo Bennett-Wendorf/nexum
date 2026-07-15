@@ -4,16 +4,24 @@
 //! for isolated testing of all API endpoints including plan CRUD, task CRUD,
 //! execution state, configuration, and error handling.
 
-use axum::{body::Body, http::{self, Request, StatusCode}, Router};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use axum::{
+    body::Body,
+    http::{self, Request, StatusCode},
+    Router,
+};
 use http_body_util::BodyExt;
 use serde_json::json;
 use tempfile::TempDir;
+use tokio::sync::RwLock;
 use tower::ServiceExt;
 
 use crate::api::{create_router, AppState};
 use crate::config;
-use crate::config::AuthenticationSettings;
 use crate::config::ApiKeyEntry;
+use crate::config::AuthenticationSettings;
 
 // ── Test Setup ──────────────────────────────────────────────────────────────
 
@@ -42,6 +50,7 @@ fn test_app() -> (Router, TempDir) {
         repo_root: temp_dir.path().to_path_buf(),
         config,
         orchestrator: None,
+        plan_locks: Arc::new(RwLock::new(HashMap::new())),
     };
 
     (create_router(state), temp_dir)
@@ -67,20 +76,30 @@ fn test_app_with_auth() -> (Router, TempDir) {
             authentication: AuthenticationSettings {
                 enabled: true,
                 authenticate_read: false,
-                api_keys: vec![
-                    ApiKeyEntry { name: "test-cli".to_string(), secret: "test-key-123".to_string() },
-                ],
+                api_keys: vec![ApiKeyEntry {
+                    name: "test-cli".to_string(),
+                    secret: "test-key-123".to_string(),
+                }],
             },
         },
         preferences: config::Preferences::default(),
     };
 
-    let state = AppState { repo_root: temp_dir.path().to_path_buf(), config, orchestrator: None };
+    let state = AppState {
+        repo_root: temp_dir.path().to_path_buf(),
+        config,
+        orchestrator: None,
+        plan_locks: Arc::new(RwLock::new(HashMap::new())),
+    };
     (create_router(state), temp_dir)
 }
 
 /// Helper: send a GET request with an Authorization header.
-async fn get_authed(app: &Router, uri: &str, api_key: &str) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
+async fn get_authed(
+    app: &Router,
+    uri: &str,
+    api_key: &str,
+) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
     let req = Request::builder()
         .uri(uri)
         .header(http::header::AUTHORIZATION, format!("Bearer {}", api_key))
@@ -93,13 +112,20 @@ async fn get_authed(app: &Router, uri: &str, api_key: &str) -> (StatusCode, serd
     let body: serde_json::Value = if body_bytes.is_empty() {
         serde_json::Value::Null
     } else {
-        serde_json::from_slice(&body_bytes).unwrap_or_else(|_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}))
+        serde_json::from_slice(&body_bytes).unwrap_or_else(
+            |_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}),
+        )
     };
     (status, body, headers)
 }
 
 /// Helper: send a POST request with an Authorization header.
-async fn post_authed(app: &Router, uri: &str, api_key: &str, body: &serde_json::Value) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
+async fn post_authed(
+    app: &Router,
+    uri: &str,
+    api_key: &str,
+    body: &serde_json::Value,
+) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
     let req = Request::builder()
         .uri(uri)
         .method("POST")
@@ -114,7 +140,9 @@ async fn post_authed(app: &Router, uri: &str, api_key: &str, body: &serde_json::
     let body: serde_json::Value = if body_bytes.is_empty() {
         serde_json::Value::Null
     } else {
-        serde_json::from_slice(&body_bytes).unwrap_or_else(|_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}))
+        serde_json::from_slice(&body_bytes).unwrap_or_else(
+            |_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}),
+        )
     };
     (status, body, headers)
 }
@@ -130,13 +158,19 @@ async fn get(app: &Router, uri: &str) -> (StatusCode, serde_json::Value, axum::h
     let body: serde_json::Value = if body_bytes.is_empty() {
         serde_json::Value::Null
     } else {
-        serde_json::from_slice(&body_bytes).unwrap_or_else(|_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}))
+        serde_json::from_slice(&body_bytes).unwrap_or_else(
+            |_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}),
+        )
     };
     (status, body, headers)
 }
 
 /// Helper: send a POST request with a JSON body and return the response.
-async fn post_json(app: &Router, uri: &str, body: &serde_json::Value) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
+async fn post_json(
+    app: &Router,
+    uri: &str,
+    body: &serde_json::Value,
+) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
     let req = Request::builder()
         .uri(uri)
         .method("POST")
@@ -150,13 +184,19 @@ async fn post_json(app: &Router, uri: &str, body: &serde_json::Value) -> (Status
     let body: serde_json::Value = if body_bytes.is_empty() {
         serde_json::Value::Null
     } else {
-        serde_json::from_slice(&body_bytes).unwrap_or_else(|_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}))
+        serde_json::from_slice(&body_bytes).unwrap_or_else(
+            |_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}),
+        )
     };
     (status, body, headers)
 }
 
 /// Helper: send a PATCH request with a JSON body and return the response.
-async fn patch_json(app: &Router, uri: &str, body: &serde_json::Value) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
+async fn patch_json(
+    app: &Router,
+    uri: &str,
+    body: &serde_json::Value,
+) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
     let req = Request::builder()
         .uri(uri)
         .method("PATCH")
@@ -170,13 +210,19 @@ async fn patch_json(app: &Router, uri: &str, body: &serde_json::Value) -> (Statu
     let body: serde_json::Value = if body_bytes.is_empty() {
         serde_json::Value::Null
     } else {
-        serde_json::from_slice(&body_bytes).unwrap_or_else(|_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}))
+        serde_json::from_slice(&body_bytes).unwrap_or_else(
+            |_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}),
+        )
     };
     (status, body, headers)
 }
 
 /// Helper: send a PUT request with a JSON body and return the response.
-async fn put_json(app: &Router, uri: &str, body: &serde_json::Value) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
+async fn put_json(
+    app: &Router,
+    uri: &str,
+    body: &serde_json::Value,
+) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
     let req = Request::builder()
         .uri(uri)
         .method("PUT")
@@ -190,7 +236,9 @@ async fn put_json(app: &Router, uri: &str, body: &serde_json::Value) -> (StatusC
     let body: serde_json::Value = if body_bytes.is_empty() {
         serde_json::Value::Null
     } else {
-        serde_json::from_slice(&body_bytes).unwrap_or_else(|_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}))
+        serde_json::from_slice(&body_bytes).unwrap_or_else(
+            |_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}),
+        )
     };
     (status, body, headers)
 }
@@ -212,13 +260,23 @@ async fn delete(app: &Router, uri: &str) -> (StatusCode, axum::http::HeaderMap) 
 
 /// Helper: create a plan via the API and return its JSON response body.
 async fn create_test_plan(app: &Router, name: &str, branch: &str) -> serde_json::Value {
-    let (status, body, _) = post_json(app, "/api/v1/plans", &json!({
-        "name": name,
-        "branch": branch,
-        "goal": "Test goal",
-        "scope": "Test scope",
-    })).await;
-    assert_eq!(status, StatusCode::CREATED, "expected 201 Created when creating plan '{}'", name);
+    let (status, body, _) = post_json(
+        app,
+        "/api/v1/plans",
+        &json!({
+            "name": name,
+            "branch": branch,
+            "goal": "Test goal",
+            "scope": "Test scope",
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "expected 201 Created when creating plan '{}'",
+        name
+    );
     body
 }
 
@@ -240,12 +298,17 @@ async fn test_list_plans_empty() {
 #[tokio::test]
 async fn test_create_plan() {
     let (app, _dir) = test_app();
-    let (status, body, _) = post_json(&app, "/api/v1/plans", &json!({
-        "name": "test-plan",
-        "branch": "main",
-        "goal": "Test goal",
-        "scope": "Test scope",
-    })).await;
+    let (status, body, _) = post_json(
+        &app,
+        "/api/v1/plans",
+        &json!({
+            "name": "test-plan",
+            "branch": "main",
+            "goal": "Test goal",
+            "scope": "Test scope",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(body["name"], "test-plan");
     assert_eq!(body["status"], "draft");
@@ -256,11 +319,16 @@ async fn test_create_plan() {
 #[tokio::test]
 async fn test_create_plan_invalid_name() {
     let (app, _dir) = test_app();
-    let (status, _, _) = post_json(&app, "/api/v1/plans", &json!({
-        "name": "",
-        "branch": "main",
-        "goal": "Test goal",
-    })).await;
+    let (status, _, _) = post_json(
+        &app,
+        "/api/v1/plans",
+        &json!({
+            "name": "",
+            "branch": "main",
+            "goal": "Test goal",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }
 
@@ -281,9 +349,14 @@ async fn test_transition_plan_status_valid() {
     let plan_id = plan["id"].as_str().unwrap();
 
     // Transition draft -> queued
-    let (status, body, _) = patch_json(&app, &format!("/api/v1/plans/main/{}/status", plan_id), &json!({
-        "status": "queued",
-    })).await;
+    let (status, body, _) = patch_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/status", plan_id),
+        &json!({
+            "status": "queued",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"], "queued");
 }
@@ -297,9 +370,14 @@ async fn test_transition_plan_status_invalid() {
     let plan_id = plan["id"].as_str().unwrap();
 
     // Try invalid transition: draft -> complete (should fail)
-    let (status, _, _) = patch_json(&app, &format!("/api/v1/plans/main/{}/status", plan_id), &json!({
-        "status": "complete",
-    })).await;
+    let (status, _, _) = patch_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/status", plan_id),
+        &json!({
+            "status": "complete",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }
 
@@ -343,9 +421,14 @@ async fn test_update_plan() {
     let plan = create_test_plan(&app, "original-name", "main").await;
     let plan_id = plan["id"].as_str().unwrap();
 
-    let (status, body, _) = put_json(&app, &format!("/api/v1/plans/main/{}", plan_id), &json!({
-        "name": "updated-name",
-    })).await;
+    let (status, body, _) = put_json(
+        &app,
+        &format!("/api/v1/plans/main/{}", plan_id),
+        &json!({
+            "name": "updated-name",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["name"], "updated-name");
 }
@@ -392,14 +475,19 @@ async fn test_create_task() {
     let plan_id = plan["id"].as_str().unwrap();
 
     // Create task
-    let (status, body, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks", plan_id), &json!({
-        "name": "test-task",
-        "parent_plan": plan_id,
-        "dependencies": [],
-        "description": "Test description",
-        "acceptance_criteria": ["Criterion 1"],
-        "files_to_modify": ["src/test.rs"],
-    })).await;
+    let (status, body, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks", plan_id),
+        &json!({
+            "name": "test-task",
+            "parent_plan": plan_id,
+            "dependencies": [],
+            "description": "Test description",
+            "acceptance_criteria": ["Criterion 1"],
+            "files_to_modify": ["src/test.rs"],
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(body["name"], "test-task");
     assert_eq!(body["parent_plan"], plan_id);
@@ -410,14 +498,19 @@ async fn test_create_task() {
 #[tokio::test]
 async fn test_create_task_plan_not_found() {
     let (app, _dir) = test_app();
-    let (status, _, _) = post_json(&app, "/api/v1/plans/main/PLAN-999/tasks", &json!({
-        "name": "orphan-task",
-        "parent_plan": "PLAN-999",
-        "dependencies": [],
-        "description": "Test",
-        "acceptance_criteria": [],
-        "files_to_modify": [],
-    })).await;
+    let (status, _, _) = post_json(
+        &app,
+        "/api/v1/plans/main/PLAN-999/tasks",
+        &json!({
+            "name": "orphan-task",
+            "parent_plan": "PLAN-999",
+            "dependencies": [],
+            "description": "Test",
+            "acceptance_criteria": [],
+            "files_to_modify": [],
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -429,14 +522,19 @@ async fn test_list_tasks_after_creation() {
     let plan_id = plan["id"].as_str().unwrap();
 
     // Create a task
-    let (status, _, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks", plan_id), &json!({
-        "name": "listed-task",
-        "parent_plan": plan_id,
-        "dependencies": [],
-        "description": "Test",
-        "acceptance_criteria": [],
-        "files_to_modify": [],
-    })).await;
+    let (status, _, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks", plan_id),
+        &json!({
+            "name": "listed-task",
+            "parent_plan": plan_id,
+            "dependencies": [],
+            "description": "Test",
+            "acceptance_criteria": [],
+            "files_to_modify": [],
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
 
     // List tasks
@@ -454,19 +552,28 @@ async fn test_get_task() {
     let plan_id = plan["id"].as_str().unwrap();
 
     // Create a task
-    let (status, task, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks", plan_id), &json!({
-        "name": "specific-task",
-        "parent_plan": plan_id,
-        "dependencies": [],
-        "description": "Get me",
-        "acceptance_criteria": ["Done"],
-        "files_to_modify": ["src/lib.rs"],
-    })).await;
+    let (status, task, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks", plan_id),
+        &json!({
+            "name": "specific-task",
+            "parent_plan": plan_id,
+            "dependencies": [],
+            "description": "Get me",
+            "acceptance_criteria": ["Done"],
+            "files_to_modify": ["src/lib.rs"],
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     let task_id = task["id"].as_str().unwrap();
 
     // Get the task
-    let (status, body, _) = get(&app, &format!("/api/v1/plans/main/{}/tasks/{}", plan_id, task_id)).await;
+    let (status, body, _) = get(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/{}", plan_id, task_id),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["id"], task_id);
     assert_eq!(body["name"], "specific-task");
@@ -479,7 +586,11 @@ async fn test_get_task_not_found() {
     let plan = create_test_plan(&app, "not-found-plan", "main").await;
     let plan_id = plan["id"].as_str().unwrap();
 
-    let (status, _, _) = get(&app, &format!("/api/v1/plans/main/{}/tasks/TASK-999", plan_id)).await;
+    let (status, _, _) = get(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/TASK-999", plan_id),
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -491,22 +602,32 @@ async fn test_update_task() {
     let plan_id = plan["id"].as_str().unwrap();
 
     // Create a task
-    let (status, task, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks", plan_id), &json!({
-        "name": "original-task",
-        "parent_plan": plan_id,
-        "dependencies": [],
-        "description": "Original",
-        "acceptance_criteria": [],
-        "files_to_modify": [],
-    })).await;
+    let (status, task, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks", plan_id),
+        &json!({
+            "name": "original-task",
+            "parent_plan": plan_id,
+            "dependencies": [],
+            "description": "Original",
+            "acceptance_criteria": [],
+            "files_to_modify": [],
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     let task_id = task["id"].as_str().unwrap();
 
     // Update the task
-    let (status, body, _) = put_json(&app, &format!("/api/v1/plans/main/{}/tasks/{}", plan_id, task_id), &json!({
-        "name": "updated-task",
-        "description": "Updated description",
-    })).await;
+    let (status, body, _) = put_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/{}", plan_id, task_id),
+        &json!({
+            "name": "updated-task",
+            "description": "Updated description",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["name"], "updated-task");
     assert_eq!(body["description"], "Updated description");
@@ -520,23 +641,36 @@ async fn test_delete_task() {
     let plan_id = plan["id"].as_str().unwrap();
 
     // Create a task
-    let (status, task, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks", plan_id), &json!({
-        "name": "to-delete",
-        "parent_plan": plan_id,
-        "dependencies": [],
-        "description": "Delete me",
-        "acceptance_criteria": [],
-        "files_to_modify": [],
-    })).await;
+    let (status, task, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks", plan_id),
+        &json!({
+            "name": "to-delete",
+            "parent_plan": plan_id,
+            "dependencies": [],
+            "description": "Delete me",
+            "acceptance_criteria": [],
+            "files_to_modify": [],
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     let task_id = task["id"].as_str().unwrap();
 
     // Delete the task
-    let (status, _) = delete(&app, &format!("/api/v1/plans/main/{}/tasks/{}", plan_id, task_id)).await;
+    let (status, _) = delete(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/{}", plan_id, task_id),
+    )
+    .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
 
     // Verify the task is gone
-    let (status, _, _) = get(&app, &format!("/api/v1/plans/main/{}/tasks/{}", plan_id, task_id)).await;
+    let (status, _, _) = get(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/{}", plan_id, task_id),
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -548,21 +682,31 @@ async fn test_transition_task_status_valid() {
     let plan_id = plan["id"].as_str().unwrap();
 
     // Create a task
-    let (status, task, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks", plan_id), &json!({
-        "name": "transition-task",
-        "parent_plan": plan_id,
-        "dependencies": [],
-        "description": "Test",
-        "acceptance_criteria": [],
-        "files_to_modify": [],
-    })).await;
+    let (status, task, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks", plan_id),
+        &json!({
+            "name": "transition-task",
+            "parent_plan": plan_id,
+            "dependencies": [],
+            "description": "Test",
+            "acceptance_criteria": [],
+            "files_to_modify": [],
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     let task_id = task["id"].as_str().unwrap();
 
     // Transition backlog -> queued
-    let (status, body, _) = patch_json(&app, &format!("/api/v1/plans/main/{}/tasks/{}/status", plan_id, task_id), &json!({
-        "status": "queued",
-    })).await;
+    let (status, body, _) = patch_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/{}/status", plan_id, task_id),
+        &json!({
+            "status": "queued",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"]["status"], "queued");
 }
@@ -575,21 +719,31 @@ async fn test_transition_task_status_invalid() {
     let plan_id = plan["id"].as_str().unwrap();
 
     // Create a task
-    let (status, task, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks", plan_id), &json!({
-        "name": "invalid-task",
-        "parent_plan": plan_id,
-        "dependencies": [],
-        "description": "Test",
-        "acceptance_criteria": [],
-        "files_to_modify": [],
-    })).await;
+    let (status, task, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks", plan_id),
+        &json!({
+            "name": "invalid-task",
+            "parent_plan": plan_id,
+            "dependencies": [],
+            "description": "Test",
+            "acceptance_criteria": [],
+            "files_to_modify": [],
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     let task_id = task["id"].as_str().unwrap();
 
     // Try invalid transition: backlog -> running (should fail)
-    let (status, _, _) = patch_json(&app, &format!("/api/v1/plans/main/{}/tasks/{}/status", plan_id, task_id), &json!({
-        "status": "running",
-    })).await;
+    let (status, _, _) = patch_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/{}/status", plan_id, task_id),
+        &json!({
+            "status": "running",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }
 
@@ -601,28 +755,43 @@ async fn test_claim_task() {
     let plan_id = plan["id"].as_str().unwrap();
 
     // Create a task
-    let (status, task, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks", plan_id), &json!({
-        "name": "claimable-task",
-        "parent_plan": plan_id,
-        "dependencies": [],
-        "description": "Claim me",
-        "acceptance_criteria": [],
-        "files_to_modify": [],
-    })).await;
+    let (status, task, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks", plan_id),
+        &json!({
+            "name": "claimable-task",
+            "parent_plan": plan_id,
+            "dependencies": [],
+            "description": "Claim me",
+            "acceptance_criteria": [],
+            "files_to_modify": [],
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     let task_id = task["id"].as_str().unwrap();
 
     // Transition backlog -> queued first
-    let (status, _, _) = patch_json(&app, &format!("/api/v1/plans/main/{}/tasks/{}/status", plan_id, task_id), &json!({
-        "status": "queued",
-    })).await;
+    let (status, _, _) = patch_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/{}/status", plan_id, task_id),
+        &json!({
+            "status": "queued",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 
     // Claim the task
-    let (status, body, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks/{}/claim", plan_id, task_id), &json!({
-        "agent_role": "builder",
-        "agent_pid": 12345,
-    })).await;
+    let (status, body, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/{}/claim", plan_id, task_id),
+        &json!({
+            "agent_role": "builder",
+            "agent_pid": 12345,
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"]["status"], "running");
     assert!(body["status"]["agent"].is_object());
@@ -638,22 +807,32 @@ async fn test_claim_task_not_queued() {
     let plan_id = plan["id"].as_str().unwrap();
 
     // Create a task (starts in backlog)
-    let (status, task, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks", plan_id), &json!({
-        "name": "backlog-task",
-        "parent_plan": plan_id,
-        "dependencies": [],
-        "description": "Test",
-        "acceptance_criteria": [],
-        "files_to_modify": [],
-    })).await;
+    let (status, task, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks", plan_id),
+        &json!({
+            "name": "backlog-task",
+            "parent_plan": plan_id,
+            "dependencies": [],
+            "description": "Test",
+            "acceptance_criteria": [],
+            "files_to_modify": [],
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     let task_id = task["id"].as_str().unwrap();
 
     // Try to claim while in backlog (should fail)
-    let (status, _, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks/{}/claim", plan_id, task_id), &json!({
-        "agent_role": "builder",
-        "agent_pid": 12345,
-    })).await;
+    let (status, _, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/{}/claim", plan_id, task_id),
+        &json!({
+            "agent_role": "builder",
+            "agent_pid": 12345,
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }
 
@@ -774,11 +953,16 @@ async fn test_request_id_header_on_error() {
 #[tokio::test]
 async fn test_create_plan_invalid_branch() {
     let (app, _dir) = test_app();
-    let (status, _, _) = post_json(&app, "/api/v1/plans", &json!({
-        "name": "bad-branch",
-        "branch": "../traversal",
-        "goal": "Test",
-    })).await;
+    let (status, _, _) = post_json(
+        &app,
+        "/api/v1/plans",
+        &json!({
+            "name": "bad-branch",
+            "branch": "../traversal",
+            "goal": "Test",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }
 
@@ -798,11 +982,16 @@ async fn test_error_response_structure() {
 #[tokio::test]
 async fn test_create_plan_empty_branch() {
     let (app, _dir) = test_app();
-    let (status, _, _) = post_json(&app, "/api/v1/plans", &json!({
-        "name": "test",
-        "branch": "",
-        "goal": "Test",
-    })).await;
+    let (status, _, _) = post_json(
+        &app,
+        "/api/v1/plans",
+        &json!({
+            "name": "test",
+            "branch": "",
+            "goal": "Test",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }
 
@@ -813,14 +1002,19 @@ async fn test_create_task_empty_name() {
     let plan = create_test_plan(&app, "empty-task-plan", "main").await;
     let plan_id = plan["id"].as_str().unwrap();
 
-    let (status, _, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks", plan_id), &json!({
-        "name": "",
-        "parent_plan": plan_id,
-        "dependencies": [],
-        "description": "Test",
-        "acceptance_criteria": [],
-        "files_to_modify": [],
-    })).await;
+    let (status, _, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks", plan_id),
+        &json!({
+            "name": "",
+            "parent_plan": plan_id,
+            "dependencies": [],
+            "description": "Test",
+            "acceptance_criteria": [],
+            "files_to_modify": [],
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 }
 
@@ -828,9 +1022,14 @@ async fn test_create_task_empty_name() {
 #[tokio::test]
 async fn test_transition_nonexistent_plan() {
     let (app, _dir) = test_app();
-    let (status, _, _) = patch_json(&app, "/api/v1/plans/main/PLAN-999/status", &json!({
-        "status": "queued",
-    })).await;
+    let (status, _, _) = patch_json(
+        &app,
+        "/api/v1/plans/main/PLAN-999/status",
+        &json!({
+            "status": "queued",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -845,16 +1044,26 @@ async fn test_full_plan_lifecycle() {
     assert_eq!(plan["status"], "draft");
 
     // 2. Transition draft -> queued
-    let (status, body, _) = patch_json(&app, &format!("/api/v1/plans/main/{}/status", plan_id), &json!({
-        "status": "queued",
-    })).await;
+    let (status, body, _) = patch_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/status", plan_id),
+        &json!({
+            "status": "queued",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"], "queued");
 
     // 3. Update name
-    let (status, body, _) = put_json(&app, &format!("/api/v1/plans/main/{}", plan_id), &json!({
-        "name": "renamed-plan",
-    })).await;
+    let (status, body, _) = put_json(
+        &app,
+        &format!("/api/v1/plans/main/{}", plan_id),
+        &json!({
+            "name": "renamed-plan",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["name"], "renamed-plan");
 
@@ -875,34 +1084,53 @@ async fn test_full_task_lifecycle() {
     let plan_id = plan["id"].as_str().unwrap();
 
     // 1. Create task
-    let (status, task, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks", plan_id), &json!({
-        "name": "lifecycle-task",
-        "parent_plan": plan_id,
-        "dependencies": [],
-        "description": "Full lifecycle test",
-        "acceptance_criteria": ["Works"],
-        "files_to_modify": ["src/test.rs"],
-    })).await;
+    let (status, task, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks", plan_id),
+        &json!({
+            "name": "lifecycle-task",
+            "parent_plan": plan_id,
+            "dependencies": [],
+            "description": "Full lifecycle test",
+            "acceptance_criteria": ["Works"],
+            "files_to_modify": ["src/test.rs"],
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     let task_id = task["id"].as_str().unwrap();
     assert_eq!(task["status"]["status"], "backlog");
 
     // 2. Transition backlog -> queued
-    let (status, _, _) = patch_json(&app, &format!("/api/v1/plans/main/{}/tasks/{}/status", plan_id, task_id), &json!({
-        "status": "queued",
-    })).await;
+    let (status, _, _) = patch_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/{}/status", plan_id, task_id),
+        &json!({
+            "status": "queued",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
 
     // 3. Claim the task
-    let (status, body, _) = post_json(&app, &format!("/api/v1/plans/main/{}/tasks/{}/claim", plan_id, task_id), &json!({
-        "agent_role": "builder",
-        "agent_pid": 99999,
-    })).await;
+    let (status, body, _) = post_json(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/{}/claim", plan_id, task_id),
+        &json!({
+            "agent_role": "builder",
+            "agent_pid": 99999,
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"]["status"], "running");
 
     // 4. Delete the task
-    let (status, _) = delete(&app, &format!("/api/v1/plans/main/{}/tasks/{}", plan_id, task_id)).await;
+    let (status, _) = delete(
+        &app,
+        &format!("/api/v1/plans/main/{}/tasks/{}", plan_id, task_id),
+    )
+    .await;
     assert_eq!(status, StatusCode::NO_CONTENT);
 }
 
@@ -933,11 +1161,16 @@ async fn test_branch_isolation() {
 #[tokio::test]
 async fn test_create_plan_with_minimal_fields() {
     let (app, _dir) = test_app();
-    let (status, body, _) = post_json(&app, "/api/v1/plans", &json!({
-        "name": "minimal-plan",
-        "branch": "main",
-        "goal": "Minimal goal",
-    })).await;
+    let (status, body, _) = post_json(
+        &app,
+        "/api/v1/plans",
+        &json!({
+            "name": "minimal-plan",
+            "branch": "main",
+            "goal": "Minimal goal",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(body["name"], "minimal-plan");
     assert_eq!(body["scope"], ""); // defaults to empty string
@@ -988,11 +1221,16 @@ async fn test_auth_enabled_get_allowed_without_auth() {
 #[tokio::test]
 async fn test_auth_enabled_post_requires_auth() {
     let (app, _dir) = test_app_with_auth();
-    let (status, body, _) = post_json(&app, "/api/v1/plans", &json!({
-        "name": "test",
-        "branch": "main",
-        "goal": "Test",
-    })).await;
+    let (status, body, _) = post_json(
+        &app,
+        "/api/v1/plans",
+        &json!({
+            "name": "test",
+            "branch": "main",
+            "goal": "Test",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(body["error"].is_string());
 }
@@ -1006,7 +1244,9 @@ async fn test_auth_enabled_post_requires_bearer_format() {
         .method("POST")
         .header(http::header::AUTHORIZATION, "Basic dXNlcjpwYXNz")
         .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap(),
+        ))
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -1016,11 +1256,17 @@ async fn test_auth_enabled_post_requires_bearer_format() {
 #[tokio::test]
 async fn test_auth_enabled_post_invalid_key() {
     let (app, _dir) = test_app_with_auth();
-    let (status, body, _) = post_authed(&app, "/api/v1/plans", "wrong-key", &json!({
-        "name": "test",
-        "branch": "main",
-        "goal": "Test",
-    })).await;
+    let (status, body, _) = post_authed(
+        &app,
+        "/api/v1/plans",
+        "wrong-key",
+        &json!({
+            "name": "test",
+            "branch": "main",
+            "goal": "Test",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(body["error"].is_string());
 }
@@ -1029,11 +1275,17 @@ async fn test_auth_enabled_post_invalid_key() {
 #[tokio::test]
 async fn test_auth_enabled_post_valid_key() {
     let (app, _dir) = test_app_with_auth();
-    let (status, body, _) = post_authed(&app, "/api/v1/plans", "test-key-123", &json!({
-        "name": "auth-test-plan",
-        "branch": "main",
-        "goal": "Test goal",
-    })).await;
+    let (status, body, _) = post_authed(
+        &app,
+        "/api/v1/plans",
+        "test-key-123",
+        &json!({
+            "name": "auth-test-plan",
+            "branch": "main",
+            "goal": "Test goal",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(body["name"], "auth-test-plan");
 }
@@ -1046,7 +1298,9 @@ async fn test_auth_enabled_put_requires_auth() {
         .uri("/api/v1/plans/main/PLAN-999")
         .method("PUT")
         .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&json!({"name": "updated"})).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&json!({"name": "updated"})).unwrap(),
+        ))
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -1060,7 +1314,9 @@ async fn test_auth_enabled_patch_requires_auth() {
         .uri("/api/v1/plans/main/PLAN-999/status")
         .method("PATCH")
         .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&json!({"status": "queued"})).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&json!({"status": "queued"})).unwrap(),
+        ))
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -1106,19 +1362,30 @@ async fn test_auth_status_no_key_names() {
     let (app, _dir) = test_app_with_auth();
     let (status, body, _) = get(&app, "/api/v1/auth/status").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.get("key_names").is_none(), "Auth status should not expose key_names");
-    assert!(body.get("keys_count").is_some(), "Auth status should include keys_count");
+    assert!(
+        body.get("key_names").is_none(),
+        "Auth status should not expose key_names"
+    );
+    assert!(
+        body.get("keys_count").is_some(),
+        "Auth status should include keys_count"
+    );
 }
 
 /// Verify that 401 responses include an error field with a descriptive message.
 #[tokio::test]
 async fn test_auth_enabled_error_response_format() {
     let (app, _dir) = test_app_with_auth();
-    let (status, body, _) = post_json(&app, "/api/v1/plans", &json!({
-        "name": "test",
-        "branch": "main",
-        "goal": "Test",
-    })).await;
+    let (status, body, _) = post_json(
+        &app,
+        "/api/v1/plans",
+        &json!({
+            "name": "test",
+            "branch": "main",
+            "goal": "Test",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(body["error"].is_string());
 }
@@ -1143,15 +1410,21 @@ fn test_app_with_read_auth() -> (Router, TempDir) {
             authentication: AuthenticationSettings {
                 enabled: true,
                 authenticate_read: true,
-                api_keys: vec![
-                    ApiKeyEntry { name: "test-cli".to_string(), secret: "test-key-123".to_string() },
-                ],
+                api_keys: vec![ApiKeyEntry {
+                    name: "test-cli".to_string(),
+                    secret: "test-key-123".to_string(),
+                }],
             },
         },
         preferences: config::Preferences::default(),
     };
 
-    let state = AppState { repo_root: temp_dir.path().to_path_buf(), config, orchestrator: None };
+    let state = AppState {
+        repo_root: temp_dir.path().to_path_buf(),
+        config,
+        orchestrator: None,
+        plan_locks: Arc::new(RwLock::new(HashMap::new())),
+    };
     (create_router(state), temp_dir)
 }
 
@@ -1190,11 +1463,17 @@ async fn test_auth_enabled_plan_lifecycle() {
     let (app, _dir) = test_app_with_auth();
 
     // Create plan with auth
-    let (status, body, _) = post_authed(&app, "/api/v1/plans", "test-key-123", &json!({
-        "name": "auth-lifecycle-plan",
-        "branch": "main",
-        "goal": "Test lifecycle with auth",
-    })).await;
+    let (status, body, _) = post_authed(
+        &app,
+        "/api/v1/plans",
+        "test-key-123",
+        &json!({
+            "name": "auth-lifecycle-plan",
+            "branch": "main",
+            "goal": "Test lifecycle with auth",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::CREATED);
     let plan_id = body["id"].as_str().unwrap();
 
@@ -1209,7 +1488,9 @@ async fn test_auth_enabled_plan_lifecycle() {
         .method("PUT")
         .header(http::header::AUTHORIZATION, "Bearer test-key-123")
         .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&json!({"name": "updated-auth-plan"})).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&json!({"name": "updated-auth-plan"})).unwrap(),
+        ))
         .unwrap();
     let res = app.clone().oneshot(put_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
@@ -1235,7 +1516,9 @@ async fn test_auth_bearer_extra_whitespace() {
         .method("POST")
         .header(http::header::AUTHORIZATION, "Bearer  test-key-123")
         .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap(),
+        ))
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     // split_whitespace collapses multiple spaces, so "Bearer  key" → ["Bearer", "key"]
@@ -1252,7 +1535,9 @@ async fn test_auth_bearer_empty_token() {
         .method("POST")
         .header(http::header::AUTHORIZATION, "Bearer ")
         .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap(),
+        ))
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -1280,7 +1565,9 @@ async fn test_auth_www_authenticate_header() {
         .uri("/api/v1/plans")
         .method("POST")
         .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap()))
+        .body(Body::from(
+            serde_json::to_string(&json!({"name":"test","branch":"main","goal":"Test"})).unwrap(),
+        ))
         .unwrap();
     let res = app.clone().oneshot(req).await.unwrap();
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
@@ -1313,7 +1600,10 @@ fn test_openapi_security_schemes() {
     let spec = load_openapi_spec();
     let schemes = &spec["components"]["securitySchemes"];
     assert!(schemes.is_object(), "securitySchemes should be an object");
-    assert!(schemes["bearerAuth"].is_object(), "bearerAuth scheme should exist");
+    assert!(
+        schemes["bearerAuth"].is_object(),
+        "bearerAuth scheme should exist"
+    );
     assert_eq!(schemes["bearerAuth"]["type"], "http");
     assert_eq!(schemes["bearerAuth"]["scheme"], "bearer");
 }
@@ -1325,11 +1615,22 @@ fn test_openapi_auth_status_path() {
     let auth_path = &spec["paths"]["/auth/status"]["get"];
     assert!(auth_path.is_object(), "/auth/status GET path should exist");
     assert_eq!(auth_path["operationId"], "getAuthStatus");
-    assert!(auth_path["tags"].as_array().unwrap().iter().any(|t| t == "Auth"));
-    assert_eq!(auth_path["responses"]["200"]["content"]["application/json"]["schema"]["$ref"], "#/components/schemas/AuthStatusResponse");
+    assert!(auth_path["tags"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t == "Auth"));
+    assert_eq!(
+        auth_path["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/AuthStatusResponse"
+    );
     // Security: verify key_names is not in the AuthStatusResponse schema
-    assert!(spec["components"]["schemas"]["AuthStatusResponse"]["properties"].get("key_names").is_none(),
-        "AuthStatusResponse schema should not expose key_names");
+    assert!(
+        spec["components"]["schemas"]["AuthStatusResponse"]["properties"]
+            .get("key_names")
+            .is_none(),
+        "AuthStatusResponse schema should not expose key_names"
+    );
 }
 
 /// Verify that all write endpoints have security requirements.
@@ -1338,22 +1639,59 @@ fn test_openapi_write_endpoints_have_security() {
     let spec = load_openapi_spec();
     let write_operations = [
         ("POST /plans", &spec["paths"]["/plans"]["post"]),
-        ("PUT /plans/{branch}/{plan_id}", &spec["paths"]["/plans/{branch}/{plan_id}"]["put"]),
-        ("DELETE /plans/{branch}/{plan_id}", &spec["paths"]["/plans/{branch}/{plan_id}"]["delete"]),
-        ("PATCH /plans/{branch}/{plan_id}/status", &spec["paths"]["/plans/{branch}/{plan_id}/status"]["patch"]),
-        ("POST /plans/{branch}/{plan_id}/tasks", &spec["paths"]["/plans/{branch}/{plan_id}/tasks"]["post"]),
-        ("PUT /plans/{branch}/{plan_id}/tasks/{task_id}", &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}"]["put"]),
-        ("DELETE /plans/{branch}/{plan_id}/tasks/{task_id}", &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}"]["delete"]),
-        ("PATCH /plans/{branch}/{plan_id}/tasks/{task_id}/status", &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}/status"]["patch"]),
-        ("POST /plans/{branch}/{plan_id}/tasks/{task_id}/claim", &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}/claim"]["post"]),
+        (
+            "PUT /plans/{branch}/{plan_id}",
+            &spec["paths"]["/plans/{branch}/{plan_id}"]["put"],
+        ),
+        (
+            "DELETE /plans/{branch}/{plan_id}",
+            &spec["paths"]["/plans/{branch}/{plan_id}"]["delete"],
+        ),
+        (
+            "PATCH /plans/{branch}/{plan_id}/status",
+            &spec["paths"]["/plans/{branch}/{plan_id}/status"]["patch"],
+        ),
+        (
+            "POST /plans/{branch}/{plan_id}/tasks",
+            &spec["paths"]["/plans/{branch}/{plan_id}/tasks"]["post"],
+        ),
+        (
+            "PUT /plans/{branch}/{plan_id}/tasks/{task_id}",
+            &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}"]["put"],
+        ),
+        (
+            "DELETE /plans/{branch}/{plan_id}/tasks/{task_id}",
+            &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}"]["delete"],
+        ),
+        (
+            "PATCH /plans/{branch}/{plan_id}/tasks/{task_id}/status",
+            &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}/status"]["patch"],
+        ),
+        (
+            "POST /plans/{branch}/{plan_id}/tasks/{task_id}/claim",
+            &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}/claim"]["post"],
+        ),
     ];
     for (name, op) in &write_operations {
-        let security = op["security"].as_array()
+        let security = op["security"]
+            .as_array()
             .expect(&format!("{} should have security array", name));
-        assert!(!security.is_empty(), "{} should have security requirements", name);
-        assert!(security[0].get("bearerAuth").is_some(), "{} should reference bearerAuth", name);
+        assert!(
+            !security.is_empty(),
+            "{} should have security requirements",
+            name
+        );
+        assert!(
+            security[0].get("bearerAuth").is_some(),
+            "{} should reference bearerAuth",
+            name
+        );
         // Also verify 401 response exists
-        assert!(op["responses"]["401"].is_object(), "{} should have 401 response", name);
+        assert!(
+            op["responses"]["401"].is_object(),
+            "{} should have 401 response",
+            name
+        );
     }
 }
 
@@ -1364,17 +1702,33 @@ fn test_openapi_get_endpoints_no_security() {
     let get_operations = [
         ("GET /health", &spec["paths"]["/health"]["get"]),
         ("GET /plans", &spec["paths"]["/plans"]["get"]),
-        ("GET /plans/{branch}/{plan_id}", &spec["paths"]["/plans/{branch}/{plan_id}"]["get"]),
-        ("GET /plans/{branch}/{plan_id}/tasks", &spec["paths"]["/plans/{branch}/{plan_id}/tasks"]["get"]),
-        ("GET /plans/{branch}/{plan_id}/tasks/{task_id}", &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}"]["get"]),
-        ("GET /plans/{branch}/{plan_id}/execution", &spec["paths"]["/plans/{branch}/{plan_id}/execution"]["get"]),
+        (
+            "GET /plans/{branch}/{plan_id}",
+            &spec["paths"]["/plans/{branch}/{plan_id}"]["get"],
+        ),
+        (
+            "GET /plans/{branch}/{plan_id}/tasks",
+            &spec["paths"]["/plans/{branch}/{plan_id}/tasks"]["get"],
+        ),
+        (
+            "GET /plans/{branch}/{plan_id}/tasks/{task_id}",
+            &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}"]["get"],
+        ),
+        (
+            "GET /plans/{branch}/{plan_id}/execution",
+            &spec["paths"]["/plans/{branch}/{plan_id}/execution"]["get"],
+        ),
         ("GET /running", &spec["paths"]["/running"]["get"]),
         ("GET /config", &spec["paths"]["/config"]["get"]),
         ("GET /agents", &spec["paths"]["/agents"]["get"]),
         ("GET /auth/status", &spec["paths"]["/auth/status"]["get"]),
     ];
     for (name, op) in &get_operations {
-        assert!(op.get("security").is_none(), "{} should NOT have security requirements", name);
+        assert!(
+            op.get("security").is_none(),
+            "{} should NOT have security requirements",
+            name
+        );
     }
 }
 
@@ -1382,7 +1736,9 @@ fn test_openapi_get_endpoints_no_security() {
 #[test]
 fn test_openapi_auth_tag() {
     let spec = load_openapi_spec();
-    let tags = spec["components"]["tags"].as_array().expect("tags should be an array");
+    let tags = spec["components"]["tags"]
+        .as_array()
+        .expect("tags should be an array");
     let has_auth_tag = tags.iter().any(|t| t["name"] == "Auth");
     assert!(has_auth_tag, "Auth tag should exist in the spec");
 }
@@ -1392,6 +1748,12 @@ fn test_openapi_auth_tag() {
 fn test_openapi_unauthorized_response() {
     let spec = load_openapi_spec();
     let unauthorized = &spec["components"]["responses"]["Unauthorized"];
-    assert!(unauthorized.is_object(), "Unauthorized response should exist");
-    assert_eq!(unauthorized["description"], "Authentication required or invalid credentials");
+    assert!(
+        unauthorized.is_object(),
+        "Unauthorized response should exist"
+    );
+    assert_eq!(
+        unauthorized["description"],
+        "Authentication required or invalid credentials"
+    );
 }

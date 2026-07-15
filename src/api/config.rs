@@ -26,9 +26,7 @@ use crate::api::types::*;
 /// such as API keys, OAuth tokens, and the `nexum_config_dir` override.
 ///
 /// Returns **200 OK** with the configuration payload.
-pub async fn get_config(
-    State(state): State<AppState>,
-) -> Result<Json<ConfigResponse>, ApiError> {
+pub async fn get_config(State(state): State<AppState>) -> Result<Json<ConfigResponse>, ApiError> {
     let auth = &state.config.global.authentication;
     let response = ConfigResponse {
         server_host: state.config.global.server_host.clone(),
@@ -56,9 +54,7 @@ pub async fn get_config(
 /// harness and maps to task worktrees.
 ///
 /// If no agents are registered, returns `{"agents": []}`.
-pub async fn list_agents(
-    State(state): State<AppState>,
-) -> Result<Json<AgentsResponse>, ApiError> {
+pub async fn list_agents(State(state): State<AppState>) -> Result<Json<AgentsResponse>, ApiError> {
     let agents: Vec<AgentRegistrationResponse> = state
         .config
         .agents

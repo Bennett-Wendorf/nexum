@@ -6,6 +6,8 @@
 //! convenience.
 
 use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
@@ -65,6 +67,37 @@ pub enum PlanStatus {
     Complete,
     /// Human rejected (terminal).
     Rejected,
+}
+
+impl fmt::Display for PlanStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PlanStatus::Draft => write!(f, "draft"),
+            PlanStatus::Queued => write!(f, "queued"),
+            PlanStatus::Planning => write!(f, "planning"),
+            PlanStatus::Reviewing => write!(f, "reviewing"),
+            PlanStatus::Approved => write!(f, "approved"),
+            PlanStatus::Complete => write!(f, "complete"),
+            PlanStatus::Rejected => write!(f, "rejected"),
+        }
+    }
+}
+
+impl FromStr for PlanStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "draft" => Ok(PlanStatus::Draft),
+            "queued" => Ok(PlanStatus::Queued),
+            "planning" => Ok(PlanStatus::Planning),
+            "reviewing" => Ok(PlanStatus::Reviewing),
+            "approved" => Ok(PlanStatus::Approved),
+            "complete" => Ok(PlanStatus::Complete),
+            "rejected" => Ok(PlanStatus::Rejected),
+            _ => Err(format!("Invalid plan status: {s}")),
+        }
+    }
 }
 
 // ── Task ────────────────────────────────────────────────────────────────────
@@ -153,17 +186,36 @@ pub enum TaskStatusValue {
     Completed,
 }
 
-/// Convert a TaskStatusValue to its kebab-case string representation.
-pub fn task_status_to_string(status: &TaskStatusValue) -> &'static str {
-    match status {
-        TaskStatusValue::Backlog => "backlog",
-        TaskStatusValue::Queued => "queued",
-        TaskStatusValue::Running => "running",
-        TaskStatusValue::Reviewing => "reviewing",
-        TaskStatusValue::WaitingManualReview => "waiting-manual-review",
-        TaskStatusValue::MergeQueue => "merge-queue",
-        TaskStatusValue::Abandoned => "abandoned",
-        TaskStatusValue::Completed => "completed",
+impl fmt::Display for TaskStatusValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TaskStatusValue::Backlog => write!(f, "backlog"),
+            TaskStatusValue::Queued => write!(f, "queued"),
+            TaskStatusValue::Running => write!(f, "running"),
+            TaskStatusValue::Reviewing => write!(f, "reviewing"),
+            TaskStatusValue::WaitingManualReview => write!(f, "waiting-manual-review"),
+            TaskStatusValue::MergeQueue => write!(f, "merge-queue"),
+            TaskStatusValue::Abandoned => write!(f, "abandoned"),
+            TaskStatusValue::Completed => write!(f, "completed"),
+        }
+    }
+}
+
+impl FromStr for TaskStatusValue {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "backlog" => Ok(TaskStatusValue::Backlog),
+            "queued" => Ok(TaskStatusValue::Queued),
+            "running" => Ok(TaskStatusValue::Running),
+            "reviewing" => Ok(TaskStatusValue::Reviewing),
+            "waiting-manual-review" => Ok(TaskStatusValue::WaitingManualReview),
+            "merge-queue" => Ok(TaskStatusValue::MergeQueue),
+            "abandoned" => Ok(TaskStatusValue::Abandoned),
+            "completed" => Ok(TaskStatusValue::Completed),
+            _ => Err(format!("Invalid task status: {s}")),
+        }
     }
 }
 

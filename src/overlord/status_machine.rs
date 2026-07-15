@@ -4,7 +4,7 @@
 //! expressions instead of runtime HashMap lookups. Provides `can_transition()`
 //! and `transition()` static methods for both plan and task status machines.
 
-use crate::persistence::{task_status_to_string, PlanStatus, TaskStatusValue};
+use crate::persistence::{PlanStatus, TaskStatusValue};
 
 use super::errors::{OverlordError, Result};
 
@@ -60,14 +60,14 @@ impl PlanStateMachine {
     ) -> Result<StatusTransitionRecord> {
         if !Self::can_transition(from, to) {
             return Err(OverlordError::InvalidTransition {
-                from: plan_status_to_string(from).to_string(),
-                to: plan_status_to_string(to).to_string(),
+                from: from.to_string(),
+                to: to.to_string(),
                 entity: "plan".to_string(),
             });
         }
         Ok(StatusTransitionRecord {
-            from: plan_status_to_string(from).to_string(),
-            to: plan_status_to_string(to).to_string(),
+            from: from.to_string(),
+            to: to.to_string(),
             at: chrono::Utc::now().to_rfc3339(),
             by: by.to_string(),
         })
@@ -127,14 +127,14 @@ impl TaskStateMachine {
     ) -> Result<StatusTransitionRecord> {
         if !Self::can_transition(from, to) {
             return Err(OverlordError::InvalidTransition {
-                from: task_status_to_string(from).to_string(),
-                to: task_status_to_string(to).to_string(),
+                from: from.to_string(),
+                to: to.to_string(),
                 entity: "task".to_string(),
             });
         }
         Ok(StatusTransitionRecord {
-            from: task_status_to_string(from).to_string(),
-            to: task_status_to_string(to).to_string(),
+            from: from.to_string(),
+            to: to.to_string(),
             at: chrono::Utc::now().to_rfc3339(),
             by: by.to_string(),
         })
@@ -170,17 +170,4 @@ pub fn is_plan_concurrency_sensitive(status: &PlanStatus) -> bool {
     matches!(status, PlanStatus::Planning | PlanStatus::Reviewing)
 }
 
-// ── Status-to-String Conversion ─────────────────────────────────────────────
 
-/// Convert a PlanStatus to its kebab-case string representation.
-pub fn plan_status_to_string(status: &PlanStatus) -> &'static str {
-    match status {
-        PlanStatus::Draft => "draft",
-        PlanStatus::Queued => "queued",
-        PlanStatus::Planning => "planning",
-        PlanStatus::Reviewing => "reviewing",
-        PlanStatus::Approved => "approved",
-        PlanStatus::Complete => "complete",
-        PlanStatus::Rejected => "rejected",
-    }
-}

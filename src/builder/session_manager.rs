@@ -50,7 +50,10 @@ pub struct SessionManager {
 impl SessionManager {
     /// Create a new session manager.
     pub fn new(repo_root: PathBuf, agent_config: AgentConfig) -> Self {
-        Self { repo_root, agent_config }
+        Self {
+            repo_root,
+            agent_config,
+        }
     }
 
     /// Create an ACP session for a task.
@@ -185,7 +188,10 @@ impl SessionManager {
     /// Deprecated: This method always returns `false` since `AgentProcess::is_alive()`
     /// requires `&mut self`. Use [`wait_for_completion`] instead, which monitors
     /// the event stream for terminal events.
-    #[deprecated(since = "0.1.0", note = "Always returns false; use wait_for_completion instead")]
+    #[deprecated(
+        since = "0.1.0",
+        note = "Always returns false; use wait_for_completion instead"
+    )]
     pub fn is_completed(&self, _handle: &ACPSessionHandle) -> bool {
         false
     }

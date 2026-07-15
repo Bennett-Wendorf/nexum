@@ -26,7 +26,10 @@ pub enum BuilderEvent {
     /// Progress event from a running task.
     TaskProgress { task_id: String, event: ACPEvent },
     /// A task has completed (success, timeout, or crash).
-    TaskCompleted { task_id: String, result: CompletionResult },
+    TaskCompleted {
+        task_id: String,
+        result: CompletionResult,
+    },
     /// A task has failed with an error.
     TaskFailed { task_id: String, error: String },
     /// A task branch has been merged into the plan branch.
@@ -78,11 +81,10 @@ impl BuilderEventBus {
 
     /// Emit a builder lifecycle event to all subscribers.
     pub fn emit(&self, event: BuilderEvent) -> Result<()> {
-        self.tx.send(event)
+        self.tx
+            .send(event)
             .map(|_| ())
-            .map_err(|e| {
-                BuilderError::WorkflowError(format!("Failed to emit event: {}", e))
-            })
+            .map_err(|e| BuilderError::WorkflowError(format!("Failed to emit event: {}", e)))
     }
 
     /// Relay ACP events from a session to the central builder event bus.
