@@ -48,7 +48,7 @@ fn test_app() -> (Router, TempDir) {
 
     let state = AppState {
         repo_root: temp_dir.path().to_path_buf(),
-        config,
+        config: Arc::new(RwLock::new(config)),
         orchestrator: None,
         plan_locks: Arc::new(RwLock::new(HashMap::new())),
     };
@@ -87,7 +87,7 @@ fn test_app_with_auth() -> (Router, TempDir) {
 
     let state = AppState {
         repo_root: temp_dir.path().to_path_buf(),
-        config,
+        config: Arc::new(RwLock::new(config.clone())),
         orchestrator: None,
         plan_locks: Arc::new(RwLock::new(HashMap::new())),
     };
@@ -200,32 +200,6 @@ async fn patch_json(
     let req = Request::builder()
         .uri(uri)
         .method("PATCH")
-        .header(http::header::CONTENT_TYPE, "application/json")
-        .body(Body::from(serde_json::to_string(body).unwrap()))
-        .unwrap();
-    let res = app.clone().oneshot(req).await.unwrap();
-    let status = res.status();
-    let headers = res.headers().clone();
-    let body_bytes = res.into_body().collect().await.unwrap().to_bytes();
-    let body: serde_json::Value = if body_bytes.is_empty() {
-        serde_json::Value::Null
-    } else {
-        serde_json::from_slice(&body_bytes).unwrap_or_else(
-            |_| serde_json::json!({"raw": String::from_utf8_lossy(&body_bytes).to_string()}),
-        )
-    };
-    (status, body, headers)
-}
-
-/// Helper: send a PUT request with a JSON body and return the response.
-async fn put_json(
-    app: &Router,
-    uri: &str,
-    body: &serde_json::Value,
-) -> (StatusCode, serde_json::Value, axum::http::HeaderMap) {
-    let req = Request::builder()
-        .uri(uri)
-        .method("PUT")
         .header(http::header::CONTENT_TYPE, "application/json")
         .body(Body::from(serde_json::to_string(body).unwrap()))
         .unwrap();
@@ -421,7 +395,7 @@ async fn test_update_plan() {
     let plan = create_test_plan(&app, "original-name", "main").await;
     let plan_id = plan["id"].as_str().unwrap();
 
-    let (status, body, _) = put_json(
+    let (status, body, _) = patch_json(
         &app,
         &format!("/api/v1/plans/main/{}", plan_id),
         &json!({
@@ -619,7 +593,7 @@ async fn test_update_task() {
     let task_id = task["id"].as_str().unwrap();
 
     // Update the task
-    let (status, body, _) = put_json(
+    let (status, body, _) = patch_json(
         &app,
         &format!("/api/v1/plans/main/{}/tasks/{}", plan_id, task_id),
         &json!({
@@ -910,6 +884,92 @@ async fn test_list_agents() {
     assert_eq!(body["agents"].as_array().unwrap().len(), 0);
 }
 
+/// Verify that patching config with yolo_mode=true updates the setting.
+#[tokio::test]
+async fn test_patch_config_yolo_mode_on() {
+    let (app, _dir) = test_app();
+
+    // Initially yolo_mode should be false
+    let (status, body, _) = get(&app, "/api/v1/config").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["yolo_mode"], false);
+
+    // Patch to enable yolo mode
+    let (status, body, _) = patch_json(
+        &app,
+        "/api/v1/config",
+        &json!({
+            "yolo_mode": true,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["yolo_mode"], true);
+
+    // Verify it persists by fetching again
+    let (status, body, _) = get(&app, "/api/v1/config").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["yolo_mode"], true);
+}
+
+/// Verify that patching config with yolo_mode=false disables the setting.
+#[tokio::test]
+async fn test_patch_config_yolo_mode_off() {
+    let (app, _dir) = test_app();
+
+    // Enable yolo mode first
+    let (status, _, _) = patch_json(
+        &app,
+        "/api/v1/config",
+        &json!({
+            "yolo_mode": true,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Disable it
+    let (status, body, _) = patch_json(
+        &app,
+        "/api/v1/config",
+        &json!({
+            "yolo_mode": false,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["yolo_mode"], false);
+}
+
+/// Verify that partial patch (empty body) doesn't change other fields.
+#[tokio::test]
+async fn test_patch_config_partial_update() {
+    let (app, _dir) = test_app();
+
+    // Get initial config
+    let (status, initial, _) = get(&app, "/api/v1/config").await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Patch only yolo_mode
+    let (status, body, _) = patch_json(
+        &app,
+        "/api/v1/config",
+        &json!({
+            "yolo_mode": true,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Other fields should be unchanged
+    assert_eq!(body["server_host"], initial["server_host"]);
+    assert_eq!(body["server_port"], initial["server_port"]);
+    assert_eq!(body["max_parallel"], initial["max_parallel"]);
+    assert_eq!(body["log_level"], initial["log_level"]);
+    // Only yolo_mode should change
+    assert_eq!(body["yolo_mode"], true);
+}
+
 // ==========================================================================
 // Error Handling Tests
 // ==========================================================================
@@ -1056,7 +1116,7 @@ async fn test_full_plan_lifecycle() {
     assert_eq!(body["status"], "queued");
 
     // 3. Update name
-    let (status, body, _) = put_json(
+    let (status, body, _) = patch_json(
         &app,
         &format!("/api/v1/plans/main/{}", plan_id),
         &json!({
@@ -1290,13 +1350,13 @@ async fn test_auth_enabled_post_valid_key() {
     assert_eq!(body["name"], "auth-test-plan");
 }
 
-/// Verify that PUT returns 401 without auth.
+/// Verify that PATCH returns 401 without auth.
 #[tokio::test]
-async fn test_auth_enabled_put_requires_auth() {
+async fn test_auth_enabled_patch_update_requires_auth() {
     let (app, _dir) = test_app_with_auth();
     let req = Request::builder()
         .uri("/api/v1/plans/main/PLAN-999")
-        .method("PUT")
+        .method("PATCH")
         .header(http::header::CONTENT_TYPE, "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({"name": "updated"})).unwrap(),
@@ -1421,7 +1481,7 @@ fn test_app_with_read_auth() -> (Router, TempDir) {
 
     let state = AppState {
         repo_root: temp_dir.path().to_path_buf(),
-        config,
+        config: Arc::new(RwLock::new(config.clone())),
         orchestrator: None,
         plan_locks: Arc::new(RwLock::new(HashMap::new())),
     };
@@ -1483,16 +1543,16 @@ async fn test_auth_enabled_plan_lifecycle() {
     assert_eq!(body["name"], "auth-lifecycle-plan");
 
     // Update plan requires auth
-    let put_req = Request::builder()
+    let patch_req = Request::builder()
         .uri(&format!("/api/v1/plans/main/{}", plan_id))
-        .method("PUT")
+        .method("PATCH")
         .header(http::header::AUTHORIZATION, "Bearer test-key-123")
         .header(http::header::CONTENT_TYPE, "application/json")
         .body(Body::from(
             serde_json::to_string(&json!({"name": "updated-auth-plan"})).unwrap(),
         ))
         .unwrap();
-    let res = app.clone().oneshot(put_req).await.unwrap();
+    let res = app.clone().oneshot(patch_req).await.unwrap();
     assert_eq!(res.status(), StatusCode::OK);
 
     // Delete plan requires auth
@@ -1640,8 +1700,8 @@ fn test_openapi_write_endpoints_have_security() {
     let write_operations = [
         ("POST /plans", &spec["paths"]["/plans"]["post"]),
         (
-            "PUT /plans/{branch}/{plan_id}",
-            &spec["paths"]["/plans/{branch}/{plan_id}"]["put"],
+            "PATCH /plans/{branch}/{plan_id}",
+            &spec["paths"]["/plans/{branch}/{plan_id}"]["patch"],
         ),
         (
             "DELETE /plans/{branch}/{plan_id}",
@@ -1656,8 +1716,8 @@ fn test_openapi_write_endpoints_have_security() {
             &spec["paths"]["/plans/{branch}/{plan_id}/tasks"]["post"],
         ),
         (
-            "PUT /plans/{branch}/{plan_id}/tasks/{task_id}",
-            &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}"]["put"],
+            "PATCH /plans/{branch}/{plan_id}/tasks/{task_id}",
+            &spec["paths"]["/plans/{branch}/{plan_id}/tasks/{task_id}"]["patch"],
         ),
         (
             "DELETE /plans/{branch}/{plan_id}/tasks/{task_id}",

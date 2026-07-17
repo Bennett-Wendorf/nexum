@@ -98,6 +98,65 @@ fn unauthorized_response(msg: &str) -> Response {
     resp
 }
 
+/// Authentication middleware that reads config from AppState (stays in sync with runtime updates).
+pub async fn auth_middleware_with_state(
+    State(state): State<AppState>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let auth_config = {
+        let cfg = state.config.read().await;
+        cfg.global.authentication.clone()
+    };
+
+    // If auth is disabled, pass through
+    if !auth_config.enabled {
+        return next.run(req).await;
+    }
+
+    // OPTIONS always passes through (CORS preflight)
+    if req.method().as_str() == "OPTIONS" {
+        return next.run(req).await;
+    }
+
+    // Determine if this request method requires auth
+    let method_requires_auth = match req.method().as_str() {
+        "GET" => auth_config.authenticate_read,
+        _ => true,
+    };
+
+    if !method_requires_auth {
+        return next.run(req).await;
+    }
+
+    // Extract and validate API key
+    let auth_header = req.headers().get(axum::http::header::AUTHORIZATION);
+    match auth_header {
+        Some(header) => {
+            match header.to_str() {
+                Ok(header_str) => {
+                    let parts: Vec<&str> = header_str.split_whitespace().collect();
+                    if parts.len() != 2 || parts[0] != "Bearer" {
+                        return unauthorized_response(
+                            "Authorization header must use Bearer format: 'Authorization: Bearer <key>'",
+                        );
+                    }
+
+                    let key_name = match validate_api_key(parts[1], &auth_config.api_keys) {
+                        Some(name) => name,
+                        None => return unauthorized_response("Invalid API key"),
+                    };
+
+                    tracing::info!(key_name = %key_name, method = %req.method(), uri = %req.uri(), "Authenticated request");
+                    next.run(req).await
+                }
+                Err(_) => unauthorized_response("Invalid Authorization header encoding"),
+            }
+        }
+        None => unauthorized_response("Missing Authorization header. API key required."),
+    }
+}
+
 /// Authentication middleware handler (2-parameter form for axum `from_fn`).
 ///
 /// The auth config is captured via `Arc` in the closure returned by
@@ -193,7 +252,8 @@ pub fn create_auth_middleware(
 /// This endpoint is intentionally unauthenticated so clients can
 /// discover auth requirements before making authenticated requests.
 pub async fn get_auth_status(State(state): State<AppState>) -> Json<AuthStatusResponse> {
-    let auth = &state.config.global.authentication;
+    let cfg = state.config.read().await;
+    let auth = &cfg.global.authentication;
     Json(AuthStatusResponse {
         enabled: auth.enabled,
         authenticate_read: auth.authenticate_read,

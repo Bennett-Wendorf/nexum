@@ -198,6 +198,22 @@ fn test_task_valid_transitions() {
         &TaskStatusValue::MergeQueue,
         &TaskStatusValue::Completed
     ));
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::Backlog,
+        &TaskStatusValue::Abandoned
+    ));
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::Queued,
+        &TaskStatusValue::Abandoned
+    ));
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::Running,
+        &TaskStatusValue::Abandoned
+    ));
+    assert!(TaskStateMachine::can_transition(
+        &TaskStatusValue::Reviewing,
+        &TaskStatusValue::Abandoned
+    ));
 }
 
 #[test]

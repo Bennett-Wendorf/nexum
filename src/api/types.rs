@@ -325,6 +325,16 @@ pub struct AgentsResponse {
     pub agents: Vec<AgentRegistrationResponse>,
 }
 
+/// Request body for patching server configuration.
+///
+/// Only the fields that are `Some` will be updated.
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
+pub struct PatchConfigRequest {
+    /// Whether yolo mode should be enabled (bypasses permission checks).
+    pub yolo_mode: Option<bool>,
+}
+
 // ---------------------------------------------------------------------------
 // Generic wrappers
 // ---------------------------------------------------------------------------
@@ -351,8 +361,8 @@ pub struct ListResponse<T> {
 pub struct AppState {
     /// Absolute path to the Nexum repository root.
     pub repo_root: PathBuf,
-    /// Loaded server configuration.
-    pub config: config::Config,
+    /// Loaded server configuration (shared across requests via RwLock).
+    pub config: Arc<RwLock<config::Config>>,
     /// Builder workflow orchestrator for task execution.
     pub orchestrator: Option<Arc<WorkflowOrchestrator>>,
     /// Per-plan async mutex map for serializing read-modify-write operations.

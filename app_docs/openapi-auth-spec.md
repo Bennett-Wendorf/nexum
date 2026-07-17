@@ -9,7 +9,7 @@ Updated the OpenAPI 3.1 specification (`docs/api/openapi.json`) to document the 
 The OpenAPI 3.1 spec was extended with authentication documentation:
 
 - **Security schemes**: A `bearerAuth` scheme was added defining HTTP Bearer token authentication with API keys.
-- **Security requirements**: All 9 write endpoints (POST, PUT, PATCH, DELETE) now declare `security: [{bearerAuth: []}]` and include a `401` response.
+- **Security requirements**: All 9 write endpoints (POST, PATCH, DELETE) now declare `security: [{bearerAuth: []}]` and include a `401` response.
 - **Auth status endpoint**: `GET /auth/status` was added as a new path, returning the current authentication configuration.
 - **AuthStatusResponse schema**: A new schema defines the auth status response structure.
 - **Auth tag**: A new `Auth` tag groups authentication-related operations.
@@ -59,11 +59,11 @@ The OpenAPI 3.1 spec was extended with authentication documentation:
 
 **Write Endpoints with Security Requirements** (9 total):
 1. `POST /plans` — `createPlan`
-2. `PUT /plans/{branch}/{plan_id}` — `updatePlan`
+2. `PATCH /plans/{branch}/{plan_id}` — `updatePlan`
 3. `DELETE /plans/{branch}/{plan_id}` — `deletePlan`
 4. `PATCH /plans/{branch}/{plan_id}/status` — `transitionPlanStatus`
 5. `POST /plans/{branch}/{plan_id}/tasks` — `createTask`
-6. `PUT /plans/{branch}/{plan_id}/tasks/{task_id}` — `updateTask`
+6. `PATCH /plans/{branch}/{plan_id}/tasks/{task_id}` — `updateTask`
 7. `DELETE /plans/{branch}/{plan_id}/tasks/{task_id}` — `deleteTask`
 8. `PATCH /plans/{branch}/{plan_id}/tasks/{task_id}/status` — `transitionTaskStatus`
 9. `POST /plans/{branch}/{plan_id}/tasks/{task_id}/claim` — `claimTask`

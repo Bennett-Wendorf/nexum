@@ -3,7 +3,14 @@
   import { kanbanColumnLabels } from '$lib/statusColors';
   import type { Task } from '$lib/types';
   
-  let { status, tasks, planId, branch }: { status: string; tasks: Task[]; planId: string; branch: string } = $props();
+  let { status, tasks, planId, branch, tasksMap, onTaskTransition }: { 
+    status: string; 
+    tasks: Task[]; 
+    planId: string; 
+    branch: string; 
+    tasksMap: Map<string, Task>;
+    onTaskTransition: (taskId: string, newStatus: string) => void;
+  } = $props();
   
   const label = $derived(kanbanColumnLabels[status] ?? status);
   const count = $derived(tasks.length);
@@ -19,7 +26,7 @@
   <!-- Body -->
   <div class="p-2 overflow-y-auto flex-1 space-y-2">
     {#each tasks as task (task.id)}
-      <TaskCard {task} {planId} {branch} />
+      <TaskCard {task} {planId} {branch} {tasksMap} columnStatus={status} {onTaskTransition} />
     {/each}
     
     {#if tasks.length === 0}

@@ -5,6 +5,7 @@
 //! into markdown format.
 
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::LazyLock;
 
 use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
@@ -12,7 +13,7 @@ use regex::Regex;
 
 use super::errors::Result;
 use super::io::read_file;
-use super::schema::{Plan, PlanStatus, Task, TaskReference};
+use super::schema::{Plan, PlanStatus, Task, TaskReference, TaskStatusValue};
 
 static TASK_LIST_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\[([ xX])\]\s+\[([^\]]+)\]\s+(.+)$").unwrap());
@@ -47,6 +48,11 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
     let mut in_list = false;
     let mut list_item_text = String::new();
 
+    let mut h2_collector = HeadingTextCollector::default();
+
+    // For metadata extraction when label and value are split by emphasis events
+    let mut pending_metadata_label: Option<&'static str> = None;
+
     for event in parser {
         match event {
             Event::Start(Tag::Heading {
@@ -59,7 +65,6 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
 
             Event::Start(Tag::Heading {
                 level: HeadingLevel::H2,
-                id: heading_id,
                 ..
             }) => {
                 // Flush previous section
@@ -71,19 +76,28 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
                     &mut background,
                 );
                 section_buffer.clear();
+                h2_collector.start();
+                current_section = Section::None;
+            }
 
-                // Determine which section this heading starts
-                let id_str = heading_id
-                    .as_ref()
-                    .map(|s| s.to_string().to_lowercase())
-                    .unwrap_or_default();
-                if id_str == "goal" {
+            Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
+                // Determine which section this heading starts by its text
+                let heading_text = h2_collector.finish();
+                let trimmed = heading_text.trim();
+                if trimmed.eq_ignore_ascii_case("goal") {
                     current_section = Section::Goal;
-                } else if id_str == "scope" {
+                } else if trimmed.eq_ignore_ascii_case("scope") {
                     current_section = Section::Scope;
-                } else if id_str == "background" {
+                } else if trimmed.eq_ignore_ascii_case("background") {
                     current_section = Section::Background;
+                } else {
+                    current_section = Section::None;
                 }
+            }
+
+            // Collect heading text for section detection
+            Event::Text(text) if h2_collector.active => {
+                h2_collector.collect(&text);
             }
 
             // Section content buffering
@@ -116,7 +130,8 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
 
             // All other text events: extract plan name and metadata, and collect list text
             Event::Text(text) if current_section == Section::None => {
-                let text = text.to_string();
+                // Strip bold markers for matching
+                let clean = if text.contains('*') { text.replace("**", "") } else { text.to_string() };
 
                 // If inside a list, collect text for task list parsing
                 if in_list {
@@ -124,25 +139,49 @@ pub fn parse_plan_markdown(path: &Path) -> Result<Plan> {
                 }
 
                 // Extract plan name from "# Plan: <name>" heading text
-                if name.is_empty() && text.starts_with("Plan: ") {
-                    name = text["Plan: ".len()..].to_string();
+                if name.is_empty() && clean.starts_with("Plan: ") {
+                    name = clean["Plan: ".len()..].trim().to_string();
                 }
 
-                // Parse metadata like **ID:** PLAN-001
-                if let Some(value) = extract_metadata_value(&text, "ID:") {
-                    id = value;
-                } else if let Some(value) = extract_metadata_value(&text, "Status:") {
-                    status = parse_plan_status(&value);
-                } else if let Some(value) = extract_metadata_value(&text, "Created:") {
-                    created = value;
-                } else if let Some(value) = extract_metadata_value(&text, "Branch:") {
-                    branch = value;
+                // Handle pending metadata label (label and value may be split by emphasis events)
+                if let Some(label) = pending_metadata_label.take() {
+                    let value = clean.trim().to_string();
+                    if !value.is_empty() {
+                        match label {
+                            "ID: " => id = value,
+                            "Status: " => status = parse_plan_status(&value),
+                            "Created: " => created = value,
+                            "Branch: " => branch = value,
+                            _ => {}
+                        }
+                    }
+                } else {
+                    // Check for metadata labels directly
+                    if let Some(value) = try_extract_metadata(&clean, "ID: ") {
+                        id = value.to_string();
+                    } else if clean == "ID:" {
+                        pending_metadata_label = Some("ID: ");
+                    } else if let Some(value) = try_extract_metadata(&clean, "Status: ") {
+                        status = parse_plan_status(value);
+                    } else if clean == "Status:" {
+                        pending_metadata_label = Some("Status: ");
+                    } else if let Some(value) = try_extract_metadata(&clean, "Created: ") {
+                        created = value.to_string();
+                    } else if clean == "Created:" {
+                        pending_metadata_label = Some("Created: ");
+                    } else if let Some(value) = try_extract_metadata(&clean, "Branch: ") {
+                        branch = value.to_string();
+                    } else if clean == "Branch:" {
+                        pending_metadata_label = Some("Branch: ");
+                    }
                 }
             }
 
             Event::Html(html) => {
                 let html = html.to_string();
-                // Also try to parse metadata from HTML (sometimes bold is rendered as HTML)
+                // Legacy fallback: when pulldown-cmark renders emphasis as HTML <strong>
+                // tags instead of structured Start/Emphasis/End events, metadata labels
+                // and values may appear inside HTML text events.
                 if let Some(value) = extract_metadata_value(&html, "ID:") {
                     id = value;
                 } else if let Some(value) = extract_metadata_value(&html, "Status:") {
@@ -202,32 +241,72 @@ pub fn parse_task_markdown(path: &Path) -> Result<Task> {
     let mut files_to_modify: Vec<String> = Vec::new();
     let mut background = String::new();
     let mut notes = String::new();
+    let mut status: Option<TaskStatusValue> = None;
 
     let mut current_section = Section::None;
     let mut section_buffer = String::new();
     let mut bullet_buffer = String::new();
 
+    let mut h2_collector = HeadingTextCollector::default();
+
+    // For metadata extraction when label and value are split by emphasis events
+    let mut pending_metadata_label: Option<&'static str> = None;
+
     for event in parser {
         match event {
+            // Collect heading text for section detection
+            Event::Text(text) if h2_collector.active => {
+                h2_collector.collect(&text);
+            }
+
             Event::Text(text) => {
-                let text = text.to_string();
+                // Strip bold markers for metadata matching
+                let clean = if text.contains('*') { text.replace("**", "") } else { text.to_string() };
 
                 // Parse "# TASK-001: name" heading text
-                if id.is_empty() && text.starts_with("TASK-") {
-                    let colon_pos = text.find(':');
+                if id.is_empty() && clean.starts_with("TASK-") {
+                    let colon_pos = clean.find(':');
                     if let Some(pos) = colon_pos {
-                        id = text[..pos].trim().to_string();
-                        name = text[pos + 1..].trim().to_string();
+                        id = clean[..pos].trim().to_string();
+                        name = clean[pos + 1..].trim().to_string();
                     } else {
-                        id = text.trim().to_string();
+                        id = clean.trim().to_string();
                     }
                 }
 
-                // Parse metadata
-                if let Some(value) = extract_metadata_value(&text, "Parent plan:") {
-                    parent_plan = value;
-                } else if let Some(value) = extract_metadata_value(&text, "Dependencies:") {
-                    dependencies = parse_comma_list(&value);
+                // Metadata extraction only when not inside a section
+                if current_section == Section::None {
+                    // Handle pending metadata label (label and value may be split by emphasis events)
+                    if let Some(label) = pending_metadata_label.take() {
+                        let value = clean.trim().to_string();
+                        if !value.is_empty() {
+                            match label {
+                                "Parent plan: " => parent_plan = value,
+                                "Dependencies: " => dependencies = parse_comma_list(&value),
+                                "Status: " => status = TaskStatusValue::from_str(&value).map_err(|e| {
+                                    log::warn!("Failed to parse task status '{}': {}", value, e);
+                                }).ok(),
+                                _ => {}
+                            }
+                        }
+                    } else {
+                        // Check for metadata labels directly
+                        if let Some(value) = try_extract_metadata(&clean, "Parent plan: ") {
+                            parent_plan = value.to_string();
+                        } else if clean == "Parent plan:" {
+                            pending_metadata_label = Some("Parent plan: ");
+                        } else if let Some(value) = try_extract_metadata(&clean, "Dependencies: ") {
+                            dependencies = parse_comma_list(value);
+                        } else if clean == "Dependencies:" {
+                            pending_metadata_label = Some("Dependencies: ");
+                        } else if let Some(value) = try_extract_metadata(&clean, "Status: ") {
+                            status = TaskStatusValue::from_str(value).map_err(|e| {
+                                log::warn!("Failed to parse task status '{}': {}", value, e);
+                            }).ok();
+                        } else if clean == "Status:" {
+                            pending_metadata_label = Some("Status: ");
+                        }
+                    }
                 }
 
                 // Section content
@@ -246,7 +325,6 @@ pub fn parse_task_markdown(path: &Path) -> Result<Task> {
 
             Event::Start(Tag::Heading {
                 level: HeadingLevel::H2,
-                id: heading_id,
                 ..
             }) => {
                 // Flush previous section
@@ -259,39 +337,57 @@ pub fn parse_task_markdown(path: &Path) -> Result<Task> {
                 );
                 section_buffer.clear();
                 bullet_buffer.clear();
-
-                // Determine which section this heading starts
-                let id_str = heading_id
-                    .as_ref()
-                    .map(|s| s.to_string().to_lowercase())
-                    .unwrap_or_default();
-                if id_str == "description" {
-                    current_section = Section::Description;
-                } else if id_str == "acceptance-criteria" || id_str == "acceptance criteria" {
-                    current_section = Section::AcceptanceCriteria;
-                } else if id_str == "files-to-modify" || id_str == "files to modify" {
-                    current_section = Section::FilesToModify;
-                } else if id_str == "background" {
-                    current_section = Section::Background;
-                } else if id_str == "notes" {
-                    current_section = Section::Notes;
-                }
+                h2_collector.start();
+                current_section = Section::None;
             }
 
-            Event::End(TagEnd::Heading(HeadingLevel::H2)) => {}
+            Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
+                // Determine which section this heading starts by its text
+                let heading_text = h2_collector.finish();
+                let trimmed = heading_text.trim();
+                if trimmed.eq_ignore_ascii_case("description") {
+                    current_section = Section::Description;
+                } else if trimmed.eq_ignore_ascii_case("acceptance criteria")
+                    || trimmed.eq_ignore_ascii_case("acceptance-criteria")
+                {
+                    current_section = Section::AcceptanceCriteria;
+                } else if trimmed.eq_ignore_ascii_case("files to modify")
+                    || trimmed.eq_ignore_ascii_case("files-to-modify")
+                {
+                    current_section = Section::FilesToModify;
+                } else if trimmed.eq_ignore_ascii_case("background") {
+                    current_section = Section::Background;
+                } else if trimmed.eq_ignore_ascii_case("notes") {
+                    current_section = Section::Notes;
+                } else {
+                    current_section = Section::None;
+                }
+            }
 
             Event::Start(Tag::List(None)) | Event::Start(Tag::List(Some(_))) => {
                 bullet_buffer.clear();
             }
-            Event::End(TagEnd::List(_)) => {
-                // End of bullet list - process collected bullets
-                if current_section == Section::AcceptanceCriteria && !bullet_buffer.is_empty() {
-                    acceptance_criteria.push(bullet_buffer.trim().to_string());
-                    bullet_buffer.clear();
-                } else if current_section == Section::FilesToModify && !bullet_buffer.is_empty() {
-                    files_to_modify.push(bullet_buffer.trim().to_string());
+            Event::End(TagEnd::Item) => {
+                // Push each list item as it completes
+                if !bullet_buffer.is_empty() {
+                    let item = bullet_buffer.trim().to_string();
+                    if current_section == Section::AcceptanceCriteria {
+                        acceptance_criteria.push(item);
+                    } else if current_section == Section::FilesToModify {
+                        files_to_modify.push(item);
+                    }
                     bullet_buffer.clear();
                 }
+            }
+            Event::End(TagEnd::List(_)) if !bullet_buffer.is_empty() => {
+                // Push any remaining item (in case End(Item) was not emitted)
+                let item = bullet_buffer.trim().to_string();
+                if current_section == Section::AcceptanceCriteria {
+                    acceptance_criteria.push(item);
+                } else if current_section == Section::FilesToModify {
+                    files_to_modify.push(item);
+                }
+                bullet_buffer.clear();
             }
 
             _ => {}
@@ -317,6 +413,7 @@ pub fn parse_task_markdown(path: &Path) -> Result<Task> {
         files_to_modify,
         background,
         notes,
+        status,
     })
 }
 
@@ -330,13 +427,13 @@ pub fn render_plan_markdown(plan: &Plan) -> String {
     out.push_str(&format!("# Plan: {}\n", plan.name));
 
     // Metadata
-    out.push_str(&format!("**ID: {}**\n", plan.id));
+    out.push_str(&format!("**ID:** {}\n", plan.id));
     out.push_str(&format!(
-        "**Status: {}**\n",
+        "**Status:** {}\n",
         plan_status_display(&plan.status)
     ));
-    out.push_str(&format!("**Created: {}**\n", plan.created));
-    out.push_str(&format!("**Branch: {}**\n", plan.branch));
+    out.push_str(&format!("**Created:** {}\n", plan.created));
+    out.push_str(&format!("**Branch:** {}\n", plan.branch));
 
     out.push('\n');
 
@@ -364,19 +461,22 @@ pub fn render_plan_markdown(plan: &Plan) -> String {
 }
 
 /// Render a [`Task`] struct back into markdown format.
-pub fn render_task_markdown(task: &Task) -> String {
+pub fn render_task_markdown(task: &Task, render_status: Option<&TaskStatusValue>) -> String {
     let mut out = String::new();
 
     // Title
     out.push_str(&format!("# {}: {}\n", task.id, task.name));
 
     // Metadata
-    out.push_str(&format!("**Parent plan: {}**\n", task.parent_plan));
+    out.push_str(&format!("**Parent plan:** {}\n", task.parent_plan));
     if !task.dependencies.is_empty() {
         out.push_str(&format!(
-            "**Dependencies: {}**\n",
+            "**Dependencies:** {}\n",
             task.dependencies.join(", ")
         ));
+    }
+    if let Some(s) = render_status {
+        out.push_str(&format!("**Status:** {}\n", s));
     }
 
     out.push('\n');
@@ -421,11 +521,51 @@ pub fn render_task_markdown(task: &Task) -> String {
     out
 }
 
+// ── Helper types ────────────────────────────────────────────────────────────
+
+/// Collects text events that occur inside an H2 heading, then returns the
+ /// trimmed result on finish. Used in both plan and task parsers to avoid
+ /// duplicating the `in_h2_heading` / `h2_heading_text` pattern.
+#[derive(Default)]
+struct HeadingTextCollector {
+    active: bool,
+    text: String,
+}
+
+impl HeadingTextCollector {
+    fn start(&mut self) {
+        self.active = true;
+        self.text.clear();
+    }
+
+    fn collect(&mut self, text: &str) {
+        if self.active {
+            self.text.push_str(text);
+        }
+    }
+
+    fn finish(&mut self) -> String {
+        self.active = false;
+        std::mem::take(&mut self.text)
+    }
+}
+
 // ── Helper functions ────────────────────────────────────────────────────────
 
-/// Extract a metadata value from a text chunk that contains a label.
+/// Try to extract a metadata value from `text` by stripping a known label prefix.
 ///
-/// E.g., given `"**ID:** PLAN-001"` and label `"ID:"`, returns `"PLAN-001"`.
+/// E.g., given `"Parent plan: PLAN-001"` and label `"Parent plan: "`,
+/// returns `Some("PLAN-001")`. Returns `None` if the prefix doesn't match.
+fn try_extract_metadata<'a>(text: &'a str, label: &str) -> Option<&'a str> {
+    text.strip_prefix(label).map(|v| v.trim())
+}
+
+/// Extract a metadata value from a text chunk that may contain HTML/bold tags.
+///
+/// Used primarily for the legacy HTML-event fallback where pulldown-cmark
+/// renders emphasis as `<strong>` tags instead of structured events.
+///
+/// E.g., given `"<strong>ID:</strong> PLAN-001"` and label `"ID:"`, returns `"PLAN-001"`.
 fn extract_metadata_value(text: &str, label: &str) -> Option<String> {
     // Strip HTML/bold tags for matching
     let clean = text

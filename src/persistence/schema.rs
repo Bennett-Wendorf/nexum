@@ -128,6 +128,11 @@ pub struct Task {
     /// Additional notes for this task.
     #[serde(default)]
     pub notes: String,
+    /// Optional informational status for human-readable context in task.md.
+    /// Typed as TaskStatusValue for consistency with status.json.
+    /// Not authoritative — runtime status lives in status.json.
+    #[serde(default)]
+    pub status: Option<TaskStatusValue>,
 }
 
 // ── Task Status ─────────────────────────────────────────────────────────────
@@ -219,6 +224,64 @@ impl FromStr for TaskStatusValue {
     }
 }
 
+/// Status value stored in transition records.
+/// Serialized as a plain string (backward compatible with existing status.json files)
+/// but constructed only through typed `from_task()` / `from_plan()` methods.
+#[derive(Debug, Clone, Serialize)]
+#[serde(transparent)]
+pub struct TransitionStatus(String);
+
+impl TransitionStatus {
+    /// Create from a task status value.
+    pub fn from_task(status: &TaskStatusValue) -> Self {
+        TransitionStatus(status.to_string())
+    }
+
+    /// Create from a plan status value.
+    pub fn from_plan(status: &PlanStatus) -> Self {
+        TransitionStatus(status.to_string())
+    }
+
+    /// Get the underlying string representation.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for TransitionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for TransitionStatus {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(TransitionStatus(s))
+    }
+}
+
+impl Default for TransitionStatus {
+    fn default() -> Self {
+        TransitionStatus(String::new())
+    }
+}
+
+impl PartialEq<str> for TransitionStatus {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<String> for TransitionStatus {
+    fn eq(&self, other: &String) -> bool {
+        self.0 == *other
+    }
+}
+
 /// Lease held by an agent working on a task.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentLease {
@@ -233,10 +296,10 @@ pub struct AgentLease {
 /// A single status transition event (works for both plan and task transitions).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusTransition {
-    /// Previous status (as a string, e.g. "queued" or "planning").
-    pub from: String,
-    /// New status (as a string, e.g. "running" or "approved").
-    pub to: String,
+    /// Previous status value.
+    pub from: TransitionStatus,
+    /// New status value.
+    pub to: TransitionStatus,
     /// ISO 8601 timestamp of the transition.
     pub at: String,
     /// Actor that performed the transition, e.g. "builder" or "overlord".

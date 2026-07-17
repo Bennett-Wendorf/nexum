@@ -15,7 +15,7 @@ use crate::builder::event_bus::{BuilderEvent, BuilderEventBus};
 use crate::builder::session_manager::SessionManager;
 use crate::builder::worktree_manager::{TaskWorktree, WorktreeManager};
 use crate::overlord::{OverlordScheduler, TransitionTaskStatusParams};
-use crate::persistence::TaskStatusValue;
+use crate::persistence::{atomic_write_json, read_json, StatusTransition, TaskStatus, TaskStatusValue, TransitionStatus, task_status_path};
 
 /// Handles error recovery for builder workflow failures.
 pub struct ErrorRecovery {
@@ -211,7 +211,7 @@ impl ErrorRecovery {
             .map_err(BuilderError::OverlordError)?;
 
         // Record conflict details in status.json
-        let status_path = crate::persistence::task_status_path(
+        let status_path = task_status_path(
             &self.repo_root,
             &task_context.branch,
             &task_context.plan_id,
@@ -221,19 +221,19 @@ impl ErrorRecovery {
         );
 
         if let Ok(mut status) =
-            crate::persistence::read_json::<crate::persistence::TaskStatus>(&status_path)
+            read_json::<TaskStatus>(&status_path)
         {
             // Add conflict info to transitions
             use chrono::Utc;
             status
                 .transitions
-                .push(crate::persistence::StatusTransition {
-                    from: "reviewing".to_string(),
-                    to: "waiting-manual-review".to_string(),
+                .push(StatusTransition {
+                    from: TransitionStatus::from_task(&TaskStatusValue::Reviewing),
+                    to: TransitionStatus::from_task(&TaskStatusValue::WaitingManualReview),
                     at: Utc::now().to_rfc3339(),
                     by: "overlord-merge-conflict".to_string(),
                 });
-            let _ = crate::persistence::atomic_write_json(&status_path, &status);
+            let _ = atomic_write_json(&status_path, &status);
         }
 
         // Do NOT clean up worktree — preserve for human inspection

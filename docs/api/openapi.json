@@ -170,7 +170,7 @@
           }
         }
       },
-      "put": {
+      "patch": {
         "operationId": "updatePlan",
         "summary": "Update a plan",
         "description": "Partially updates a plan. Only fields provided in the request body are changed.",
@@ -422,7 +422,7 @@
           }
         }
       },
-      "put": {
+      "patch": {
         "operationId": "updateTask",
         "summary": "Update a task",
         "description": "Partially updates a task. Only fields provided in the request body are changed.",

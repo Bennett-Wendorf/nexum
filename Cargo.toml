@@ -21,11 +21,12 @@ chrono = "0.4"
 fastrand = "2"
 regex = "1"
 tower = "0.5.3"
+toml = "0.8"
+log = "0.4"
 
 [dev-dependencies]
 serial_test = "3.5"
 tempfile = "3"
-toml = "0.8"
 http-body-util = "0.1"
 
 [lints.rust]

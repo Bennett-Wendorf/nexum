@@ -958,6 +958,7 @@ dependencies = [
  "fastrand",
  "http-body-util",
  "jsonrpsee",
+ "log",
  "notify",
  "pulldown-cmark",
  "regex",

@@ -86,10 +86,10 @@ impl PlanStateMachine {
 /// Zero-sized type using match expressions for transition validation.
 ///
 /// Valid transitions per `design/work-statuses.md`:
-/// - `backlog` → `queued`
-/// - `queued` → `running`
-/// - `running` → `reviewing` OR `queued` (re-queue)
-/// - `reviewing` → `waiting-manual-review` OR `merge-queue`
+/// - `backlog` → `queued` OR `abandoned`
+/// - `queued` → `running` OR `abandoned`
+/// - `running` → `reviewing` OR `queued` (re-queue) OR `abandoned`
+/// - `reviewing` → `waiting-manual-review` OR `merge-queue` OR `abandoned`
 /// - `waiting-manual-review` → `merge-queue` OR `abandoned`
 /// - `merge-queue` → `completed`
 /// - `abandoned` — terminal, no outgoing transitions
@@ -101,15 +101,15 @@ impl TaskStateMachine {
     pub fn can_transition(from: &TaskStatusValue, to: &TaskStatusValue) -> bool {
         matches!(
             (from, to),
-            (TaskStatusValue::Backlog, TaskStatusValue::Queued)
-                | (TaskStatusValue::Queued, TaskStatusValue::Running)
+            (TaskStatusValue::Backlog, TaskStatusValue::Queued | TaskStatusValue::Abandoned)
+                | (TaskStatusValue::Queued, TaskStatusValue::Running | TaskStatusValue::Abandoned)
                 | (
                     TaskStatusValue::Running,
-                    TaskStatusValue::Reviewing | TaskStatusValue::Queued
+                    TaskStatusValue::Reviewing | TaskStatusValue::Queued | TaskStatusValue::Abandoned
                 )
                 | (
                     TaskStatusValue::Reviewing,
-                    TaskStatusValue::WaitingManualReview | TaskStatusValue::MergeQueue
+                    TaskStatusValue::WaitingManualReview | TaskStatusValue::MergeQueue | TaskStatusValue::Abandoned
                 )
                 | (
                     TaskStatusValue::WaitingManualReview,

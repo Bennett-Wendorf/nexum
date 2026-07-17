@@ -1,5 +1,6 @@
 <script lang="ts">
   import StatusBadge from './StatusBadge.svelte';
+  import RouterLink from './RouterLink.svelte';
   import type { Plan } from '$lib/types';
   
   let { plan }: { plan: Plan } = $props();
@@ -10,7 +11,7 @@
   const href = $derived(`/plans/${plan.branch}/${plan.id}`);
 </script>
 
-<a href={href} class="block bg-bg-tertiary border border-border-default rounded-lg p-3 cursor-pointer transition-colors hover:border-accent-blue">
+<RouterLink href={href} class="block bg-bg-tertiary border border-border-default rounded-lg p-3 cursor-pointer transition-colors hover:border-accent-blue">
   <div class="flex items-start justify-between gap-2 mb-2">
     <h3 class="font-semibold text-text-secondary text-sm leading-tight">{plan.name}</h3>
     <StatusBadge status={plan.status} type="plan" />
@@ -32,4 +33,4 @@
       <span class="text-[11px] text-text-muted">{completedTasks}/{totalTasks}</span>
     </div>
   {/if}
-</a>
+</RouterLink>

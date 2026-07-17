@@ -7,7 +7,7 @@
 //! | GET    | `/api/plans/:branch/:plan_id/tasks`                       | [`list_tasks`]                 |
 //! | GET    | `/api/plans/:branch/:plan_id/tasks/:task_id`              | [`get_task`]                   |
 //! | POST   | `/api/plans/:branch/:plan_id/tasks`                       | [`create_task`]                |
-//! | PUT    | `/api/plans/:branch/:plan_id/tasks/:task_id`              | [`update_task`]                |
+//! | PATCH  | `/api/plans/:branch/:plan_id/tasks/:task_id`              | [`update_task`]                |
 //! | DELETE | `/api/plans/:branch/:plan_id/tasks/:task_id`              | [`delete_task`]                |
 //! | PATCH  | `/api/plans/:branch/:plan_id/tasks/:task_id/status`       | [`transition_task_status`]     |
 //! | POST   | `/api/plans/:branch/:plan_id/tasks/:task_id/claim`        | [`claim_task`]                 |
@@ -26,7 +26,7 @@ use chrono::Utc;
 
 use crate::api::errors::ApiError;
 use crate::api::middleware::{
-    lock_plan, resolve_plan_path, resolve_task_path, validate_status_transition,
+    lock_plan, resolve_plan_path, resolve_task_path,
 };
 use crate::api::types::*;
 use crate::persistence::*;
@@ -62,8 +62,8 @@ fn task_to_response(task: &Task, status: &TaskStatus) -> TaskResponse {
                 .transitions
                 .iter()
                 .map(|t| StatusTransitionResponse {
-                    from: t.from.clone(),
-                    to: t.to.clone(),
+                    from: t.from.to_string(),
+                    to: t.to.to_string(),
                     at: t.at.clone(),
                     by: t.by.clone(),
                 })
@@ -267,6 +267,7 @@ pub async fn create_task(
         files_to_modify: req.files_to_modify.clone(),
         background: req.background.unwrap_or_default(),
         notes: req.notes.unwrap_or_default(),
+        status: None,
     };
 
     // Persist the task (creates directories, writes task.md, initializes status.json)
@@ -365,19 +366,7 @@ pub async fn update_task(
         task.notes = notes.clone();
     }
 
-    // Rewrite task.md with render_task_markdown
-    let task_path = task_markdown_path(
-        &state.repo_root,
-        &branch,
-        &plan_id,
-        &plan_name,
-        &resolved_task_id,
-        &task_name,
-    );
-    let markdown = render_task_markdown(&task);
-    write_file(&task_path, &markdown).map_err(ApiError::from)?;
-
-    // Read current status
+    // Read current status to preserve it in the re-rendered task.md
     let status = read_task_status(
         &state.repo_root,
         &branch,
@@ -387,6 +376,21 @@ pub async fn update_task(
         &task_name,
     )
     .map_err(ApiError::from)?;
+
+    // Set status on task for rendering (informational only)
+    task.status = Some(status.status.clone());
+
+    // Rewrite task.md with render_task_markdown
+    let task_path = task_markdown_path(
+        &state.repo_root,
+        &branch,
+        &plan_id,
+        &plan_name,
+        &resolved_task_id,
+        &task_name,
+    );
+    let markdown = render_task_markdown(&task, task.status.as_ref());
+    write_file(&task_path, &markdown).map_err(ApiError::from)?;
 
     Ok(Json(task_to_response(&task, &status)))
 }
@@ -443,10 +447,10 @@ pub async fn delete_task(
 
 /// Transition a task to a new status.
 ///
-/// Reads the current task status from `status.json`, validates the
-/// requested transition using [`validate_status_transition`], parses the
-/// target status string to a [`TaskStatusValue`] enum, calls
-/// [`update_task_status`] to persist the change (with TOCTOU protection),
+/// Reads the current task status from `status.json`, parses the
+/// target status string to a [`TaskStatusValue`] enum, validates the
+/// transition using [`crate::overlord::TaskStateMachine::can_transition`],
+/// calls [`update_task_status`] to persist the change (with TOCTOU protection),
 /// and updates the execution state's `task_status_map`.
 ///
 /// Acquires the per-plan lock to serialize `status.json` and `task_status_map` updates atomically.
@@ -485,15 +489,19 @@ pub async fn transition_task_status(
         )
         .map_err(ApiError::from)?;
 
-        // Validate the transition against the task transition map
-        let current_status_str = current_status.status.to_string();
-        validate_status_transition(current_status_str.as_str(), req.status.as_str(), "task")?;
-
         // Parse target status string to TaskStatusValue enum
         let new_status = req
             .status
             .parse::<TaskStatusValue>()
             .map_err(ApiError::Validation)?;
+
+        // Validate the transition using typed enums
+        if !crate::overlord::TaskStateMachine::can_transition(&current_status.status, &new_status) {
+            return Err(ApiError::Validation(format!(
+                "Invalid task status transition: '{}' -> '{}'",
+                current_status.status, new_status
+            )));
+        }
 
         // Call persistence::update_task_status with TOCTOU protection
         let params = UpdateTaskStatusParams {

@@ -103,13 +103,6 @@ export interface TransitionTaskStatusRequest {
 }
 
 // Execution types
-export interface ExecutionState {
-  plan_id: string;
-  branch: string;
-  tasks: string[];
-  task_status_map: Record<string, string>;
-}
-
 export interface RunningTask {
   task_id: string;
   task_name: string;
@@ -128,6 +121,13 @@ export interface Config {
   default_timeout_seconds: number;
   log_level: string;
   yolo_mode: boolean;
+  auth_enabled: boolean;
+  auth_require_read: boolean;
+  auth_keys_count: number;
+}
+
+export interface PatchConfigRequest {
+  yolo_mode?: boolean;
 }
 
 export interface AgentRegistration {
@@ -153,4 +153,21 @@ export interface ApiErrorResponse {
   error: string;
   message: string;
   status: number;
+}
+
+// Monitoring types
+export interface LogEntry {
+  timestamp: string;  // ISO datetime string
+  message: string;
+  severity: 'info' | 'warn' | 'error' | 'success';
+}
+
+export type PermissionLevel = 'auto' | 'manual' | 'blocked';
+
+export interface TaskPermissions {
+  file_writes: PermissionLevel;
+  terminal_commands: PermissionLevel;
+  network_requests: PermissionLevel;
+  git_operations: PermissionLevel;
+  package_installs: PermissionLevel;
 }

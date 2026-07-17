@@ -18,6 +18,7 @@ use axum::response::IntoResponse;
 
 use crate::api::errors::ApiError;
 use crate::api::types::AppState;
+use crate::persistence::{PlanStatus, TaskStatusValue};
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -74,45 +75,10 @@ pub fn request_id_layer() -> impl tower::Layer<axum::routing::MethodRouter> + Cl
     axum::middleware::from_fn::<_, axum::body::Body>(request_id_middleware)
 }
 
-// ── Status Transition Maps ─────────────────────────────────────────────
-
-/// Allowed status transitions for plans.
-///
-/// Each tuple is `(current_status, &[allowed_next_statuses])`.
-/// Covers: `draft → queued → planning → reviewing → approved|queued → complete|rejected`.
-const PLAN_TRANSITIONS: &[(&str, &[&str])] = &[
-    ("draft", &["queued"]),
-    ("queued", &["planning"]),
-    ("planning", &["reviewing"]),
-    ("reviewing", &["approved", "queued"]),
-    ("approved", &["complete", "rejected"]),
-];
-
-/// Terminal plan statuses — no further transitions are permitted.
-const PLAN_TERMINAL_STATUSES: &[&str] = &["complete", "rejected"];
-
-/// Allowed status transitions for tasks.
-///
-/// Each tuple is `(current_status, &[allowed_next_statuses])`.
-/// Covers the full lifecycle:
-/// `backlog → queued → running → reviewing → waiting-manual-review|merge-queue → completed`.
-///
-/// Tasks may be `abandoned` from any non-terminal state, and both
-/// `abandoned` and `completed` are terminal states.
-const TASK_TRANSITIONS: &[(&str, &[&str])] = &[
-    ("backlog", &["queued", "abandoned"]),
-    ("queued", &["running"]),
-    ("running", &["reviewing", "abandoned"]),
-    (
-        "reviewing",
-        &["waiting-manual-review", "merge-queue", "abandoned"],
-    ),
-    ("waiting-manual-review", &["merge-queue", "abandoned"]),
-    ("merge-queue", &["completed"]),
-];
-
-/// Terminal task statuses — no further transitions are permitted.
-const TASK_TERMINAL_STATUSES: &[&str] = &["abandoned", "completed"];
+// ── Status transition validation delegates to the authoritative state machines
+// in crate::overlord (PlanStateMachine and TaskStateMachine).
+// This middleware function provides early validation before the state machine
+// is consulted, using the same logic to guarantee consistency.
 
 // ── Validation Functions ───────────────────────────────────────────────
 
@@ -163,21 +129,6 @@ pub fn validate_task_status(status: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// Validates that a status transition is allowed for the given entity type.
-///
-/// The `entity_type` parameter should be `"plan"` or `"task"`. For plans,
-/// both pre-planning and post-planning transition maps are consulted.
-/// For tasks, only the task transition map is used.
-///
-/// Terminal statuses (`complete`/`rejected` for plans, `abandoned`/`completed`
-/// for tasks) reject all transitions.
-///
-/// # Errors
-///
-/// Returns [`ApiError::Validation`] if:
-/// - `entity_type` is not `"plan"` or `"task"`.
-/// - `current` is a terminal status.
-/// - The transition from `current` to `requested` is not in the allowed set.
 pub fn validate_status_transition(
     current: &str,
     requested: &str,
@@ -185,51 +136,32 @@ pub fn validate_status_transition(
 ) -> Result<(), ApiError> {
     match entity_type {
         "plan" => {
-            // Check terminal statuses first
-            if PLAN_TERMINAL_STATUSES.contains(&current) {
+            let from: PlanStatus = current.parse().map_err(|_| ApiError::Validation(format!(
+                "Unknown plan status '{}'", current
+            )))?;
+            let to: PlanStatus = requested.parse().map_err(|_| ApiError::Validation(format!(
+                "Unknown plan status '{}'", requested
+            )))?;
+            if !crate::overlord::PlanStateMachine::can_transition(&from, &to) {
                 return Err(ApiError::Validation(format!(
-                    "Cannot transition from terminal plan status '{current}' to '{requested}'"
+                    "Invalid plan status transition: '{}' -> '{}'", current, requested
                 )));
             }
-
-            // Consult plan transition map
-            let allowed = PLAN_TRANSITIONS
-                .iter()
-                .find(|&&(from, _)| from == current)
-                .map(|&(_, to)| to);
-
-            match allowed {
-                Some(targets) if targets.contains(&requested) => Ok(()),
-                Some(_) => Err(ApiError::Validation(format!(
-                    "Invalid plan status transition: '{current}' -> '{requested}'"
-                ))),
-                None => Err(ApiError::Validation(format!(
-                    "Unknown plan status '{current}' or no transitions defined"
-                ))),
-            }
+            Ok(())
         }
         "task" => {
-            // Check terminal statuses first
-            if TASK_TERMINAL_STATUSES.contains(&current) {
+            let from: TaskStatusValue = current.parse().map_err(|_| ApiError::Validation(format!(
+                "Unknown task status '{}'", current
+            )))?;
+            let to: TaskStatusValue = requested.parse().map_err(|_| ApiError::Validation(format!(
+                "Unknown task status '{}'", requested
+            )))?;
+            if !crate::overlord::TaskStateMachine::can_transition(&from, &to) {
                 return Err(ApiError::Validation(format!(
-                    "Cannot transition from terminal task status '{current}' to '{requested}'"
+                    "Invalid task status transition: '{}' -> '{}'", current, requested
                 )));
             }
-
-            let allowed = TASK_TRANSITIONS
-                .iter()
-                .find(|&&(from, _)| from == current)
-                .map(|&(_, to)| to);
-
-            match allowed {
-                Some(targets) if targets.contains(&requested) => Ok(()),
-                Some(_) => Err(ApiError::Validation(format!(
-                    "Invalid task status transition: '{current}' -> '{requested}'"
-                ))),
-                None => Err(ApiError::Validation(format!(
-                    "Unknown task status '{current}' or no transitions defined"
-                ))),
-            }
+            Ok(())
         }
         _ => Err(ApiError::Validation(format!(
             "Unknown entity type '{entity_type}' for status transition validation (expected 'plan' or 'task')"
@@ -474,7 +406,7 @@ mod tests {
         assert!(validate_status_transition("queued", "planning", "plan").is_ok());
         assert!(validate_status_transition("planning", "reviewing", "plan").is_ok());
         assert!(validate_status_transition("reviewing", "approved", "plan").is_ok());
-        assert!(validate_status_transition("reviewing", "queued", "plan").is_ok());
+        assert!(validate_status_transition("reviewing", "rejected", "plan").is_ok());
         assert!(validate_status_transition("approved", "complete", "plan").is_ok());
         assert!(validate_status_transition("approved", "rejected", "plan").is_ok());
     }
@@ -484,17 +416,23 @@ mod tests {
         assert!(validate_status_transition("draft", "planning", "plan").is_err());
         assert!(validate_status_transition("complete", "approved", "plan").is_err());
         assert!(validate_status_transition("rejected", "draft", "plan").is_err());
+        assert!(validate_status_transition("reviewing", "queued", "plan").is_err());
     }
 
     #[test]
     fn test_task_transition_valid() {
         assert!(validate_status_transition("backlog", "queued", "task").is_ok());
-        assert!(validate_status_transition("backlog", "abandoned", "task").is_ok());
+        assert!(validate_status_transition("running", "queued", "task").is_ok());
         assert!(validate_status_transition("queued", "running", "task").is_ok());
         assert!(validate_status_transition("running", "reviewing", "task").is_ok());
         assert!(validate_status_transition("reviewing", "merge-queue", "task").is_ok());
         assert!(validate_status_transition("waiting-manual-review", "merge-queue", "task").is_ok());
         assert!(validate_status_transition("merge-queue", "completed", "task").is_ok());
+        assert!(validate_status_transition("backlog", "abandoned", "task").is_ok());
+        assert!(validate_status_transition("queued", "abandoned", "task").is_ok());
+        assert!(validate_status_transition("running", "abandoned", "task").is_ok());
+        assert!(validate_status_transition("reviewing", "abandoned", "task").is_ok());
+        assert!(validate_status_transition("waiting-manual-review", "abandoned", "task").is_ok());
     }
 
     #[test]

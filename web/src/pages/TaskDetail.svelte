@@ -1,29 +1,78 @@
+<script module lang="ts">
+  import type { PermissionLevel, LogEntry } from '$lib/types';
+
+  const PERMISSION_BADGE_CLASSES: Record<PermissionLevel, string> = {
+    auto: 'bg-accent-green-subtle text-accent-green',
+    manual: 'bg-accent-yellow-subtle text-accent-yellow',
+    blocked: 'bg-accent-red-subtle text-accent-red',
+  };
+
+  const SEVERITY_COLORS: Record<LogEntry['severity'], string> = {
+    info: 'text-accent-blue',
+    success: 'text-accent-green',
+    warn: 'text-accent-yellow',
+    error: 'text-accent-red',
+  };
+</script>
+
 <script lang="ts">
   import { onMount } from 'svelte';
   import Breadcrumb from '../components/Breadcrumb.svelte';
   import StatusBadge from '../components/StatusBadge.svelte';
   import MarkdownRenderer from '../components/MarkdownRenderer.svelte';
   import RouterLink from '../components/RouterLink.svelte';
-  import { getTask, transitionTaskStatus, getConfig } from '$lib/api';
+  import { getTask, transitionTaskStatus, getConfig, getTaskLogs, listAgents } from '$lib/api';
   import { setError } from '$lib/errorUtils';
-  import type { Task, Config } from '$lib/types';
+  import type { Task, Config, LogEntry, TaskPermissions, PermissionLevel } from '$lib/types';
   
+  const LOG_POLL_INTERVAL_MS = 3000;
+
+  interface LogEntryWithTime extends LogEntry {
+    formattedTime: string;
+  }
+
+  const PERMISSION_KEYS: Array<keyof TaskPermissions> = [
+    'file_writes',
+    'terminal_commands',
+    'network_requests',
+    'git_operations',
+    'package_installs',
+  ];
+
   let { branch, planId, taskId }: { branch: string; planId: string; taskId: string } = $props();
   
+  const DEFAULT_TAB: 'definition' | 'agent-output' | 'history' = 'definition';
+
   let task = $state<Task | null>(null);
   let config = $state<Config | null>(null);
-  let activeTab = $state<'definition' | 'history'>('definition');
+  let activeTab = $state<typeof DEFAULT_TAB>(DEFAULT_TAB);
   let loading = $state(false);
   let executing = $state(false);
   let abandoning = $state(false);
   let error = $state<string | null>(null);
   let errorCleanup: (() => void) | null = null;
   let loadFailed = $state(false);
+  let logEntries = $state<LogEntryWithTime[]>([]);
+  let logLoading = $state(false);
+  let logError = $state<string | null>(null);
+  let permissions = $state<TaskPermissions | null>(null);
 
   const SPINNER_SVG = `<svg class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 </svg>`;
+
+  // Format timestamp for display
+  function formatLogTime(timestamp: string): string {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  }
+
+  async function loadPermissions(): Promise<void> {
+    // TODO: Implement granular mapping of agent tool_permissions to permission categories.
+    // For now, permissions are not displayed to avoid showing fabricated values.
+    permissions = null;
+  }
 
   onMount(async () => {
     loading = true;
@@ -32,6 +81,13 @@
         getTask(branch, planId, taskId),
         getConfig(),
       ]);
+      // Load permissions from agent config
+      await loadPermissions();
+      // Fetch logs after task data is loaded, but only if status suggests logs exist
+      const taskStatus = task?.status.status;
+      if (taskStatus === 'running' || taskStatus === 'reviewing' || taskStatus === 'completed' || taskStatus === 'abandoned') {
+        await fetchLogs();
+      }
     } catch (e) {
       if (e instanceof Error) {
         errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
@@ -56,7 +112,9 @@
   ]);
 
   const babyStepMode = $derived(config !== null && !config.yolo_mode && !loading);
-  
+
+  const isTaskRunning = $derived(task?.status.status === 'running');
+
   async function handleTransition(newStatus: string): Promise<void> {
     if (!newStatus) return;
     if (!task) return;
@@ -80,6 +138,51 @@
       handleTransition(target.value);
     }
   }
+
+  async function fetchLogs(signal?: AbortSignal): Promise<void> {
+    if (!task) return;
+    try {
+      logLoading = true;
+      logError = null;
+      const entries = await getTaskLogs(branch, planId, taskId, { signal });
+      logEntries = entries.map(e => ({ ...e, formattedTime: formatLogTime(e.timestamp) }));
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      if (e instanceof Error) {
+        logError = e.message;
+      }
+    } finally {
+      logLoading = false;
+    }
+  }
+
+  // Ref for auto-scrolling the log container
+  let logContainer: HTMLDivElement | undefined;
+
+  function scrollToBottom(): void {
+    if (logContainer) {
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+  }
+
+  $effect(() => {
+    // Auto-scroll when log entries change
+    if (logEntries.length > 0) {
+      queueMicrotask(scrollToBottom);
+    }
+  });
+
+  $effect(() => {
+    // Manage polling interval — only poll when task is running AND user is viewing the Agent Output tab
+    if (isTaskRunning && task && activeTab === 'agent-output') {
+      const controller = new AbortController();
+      const interval = setInterval(() => fetchLogs(controller.signal), LOG_POLL_INTERVAL_MS);
+      return () => {
+        clearInterval(interval);
+        controller.abort();
+      };
+    }
+  });
 </script>
 
 <div class="p-6">
@@ -132,7 +235,8 @@
             {/if}
           </button>
           <button type="button" class="bg-accent-red border border-accent-red text-white hover:bg-accent-red/80 rounded-md text-sm px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  onclick={() => { if (confirm('Are you sure you want to abandon this task?')) handleTransition('abandoned'); }}
+                  title="Abandon this task. This action cannot be undone."
+                  onclick={() => handleTransition('abandoned')}
                   disabled={abandoning}>
             {#if abandoning}
               <span class="inline-flex items-center gap-1.5">
@@ -174,6 +278,10 @@
                   onclick={() => activeTab = 'definition'}>
             Task Definition
           </button>
+          <button type="button" aria-label="Show agent output" class="px-4 py-2.5 text-sm border-b border-transparent {activeTab === 'agent-output' ? 'border-b-2 text-accent-blue border-accent-blue' : 'text-text-muted hover:text-text-secondary'} transition-colors"
+                  onclick={() => activeTab = 'agent-output'}>
+            Agent Output
+          </button>
           <button type="button" aria-label="Show status history" class="px-4 py-2.5 text-sm border-b border-transparent {activeTab === 'history' ? 'border-b-2 text-accent-blue border-accent-blue' : 'text-text-muted hover:text-text-secondary'} transition-colors"
                   onclick={() => activeTab = 'history'}>
             Status History
@@ -189,7 +297,7 @@
                 <MarkdownRenderer content={task.description} />
               </div>
             {/if}
-            
+
             {#if task.acceptance_criteria.length > 0}
               <div>
                 <h2 class="text-sm font-semibold text-text-secondary mb-2">Acceptance Criteria</h2>
@@ -202,21 +310,21 @@
                 </div>
               </div>
             {/if}
-            
+
             {#if task.background}
               <div>
                 <h2 class="text-sm font-semibold text-text-secondary mb-2">Background</h2>
                 <MarkdownRenderer content={task.background} />
               </div>
             {/if}
-            
+
             {#if task.notes}
               <div>
                 <h2 class="text-sm font-semibold text-text-secondary mb-2">Notes</h2>
                 <MarkdownRenderer content={task.notes} />
               </div>
             {/if}
-            
+
             {#if task.files_to_modify.length > 0}
               <div>
                 <h2 class="text-sm font-semibold text-text-secondary mb-2">Files to Modify</h2>
@@ -231,7 +339,46 @@
               </div>
             {/if}
           </div>
-        
+
+        <!-- Agent Output Tab -->
+        {:else if activeTab === 'agent-output'}
+          <div>
+            {#if logLoading && logEntries.length === 0}
+              <div class="flex items-center justify-center py-8">
+                <div class="text-text-muted text-sm">Loading logs...</div>
+              </div>
+            {:else if logEntries.length === 0}
+              <div class="flex flex-col items-center justify-center py-8 text-text-muted">
+                <p class="text-sm">No logs available</p>
+                {#if task?.status.status === 'backlog'}
+                  <p class="text-xs text-text-faint mt-1">Logs will appear once the task starts executing</p>
+                {/if}
+              </div>
+            {:else}
+              <div class="space-y-3">
+                {#if !isTaskRunning}
+                  <div class="text-xs text-text-faint italic">Task is not running — showing last known log</div>
+                {/if}
+                {#if logError}
+                  <div class="p-2 bg-accent-red-subtle border border-accent-red/30 rounded-md text-accent-red text-xs">
+                    Failed to fetch logs: {logError}
+                  </div>
+                {/if}
+                <div class="bg-bg-primary border border-border-default rounded-lg max-h-96 overflow-y-auto font-mono text-xs"
+                     bind:this={logContainer}>
+                  <div class="p-3 space-y-1">
+                    {#each logEntries as entry, i (i)}
+                      <div class="flex items-start gap-2">
+                        <span class="text-text-faint flex-shrink-0 w-16">{entry.formattedTime}</span>
+                        <span class={SEVERITY_COLORS[entry.severity]}>{entry.message}</span>
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+              </div>
+            {/if}
+          </div>
+
         <!-- History Tab -->
         {:else}
           <div class="pl-4 relative border-l-2 border-border-default">
@@ -248,7 +395,7 @@
                 </div>
               </div>
             {/each}
-            
+
             {#if task.status.transitions.length === 0}
               <p class="text-text-muted italic text-sm">No transitions yet</p>
             {/if}
@@ -291,7 +438,22 @@
             <p class="text-xs text-text-faint italic">No dependencies</p>
           {/if}
         </div>
-        
+
+        {#if permissions}
+          <!-- Permissions -->
+          <div>
+            <h3 class="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">Permissions</h3>
+            {#each PERMISSION_KEYS as key}
+              <div class="flex items-center justify-between py-2 text-sm border-b border-border-muted">
+                <span class="text-text-secondary">{key.replace('_', ' ').replace(/^\w/, c => c.toUpperCase())}</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold {PERMISSION_BADGE_CLASSES[permissions[key]]}">
+                  {permissions[key]}
+                </span>
+              </div>
+            {/each}
+          </div>
+        {/if}
+
         <!-- Status Info -->
         <div>
           <h3 class="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">Status Info</h3>

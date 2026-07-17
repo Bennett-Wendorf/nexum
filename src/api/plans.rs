@@ -7,7 +7,7 @@
 //! | GET    | `/api/plans`                              | [`list_plans`]             |
 //! | GET    | `/api/plans/:branch/:plan_id`             | [`get_plan`]               |
 //! | POST   | `/api/plans`                              | [`create_plan`]            |
-//! | PUT    | `/api/plans/:branch/:plan_id`             | [`update_plan`]            |
+//! | PATCH  | `/api/plans/:branch/:plan_id`             | [`update_plan`]            |
 //! | DELETE | `/api/plans/:branch/:plan_id`             | [`delete_plan`]            |
 //! | PATCH  | `/api/plans/:branch/:plan_id/status`      | [`transition_plan_status`] |
 //!
@@ -137,9 +137,18 @@ pub async fn list_plans(
             let mut plan = read_plan(&state.repo_root, branch, &plan_id, &plan_name)
                 .map_err(ApiError::from)?;
             if plan.id != plan_id {
-                tracing::error!(expected = %plan_id, actual = %plan.id, "Plan ID on disk differs from directory slug, overriding");
+                tracing::warn!(expected = %plan_id, actual = %plan.id, "Plan ID on disk differs from directory slug, overriding");
             }
             plan.id = plan_id.clone(); // Ensure ID from slug is used
+            if plan.branch.is_empty() {
+                plan.branch = branch.clone();
+            }
+
+            // Skip legacy plans missing required frontmatter fields
+            if plan.name.is_empty() || plan.created.is_empty() {
+                tracing::warn!(plan_id = %plan_id, branch = %branch, "Skipping legacy plan missing required fields");
+                continue;
+            }
 
             // Count total before filtering (unfiltered count of readable plans)
             total += 1;

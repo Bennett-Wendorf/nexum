@@ -77,15 +77,15 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Start the REST API server
+    let bind_addr = format!("{}:{}", cfg.global.server_host, cfg.global.server_port);
     let state = api::AppState {
         repo_root: repo_root.clone(),
-        config: cfg.clone(),
+        config: Arc::new(RwLock::new(cfg)),
         orchestrator: Some(orchestrator),
         plan_locks: Arc::new(RwLock::new(HashMap::new())),
     };
     let app = api::create_router(state);
 
-    let bind_addr = format!("{}:{}", cfg.global.server_host, cfg.global.server_port);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     tracing::info!("REST API server listening on {}", bind_addr);
 

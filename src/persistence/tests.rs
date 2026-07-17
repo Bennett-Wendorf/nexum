@@ -144,6 +144,58 @@ fn test_render_plan_markdown() {
 }
 
 #[test]
+fn test_plan_markdown_roundtrip() -> Result<()> {
+    let (repo, _temp) = temp_repo();
+    fs::create_dir_all(&repo)?;
+
+    let plan = Plan {
+        id: "PLAN-002".into(),
+        name: "roundtrip-test".into(),
+        status: PlanStatus::Reviewing,
+        created: "2025-06-15".into(),
+        branch: "feature-x".into(),
+        goal: "Verify round-trip serialization".into(),
+        scope: "Persistence layer".into(),
+        background: "Testing markdown parse and render".into(),
+        tasks: vec![
+            TaskReference {
+                id: "TASK-010".into(),
+                name: "task-alpha".into(),
+                completed: false,
+            },
+            TaskReference {
+                id: "TASK-011".into(),
+                name: "task-beta".into(),
+                completed: true,
+            },
+        ],
+    };
+
+    let md = render_plan_markdown(&plan);
+    let path = repo.join("plan.md");
+    write_file(&path, &md)?;
+
+    let parsed = parse_plan_markdown(&path)?;
+
+    assert_eq!(parsed.id, plan.id);
+    assert_eq!(parsed.name, plan.name);
+    assert_eq!(parsed.status, plan.status);
+    assert_eq!(parsed.created, plan.created);
+    assert_eq!(parsed.branch, plan.branch);
+    assert_eq!(parsed.goal, plan.goal);
+    assert_eq!(parsed.scope, plan.scope);
+    assert_eq!(parsed.background, plan.background);
+    assert_eq!(parsed.tasks.len(), plan.tasks.len());
+    for (got, want) in parsed.tasks.iter().zip(plan.tasks.iter()) {
+        assert_eq!(got.id, want.id);
+        assert_eq!(got.name, want.name);
+        assert_eq!(got.completed, want.completed);
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_render_task_markdown() {
     let task = Task {
         id: "TASK-001".into(),
@@ -155,13 +207,94 @@ fn test_render_task_markdown() {
         files_to_modify: vec!["src/auth.rs".into()],
         background: "Security requirement".into(),
         notes: "Use oauth2 crate".into(),
+        status: Some(TaskStatusValue::Backlog),
     };
-    let md = render_task_markdown(&task);
+    let md = render_task_markdown(&task, task.status.as_ref());
     assert!(md.contains("# TASK-001: implement-auth"));
     assert!(md.contains("## Description"));
     assert!(md.contains("Build auth system"));
     assert!(md.contains("- Handles tokens"));
     assert!(md.contains("- src/auth.rs"));
+    assert!(md.contains("**Status:** backlog"));
+}
+
+#[test]
+fn test_task_markdown_roundtrip() -> Result<()> {
+    let (repo, _temp) = temp_repo();
+    fs::create_dir_all(&repo)?;
+
+    let task = Task {
+        id: "TASK-005".into(),
+        name: "roundtrip-task".into(),
+        parent_plan: "PLAN-003".into(),
+        dependencies: vec!["TASK-001".into(), "TASK-002".into()],
+        description: "Verify round-trip serialization for tasks".into(),
+        acceptance_criteria: vec![
+            "All fields are preserved".into(),
+            "Dependencies are comma-separated".into(),
+        ],
+        files_to_modify: vec!["src/lib.rs".into(), "src/persistence/markdown.rs".into()],
+        background: "Testing markdown parse and render for tasks".into(),
+        notes: "Ensure emphasis splitting is handled correctly".into(),
+        status: Some(TaskStatusValue::Running),
+    };
+
+    let md = render_task_markdown(&task, task.status.as_ref());
+    let path = repo.join("task.md");
+    write_file(&path, &md)?;
+
+    let parsed = parse_task_markdown(&path)?;
+
+    assert_eq!(parsed.id, task.id);
+    assert_eq!(parsed.name, task.name);
+    assert_eq!(parsed.parent_plan, task.parent_plan);
+    assert_eq!(parsed.dependencies, task.dependencies);
+    assert_eq!(parsed.description, task.description);
+    assert_eq!(parsed.acceptance_criteria, task.acceptance_criteria);
+    assert_eq!(parsed.files_to_modify, task.files_to_modify);
+    assert_eq!(parsed.background, task.background);
+    assert_eq!(parsed.notes, task.notes);
+    assert_eq!(parsed.status, task.status);
+
+    Ok(())
+}
+
+#[test]
+fn test_render_task_markdown_no_status() {
+    let task = Task {
+        id: "TASK-002".into(),
+        name: "no-status-task".into(),
+        parent_plan: "PLAN-001".into(),
+        dependencies: Vec::new(),
+        description: "A task without status".into(),
+        acceptance_criteria: Vec::new(),
+        files_to_modify: Vec::new(),
+        background: String::new(),
+        notes: String::new(),
+        status: None,
+    };
+    let md = render_task_markdown(&task, task.status.as_ref());
+    assert!(!md.contains("**Status:**"));
+}
+
+#[test]
+fn test_parse_task_markdown_unknown_status() -> Result<()> {
+    let (repo, _temp) = temp_repo();
+    fs::create_dir_all(&repo)?;
+
+    // Write a task.md with an unknown status value
+    let md = "# TASK-099: unknown-status-task\n\n**Parent plan:** PLAN-001\n**Status:** unknown-status\n\n## Description\n\nA task with an unrecognized status value.\n";
+    let path = repo.join("task.md");
+    write_file(&path, md)?;
+
+    let parsed = parse_task_markdown(&path)?;
+
+    assert_eq!(parsed.id, "TASK-099");
+    assert_eq!(parsed.name, "unknown-status-task");
+    // Unknown status should gracefully fall back to None
+    assert_eq!(parsed.status, None);
+
+    Ok(())
 }
 
 // ── CRUD Operations ─────────────────────────────────────────────────────────
@@ -226,6 +359,7 @@ fn test_create_and_read_task() -> Result<()> {
         files_to_modify: vec!["src/test.rs".into()],
         background: "Test background".into(),
         notes: "Test notes".into(),
+        status: None,
     };
     create_task(&repo, "main", "PLAN-001", "test-plan", &task)?;
 
@@ -281,6 +415,7 @@ fn test_update_task_status() -> Result<()> {
         files_to_modify: Vec::new(),
         background: "".into(),
         notes: "".into(),
+        status: None,
     };
     create_task(&repo, "main", "PLAN-001", "test-plan", &task)?;
 

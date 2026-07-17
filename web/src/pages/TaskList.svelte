@@ -5,22 +5,26 @@
   import StatusBadge from '../components/StatusBadge.svelte';
   import RouterLink from '../components/RouterLink.svelte';
   import { kanbanColumns } from '$lib/statusColors';
-  import { getPlan, listTasks } from '$lib/api';
+  import { getPlan, listTasks, getConfig, patchConfig, createTask } from '$lib/api';
   import { setError } from '$lib/errorUtils';
-  import type { Plan, Task } from '$lib/types';
+  import type { Plan, Task, Config, CreateTaskRequest } from '$lib/types';
+  import CreateTaskForm from '../components/CreateTaskForm.svelte';
   
   let { branch, planId }: { branch: string; planId: string } = $props();
   
   let plan = $state<Plan | null>(null);
   let tasks = $state<Task[]>([]);
+  let yoloMode = $state(false);
+  let yoloLoading = $state(false);
 
   let loading = $state(false);
   let error = $state<string | null>(null);
-  let errorCleanup: (() => void) | null = $state(null);
-  const savedViewMode = localStorage.getItem('nexum-viewMode');
-  let viewMode = $state<'kanban' | 'list'>(
-    (savedViewMode === 'kanban' || savedViewMode === 'list') ? savedViewMode : 'kanban'
-  );
+  let errorCleanup: (() => void) | null = null;
+  let showCreateTaskForm = $state(false);
+  let viewMode: 'kanban' | 'list' = (() => {
+    const saved = localStorage.getItem('nexum-viewMode');
+    return (saved === 'kanban' || saved === 'list') ? saved : 'kanban';
+  })();
   
   onMount(async () => {
     loading = true;
@@ -28,6 +32,8 @@
       plan = await getPlan(branch, planId);
       const response = await listTasks(branch, planId);
       tasks = response.items;
+      const config = await getConfig();
+      yoloMode = config.yolo_mode;
     } catch (e) {
       if (e instanceof Error) {
         errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
@@ -43,6 +49,18 @@
     }
   });
 
+  $effect(() => {
+    if (showCreateTaskForm) {
+      function handler(e: KeyboardEvent) {
+        if (e.key === 'Escape') {
+          showCreateTaskForm = false;
+        }
+      }
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+    }
+  });
+
   const breadcrumbItems = $derived([
     { label: 'Plans', href: '/plans' },
     { label: plan?.name ?? planId, href: `/plans/${branch}/${planId}` },
@@ -53,6 +71,20 @@
     viewMode = viewMode === 'kanban' ? 'list' : 'kanban';
     localStorage.setItem('nexum-viewMode', viewMode);
   }
+
+  async function toggleYolo(): Promise<void> {
+    yoloLoading = true;
+    try {
+      const config = await patchConfig({ yolo_mode: !yoloMode });
+      yoloMode = config.yolo_mode;
+    } catch (e) {
+      if (e instanceof Error) {
+        errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
+      }
+    } finally {
+      yoloLoading = false;
+    }
+  }
   
   const tasksByStatus = $derived(
     tasks.reduce<Record<string, Task[]>>((acc, t) => {
@@ -62,6 +94,18 @@
       return acc;
     }, {})
   );
+  const tasksMap = $derived(new Map(tasks.map(t => [t.id, t])));
+
+  async function handleTaskTransition(taskId: string, newStatus: string): Promise<void> {
+    try {
+      const response = await listTasks(branch, planId);
+      tasks = response.items;
+    } catch (e) {
+      if (e instanceof Error) {
+        errorCleanup = setError(() => { error = e.message; }, () => { error = null; });
+      }
+    }
+  }
 </script>
 
 <div class="p-6">
@@ -88,14 +132,25 @@
       <div class="flex items-center gap-3">
         <!-- View Mode Toggle -->
         <div class="flex border border-border-default rounded-md overflow-hidden">
-          <button class="px-3 py-1 text-xs { viewMode === 'kanban' ? 'bg-border-default text-text-secondary' : 'text-text-muted' }" onclick={toggleView}>
+          <button type="button" class="px-3 py-1 text-xs { viewMode === 'kanban' ? 'bg-border-default text-text-secondary' : 'text-text-muted' }" onclick={toggleView}>
             Kanban
           </button>
-          <button class="px-3 py-1 text-xs { viewMode === 'list' ? 'bg-border-default text-text-secondary' : 'text-text-muted' }" onclick={toggleView}>
+          <button type="button" class="px-3 py-1 text-xs { viewMode === 'list' ? 'bg-border-default text-text-secondary' : 'text-text-muted' }" onclick={toggleView}>
             List
           </button>
         </div>
-        <button class="px-3 py-1.5 bg-btn-green border border-btn-green text-white rounded-md text-sm hover:bg-btn-green-hover transition-colors" disabled title="Coming soon">
+        <!-- Yolo Toggle -->
+        <button
+          class="px-3 py-1.5 rounded-md text-sm font-medium border transition-colors disabled:opacity-50 cursor-pointer
+            {yoloMode
+              ? 'bg-accent-yellow-subtle text-accent-yellow border-accent-yellow hover:bg-accent-yellow/20'
+              : 'text-text-muted border-border-default hover:text-text-secondary hover:border-border-strong'}"
+          onclick={toggleYolo}
+          disabled={yoloLoading}
+        >
+          ⚡ Yolo: {yoloMode ? 'ON' : 'OFF'}
+        </button>
+        <button type="button" class="px-3 py-1.5 bg-btn-green border border-btn-green text-white rounded-md text-sm hover:bg-btn-green-hover transition-colors cursor-pointer" onclick={() => showCreateTaskForm = true}>
           + Add Task
         </button>
       </div>
@@ -105,7 +160,7 @@
     {#if viewMode === 'kanban'}
       <div class="flex gap-4 overflow-x-auto pb-4">
         {#each kanbanColumns as status (status)}
-          <TaskColumn status={status} tasks={tasksByStatus[status] ?? []} {planId} {branch} />
+          <TaskColumn status={status} tasks={tasksByStatus[status] ?? []} {planId} {branch} tasksMap={tasksMap} onTaskTransition={handleTaskTransition} />
         {/each}
       </div>
     
@@ -140,6 +195,31 @@
         {#if tasks.length === 0}
           <p class="p-4 text-sm text-text-muted text-center italic">No tasks yet</p>
         {/if}
+      </div>
+    {/if}
+
+    {#if showCreateTaskForm}
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-bg-primary/80 backdrop-blur-sm" onclick={() => showCreateTaskForm = false}>
+        <div class="bg-bg-secondary border border-border-default rounded-lg shadow-2xl w-full max-w-lg mx-4" onclick={(e) => e.stopPropagation()}>
+          <CreateTaskForm
+            parentPlan={planId}
+            onSubmit={async (data: CreateTaskRequest) => {
+              try {
+                const newTask = await createTask(branch, planId, data);
+                tasks = [...tasks, newTask];
+                showCreateTaskForm = false;
+              } catch (e) {
+                if (e instanceof Error) {
+                  errorCleanup = setError(
+                    () => { error = e.message; },
+                    () => { error = null; }
+                  );
+                }
+              }
+            }}
+            onCancel={() => showCreateTaskForm = false}
+          />
+        </div>
       </div>
     {/if}
   {/if}

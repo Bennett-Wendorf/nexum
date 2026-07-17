@@ -19,7 +19,6 @@ use axum::{
     routing::{get, patch, post},
     Router,
 };
-use std::sync::Arc;
 
 pub use types::*;
 
@@ -27,9 +26,9 @@ pub use types::*;
 ///
 /// The router includes:
 /// - Health check: GET /api/v1/health
-/// - Plan CRUD: GET/POST /api/v1/plans, GET/PUT/DELETE /api/v1/plans/{branch}/{plan_id}
+/// - Plan CRUD: GET/POST /api/v1/plans, GET/PATCH/DELETE /api/v1/plans/{branch}/{plan_id}
 /// - Plan status: PATCH /api/v1/plans/{branch}/{plan_id}/status
-/// - Task CRUD: GET/POST /api/v1/plans/{branch}/{plan_id}/tasks, GET/PUT/DELETE /api/v1/plans/{branch}/{plan_id}/tasks/{task_id}
+/// - Task CRUD: GET/POST /api/v1/plans/{branch}/{plan_id}/tasks, GET/PATCH/DELETE /api/v1/plans/{branch}/{plan_id}/tasks/{task_id}
 /// - Task status: PATCH /api/v1/plans/{branch}/{plan_id}/tasks/{task_id}/status
 /// - Task claim: POST /api/v1/plans/{branch}/{plan_id}/tasks/{task_id}/claim
 /// - Execution: GET /api/v1/plans/{branch}/{plan_id}/execution, GET /api/v1/running
@@ -39,8 +38,6 @@ pub use types::*;
 ///
 /// All routes use `/api/v1/` prefix for URL-based versioning.
 pub fn create_router(state: AppState) -> Router {
-    let auth_config = Arc::new(state.config.global.authentication.clone());
-
     Router::new()
         // Health check
         .route("/api/v1/health", get(execution::health_check))
@@ -52,7 +49,7 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/plans/{branch}/{plan_id}",
             get(plans::get_plan)
-                .put(plans::update_plan)
+                .patch(plans::update_plan)
                 .delete(plans::delete_plan),
         )
         .route(
@@ -67,7 +64,7 @@ pub fn create_router(state: AppState) -> Router {
         .route(
             "/api/v1/plans/{branch}/{plan_id}/tasks/{task_id}",
             get(tasks::get_task)
-                .put(tasks::update_task)
+                .patch(tasks::update_task)
                 .delete(tasks::delete_task),
         )
         .route(
@@ -85,14 +82,12 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/api/v1/running", get(execution::list_running_tasks))
         // Config endpoints
-        .route("/api/v1/config", get(config::get_config))
+        .route("/api/v1/config", get(config::get_config).patch(config::patch_config))
         .route("/api/v1/agents", get(config::list_agents))
         // Auth endpoints
         .route("/api/v1/auth/status", get(auth::get_auth_status))
-        .with_state(state)
+        .with_state(state.clone())
         // Middleware layers (order matters: auth before request_id)
-        .layer(axum::middleware::from_fn(auth::create_auth_middleware(
-            auth_config,
-        )))
+        .layer(axum::middleware::from_fn_with_state(state, auth::auth_middleware_with_state))
         .layer(axum::middleware::from_fn(middleware::request_id_middleware))
 }

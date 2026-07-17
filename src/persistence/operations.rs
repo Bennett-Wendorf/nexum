@@ -112,7 +112,7 @@ pub fn create_task(
 
     // Write task.md (non-atomic for initial creation)
     let task_path = task_markdown_path(repo_root, branch, plan_id, plan_name, &task.id, &task.name);
-    let markdown = render_task_markdown(task);
+    let markdown = render_task_markdown(task, Some(&TaskStatusValue::Backlog));
     write_file(&task_path, &markdown)?;
 
     // Create status.json atomically with backlog status
@@ -186,10 +186,10 @@ pub fn update_task_status(params: &UpdateTaskStatusParams) -> Result<TaskStatus>
     let old_status = status.status.clone();
     let now = Utc::now().to_rfc3339();
 
-    // Record transition (from/to are strings now)
+    // Record transition
     status.transitions.push(StatusTransition {
-        from: old_status.to_string(),
-        to: params.new_status.to_string(),
+        from: TransitionStatus::from_task(&old_status),
+        to: TransitionStatus::from_task(&params.new_status),
         at: now.clone(),
         by: params.by.clone(),
     });
@@ -248,10 +248,10 @@ pub fn recover_task_status(params: &RecoverTaskStatusParams) -> Result<TaskStatu
     let old_status = status.status.clone();
     let now = Utc::now().to_rfc3339();
 
-    // Record transition with correct kebab-case strings
+    // Record transition
     status.transitions.push(StatusTransition {
-        from: old_status.to_string(),
-        to: params.target_status.to_string(),
+        from: TransitionStatus::from_task(&old_status),
+        to: TransitionStatus::from_task(&params.target_status),
         at: now.clone(),
         by: params.by.clone(),
     });

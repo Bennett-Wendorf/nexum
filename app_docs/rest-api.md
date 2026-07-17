@@ -25,7 +25,7 @@ All routes are prefixed with `/api/v1/`.
 | `GET` | `/api/v1/plans` | `list_plans` | List all plans (filterable by `branch`, `status`) |
 | `POST` | `/api/v1/plans` | `create_plan` | Create a new plan (201 Created) |
 | `GET` | `/api/v1/plans/{branch}/{plan_id}` | `get_plan` | Get a specific plan |
-| `PUT` | `/api/v1/plans/{branch}/{plan_id}` | `update_plan` | Partially update a plan |
+| `PATCH` | `/api/v1/plans/{branch}/{plan_id}` | `update_plan` | Partially update a plan |
 | `DELETE` | `/api/v1/plans/{branch}/{plan_id}` | `delete_plan` | Delete a plan and all associated data (204 No Content) |
 | `PATCH` | `/api/v1/plans/{branch}/{plan_id}/status` | `transition_plan_status` | Transition plan status |
 
@@ -36,7 +36,7 @@ All routes are prefixed with `/api/v1/`.
 | `GET` | `/api/v1/plans/{branch}/{plan_id}/tasks` | `list_tasks` | List tasks for a plan (filterable by `status`) |
 | `POST` | `/api/v1/plans/{branch}/{plan_id}/tasks` | `create_task` | Create a new task within a plan (201 Created) |
 | `GET` | `/api/v1/plans/{branch}/{plan_id}/tasks/{task_id}` | `get_task` | Get a specific task |
-| `PUT` | `/api/v1/plans/{branch}/{plan_id}/tasks/{task_id}` | `update_task` | Partially update a task |
+| `PATCH` | `/api/v1/plans/{branch}/{plan_id}/tasks/{task_id}` | `update_task` | Partially update a task |
 | `DELETE` | `/api/v1/plans/{branch}/{plan_id}/tasks/{task_id}` | `delete_task` | Delete a task (204 No Content) |
 | `PATCH` | `/api/v1/plans/{branch}/{plan_id}/tasks/{task_id}/status` | `transition_task_status` | Transition task status |
 | `POST` | `/api/v1/plans/{branch}/{plan_id}/tasks/{task_id}/claim` | `claim_task` | Agent claims (leases) a queued task |
@@ -66,7 +66,7 @@ Plans progress through two phases: **pre-planning** (idea → approval) and **po
 #### Pre-planning transitions
 
 ```
-draft → queued → planning → reviewing → approved | queued
+draft → queued → planning → reviewing → approved | rejected
 ```
 
 | Current | Allowed Transitions |
@@ -74,7 +74,7 @@ draft → queued → planning → reviewing → approved | queued
 | `draft` | `queued` |
 | `queued` | `planning` |
 | `planning` | `reviewing` |
-| `reviewing` | `approved`, `queued` |
+| `reviewing` | `approved`, `rejected` |
 
 #### Post-planning transitions
 

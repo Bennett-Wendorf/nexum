@@ -1,7 +1,7 @@
 import type {
   Plan, TaskRef, Task, TaskStatus, AgentLease, StatusTransition,
-  ExecutionState, RunningTask, Config, AgentRegistration,
-  AgentsResponse, ListResponse, ApiErrorResponse,
+  RunningTask, Config, PatchConfigRequest, AgentRegistration,
+  AgentsResponse, ListResponse, ApiErrorResponse, LogEntry,
   CreatePlanRequest, UpdatePlanRequest, TransitionPlanStatusRequest,
   CreateTaskRequest, UpdateTaskRequest, TransitionTaskStatusRequest,
 } from './types';
@@ -77,7 +77,7 @@ export async function createPlan(req: CreatePlanRequest): Promise<Plan> {
 }
 
 export async function updatePlan(branch: string, planId: string, req: UpdatePlanRequest): Promise<Plan> {
-  return request('PUT', `/plans/${branch}/${planId}`, { body: req });
+  return request('PATCH', `/plans/${branch}/${planId}`, { body: req });
 }
 
 export async function deletePlan(branch: string, planId: string): Promise<void> {
@@ -124,7 +124,7 @@ export async function updateTask(
   taskId: string,
   req: UpdateTaskRequest,
 ): Promise<Task> {
-  return request('PUT', `/plans/${branch}/${planId}/tasks/${taskId}`, { body: req });
+  return request('PATCH', `/plans/${branch}/${planId}/tasks/${taskId}`, { body: req });
 }
 
 export async function deleteTask(
@@ -144,14 +144,22 @@ export async function transitionTaskStatus(
   return request('PATCH', `/plans/${branch}/${planId}/tasks/${taskId}/status`, { body: req });
 }
 
-// ===== Execution API =====
+// ===== Monitoring API =====
 
-export async function getExecutionState(
+/**
+ * Fetch execution logs for a specific task.
+ * NOTE: Backend endpoint GET /plans/{branch}/{planId}/tasks/{taskId}/logs.
+ */
+export async function getTaskLogs(
   branch: string,
   planId: string,
-): Promise<ExecutionState> {
-  return request('GET', `/plans/${branch}/${planId}/execution`);
+  taskId: string,
+  options?: { signal?: AbortSignal },
+): Promise<LogEntry[]> {
+  return await request('GET', `/plans/${branch}/${planId}/tasks/${taskId}/logs`, { signal: options?.signal });
 }
+
+// ===== Execution API =====
 
 export async function listRunningTasks(options?: { signal?: AbortSignal }): Promise<RunningTask[]> {
   return request('GET', '/running', { signal: options?.signal });
@@ -169,4 +177,8 @@ export async function getConfig(): Promise<Config> {
 
 export async function listAgents(options?: { signal?: AbortSignal }): Promise<AgentsResponse> {
   return request('GET', '/agents', { signal: options?.signal });
+}
+
+export async function patchConfig(req: PatchConfigRequest): Promise<Config> {
+  return request('PATCH', '/config', { body: req });
 }
